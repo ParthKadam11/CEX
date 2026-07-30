@@ -1,0 +1,24 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String      @id @default(uuid())
+  username      String
+  email         String      @unique
+  solWalletId   String?
+  solwallet     SolWallet?  
+}
+
+model SolWallet {
+    id          String  @id @default(uuid())
+    publicKey   String  
+    privateKey  String
+    userId      String  @unique
+    user        User    @relation(fields: [userId],references: [id])
+}

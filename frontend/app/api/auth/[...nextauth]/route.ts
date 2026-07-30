@@ -1,7 +1,7 @@
-import NextAuth from "next-auth"
+import NextAuth, { type NextAuthOptions } from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 
-export const authOptions = {
+export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? "",
@@ -15,6 +15,19 @@ export const authOptions = {
       },
     }),
   ],
+  callbacks: {
+    async signIn({ user, account, profile, email, credentials }) {
+      if(account?.provider === "google") {
+        const email = user?.email as string  
+        if(!email || !email.endsWith("@gmail.com")) {
+          return false
+        }
+        
+      return true
+    }
+    return false
+    },
+  },
 }
 
 const handler = NextAuth(authOptions)
