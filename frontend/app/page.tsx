@@ -1,0 +1,8 @@
+
+export default function Home() {
+  return (
+    <main className="flex min-h-screen flex-col item-center justify-between p-24">
+      Landing Page
+    </main>
+  );
+}
