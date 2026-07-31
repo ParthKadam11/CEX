@@ -66,34 +66,34 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
 
   return (
     <div className="animate-fade-up w-full max-w-3xl">
-      <div className="overflow-hidden rounded-2xl border border-white/15 bg-slate-950/25 backdrop-blur-lg">
-        <div className="p-8">
-          <div className="flex items-center gap-5">
+      <div className="overflow-hidden rounded-2xl border border-white/15 bg-slate-950/60 backdrop-blur-3xl">
+        <div className="p-6">
+          <div className="flex items-center gap-4">
             {image ? (
               <Image
                 src={image}
                 alt=""
-                width={68}
-                height={68}
-                className="size-17 rounded-full ring-1 ring-white/25"
+                width={56}
+                height={56}
+                className="size-14 rounded-full ring-1 ring-white/25"
               />
             ) : (
-              <div className="flex size-17 items-center justify-center rounded-full bg-white/15 text-lg font-semibold text-white ring-1 ring-white/25">
+              <div className="flex size-14 items-center justify-center rounded-full bg-white/15 text-lg font-semibold text-white ring-1 ring-white/25">
                 {name.charAt(0).toUpperCase()}
               </div>
             )}
-            <h1 className="font-display text-4xl tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
+            <h1 className="font-display text-3xl tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
               Welcome back, {name}!
             </h1>
           </div>
 
-          <div className="mt-8 flex items-center gap-2 text-sm text-white/70">
+          <div className="mt-6 flex items-center gap-2 text-sm text-white/70">
             <CreditCard className="size-4" />
             CEX Account Assets
           </div>
 
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
-            <p className="text-6xl font-bold tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-4">
+            <p className="text-5xl font-bold tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
               ${usdBalance.toFixed(2)}
               <span className="ml-2 text-white/60">USD</span>
             </p>
@@ -117,12 +117,12 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
             </button>
           </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {actions.map(({ id, label, primary }) => (
               <button
                 key={id}
                 type="button"
-                className={`h-11 rounded-2xl text-sm font-semibold transition-colors ${
+                className={`h-10 rounded-2xl text-sm font-semibold transition-colors ${
                   primary
                     ? "bg-white text-emerald-950 hover:bg-white/90"
                     : "border border-white/20 bg-white/15 text-white hover:bg-white/25"
@@ -134,7 +134,7 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
           </div>
         </div>
 
-        <div className="px-8">
+        <div className="px-6">
           <div className="flex gap-6 border-b border-white/15">
             {assetTabs.map((tab) => (
               <button
@@ -153,16 +153,16 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
           </div>
         </div>
 
-        <div className="flex flex-col items-center px-8 py-20 text-center">
-          <h2 className="text-xl font-semibold text-white">
+        <div className="flex flex-col items-center px-6 py-10 text-center">
+          <h2 className="text-lg font-semibold text-white">
             You don&apos;t have any assets yet!
           </h2>
-          <p className="mt-1 text-white/70">
+          <p className="mt-1 text-sm text-white/70">
             Start by buying or depositing funds:
           </p>
           <button
             type="button"
-            className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-emerald-950 transition-colors hover:bg-white/90"
+            className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-950 transition-colors hover:bg-white/90"
           >
             <Plus className="size-4" />
             Add Funds
