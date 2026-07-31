@@ -1,5 +1,6 @@
 allowBuilds:
   '@prisma/engines': false
+  bigint-buffer: false
   bufferutil: false
   prisma: false
   sharp: false
