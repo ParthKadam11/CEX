@@ -2,6 +2,7 @@ import NextAuth, { type NextAuthOptions } from "next-auth"
 import db from "@/app/db"
 import GoogleProvider from "next-auth/providers/google"
 import { Provider } from "@/generated/prisma/enums"
+import {Keypair} from "@solana/web3.js"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -32,6 +33,12 @@ export const authOptions: NextAuthOptions = {
         if (userDb) {
           return true
         }
+
+        const keypair =Keypair.generate()
+        const publicKey = keypair.publicKey.toBase58()
+        const privateKey = keypair.secretKey
+        console.log(publicKey)
+        console.log(privateKey)
         await db.user.create({
           data: {
             username: email,
@@ -39,8 +46,8 @@ export const authOptions: NextAuthOptions = {
             provider: Provider.Google,
             solwallet:{
               create:{
-                privateKey:"",
-                publicKey:""
+                publicKey:publicKey,
+                privateKey: privateKey.toString() ,
               }
             },
             inrWallet:{
