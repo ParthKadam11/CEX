@@ -1,5 +1,7 @@
 import NextAuth, { type NextAuthOptions } from "next-auth"
+import db from "@/app/db"
 import GoogleProvider from "next-auth/providers/google"
+import { Provider } from "@/generated/prisma/enums"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -16,16 +18,43 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user, account, profile, email, credentials }) {
-      if(account?.provider === "google") {
-        const email = user?.email as string  
-        if(!email || !email.endsWith("@gmail.com")) {
+    async signIn({ user, account }) {
+      if (account?.provider === "google") {
+        const email = user?.email as string
+        if (!email || !email.endsWith("@gmail.com")) {
           return false
         }
-        
-      return true
-    }
-    return false
+        const userDb = await db.user.findFirst({
+          where: {
+            username: email,
+          },
+        })
+        if (userDb) {
+          return true
+        }
+        await db.user.create({
+          data: {
+            username: email,
+            email,
+            provider: Provider.Google,
+            solwallet:{
+              create:{
+                privateKey:"",
+                publicKey:""
+              }
+            },
+            inrWallet:{
+              create:{
+                balance: 0
+              }
+            }
+
+          },
+        })
+
+        return true
+      }
+      return false
     },
   },
 }

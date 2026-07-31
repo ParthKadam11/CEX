@@ -7,18 +7,34 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Provider {
+  Google
+}
+
 model User {
   id            String      @id @default(uuid())
-  username      String
+  username      String      @unique
   email         String      @unique
+  password      String?  
   solWalletId   String?
-  solwallet     SolWallet?  
+  solwallet     SolWallet?
+  inrWalletId   String?
+  inrWallet     InrWallet?
+  provider      Provider
+}
+
+model InrWallet {
+  id          String  @id @default(uuid())
+  balance     Int
+  userId      String  @unique
+  user        User    @relation(fields: [userId],references: [id])
 }
 
 model SolWallet {
-    id          String  @id @default(uuid())
-    publicKey   String  
-    privateKey  String
-    userId      String  @unique
-    user        User    @relation(fields: [userId],references: [id])
+  id          String  @id @default(uuid())
+  publicKey   String  
+  privateKey  String
+  userId      String  @unique
+  user        User    @relation(fields: [userId],references: [id])
 }
+
