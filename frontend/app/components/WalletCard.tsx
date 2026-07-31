@@ -1,17 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useSession } from "next-auth/react";
 import {
   ArrowDownToLine,
   ArrowLeftRight,
+  Check,
+  Copy,
   CreditCard,
   Plus,
   Send,
 } from "lucide-react";
 
-const assetTabs = ["Tokens", "NFTs", "Activity"] as const;
+const assetTabs = ["Tokens","Activity"] as const;
 
 const actions = [
   { id: "send", label: "Send", icon: Send, primary: true },
@@ -22,12 +24,22 @@ const actions = [
 
 type WalletCardProps = {
   publicKey: string | null;
-  inrBalance: number;
+  usdBalance: number;
 };
 
-export function WalletCard({ publicKey, inrBalance }: WalletCardProps) {
+export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
   const { data: session } = useSession();
   const [assetTab, setAssetTab] = useState<string>("Tokens");
+  const [copied, setCopied] = useState(false);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimer.current) {
+        clearTimeout(resetTimer.current);
+      }
+    };
+  }, []);
 
   const name = session?.user?.name?.split(" ")[0] ?? "trader";
   const image = session?.user?.image;
@@ -36,9 +48,25 @@ export function WalletCard({ publicKey, inrBalance }: WalletCardProps) {
     ? `${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`
     : "No wallet";
 
+  async function copyAddress() {
+    if (!publicKey) return;
+
+    try {
+      await navigator.clipboard.writeText(publicKey);
+      setCopied(true);
+
+      if (resetTimer.current) {
+        clearTimeout(resetTimer.current);
+      }
+      resetTimer.current = setTimeout(() => setCopied(false), 1000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
   return (
-    <div className="w-full max-w-3xl">
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70">
+    <div className="animate-fade-up w-full max-w-3xl">
+      <div className="overflow-hidden rounded-2xl border border-white/15 bg-slate-950/25 backdrop-blur-lg">
         <div className="p-8">
           <div className="flex items-center gap-5">
             {image ? (
@@ -47,36 +75,45 @@ export function WalletCard({ publicKey, inrBalance }: WalletCardProps) {
                 alt=""
                 width={68}
                 height={68}
-                className="size-17 rounded-full ring-1 ring-slate-200"
+                className="size-17 rounded-full ring-1 ring-white/25"
               />
             ) : (
-              <div className="flex size-17 items-center justify-center rounded-full bg-slate-100 text-lg font-semibold text-slate-500 ring-1 ring-slate-200">
+              <div className="flex size-17 items-center justify-center rounded-full bg-white/15 text-lg font-semibold text-white ring-1 ring-white/25">
                 {name.charAt(0).toUpperCase()}
               </div>
             )}
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            <h1 className="font-display text-4xl tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
               Welcome back, {name}!
             </h1>
           </div>
 
-          <div className="mt-8 flex items-center gap-2 text-sm text-slate-500">
+          <div className="mt-8 flex items-center gap-2 text-sm text-white/70">
             <CreditCard className="size-4" />
             CEX Account Assets
           </div>
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
-            <p className="text-6xl font-bold tracking-tight text-slate-900">
-              {inrBalance.toFixed(2)}
-              <span className="ml-2 text-slate-400">INR</span>
+            <p className="text-6xl font-bold tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
+              ${usdBalance.toFixed(2)}
+              <span className="ml-2 text-white/60">USD</span>
             </p>
 
             <button
               type="button"
+              onClick={copyAddress}
+              disabled={!publicKey}
               title={publicKey ?? undefined}
-              className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-200"
+              aria-label={
+                publicKey ? `Copy wallet address ${publicKey}` : "No wallet"
+              }
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white/15 px-4 py-2 text-sm text-white transition-colors hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white/15"
             >
-              <CreditCard className="size-4" />
-              {shortKey}
+              {copied ? (
+                <Check className="size-4" />
+              ) : (
+                <Copy className="size-4" />
+              )}
+              {copied ? "Copied!" : shortKey}
             </button>
           </div>
 
@@ -85,10 +122,10 @@ export function WalletCard({ publicKey, inrBalance }: WalletCardProps) {
               <button
                 key={id}
                 type="button"
-                className={`h-11 rounded-lg text-sm font-semibold transition-colors ${
+                className={`h-11 rounded-2xl text-sm font-semibold transition-colors ${
                   primary
-                    ? "bg-blue-600 text-white hover:bg-blue-700"
-                    : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                    ? "bg-white text-emerald-950 hover:bg-white/90"
+                    : "border border-white/20 bg-white/15 text-white hover:bg-white/25"
                 }`}
               >
                 {label}
@@ -98,7 +135,7 @@ export function WalletCard({ publicKey, inrBalance }: WalletCardProps) {
         </div>
 
         <div className="px-8">
-          <div className="flex gap-6 border-b border-slate-200">
+          <div className="flex gap-6 border-b border-white/15">
             {assetTabs.map((tab) => (
               <button
                 key={tab}
@@ -106,8 +143,8 @@ export function WalletCard({ publicKey, inrBalance }: WalletCardProps) {
                 onClick={() => setAssetTab(tab)}
                 className={`-mb-px border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${
                   assetTab === tab
-                    ? "border-slate-900 text-slate-900"
-                    : "border-transparent text-slate-400 hover:text-slate-600"
+                    ? "border-white text-white"
+                    : "border-transparent text-white/50 hover:text-white/80"
                 }`}
               >
                 {tab}
@@ -117,15 +154,15 @@ export function WalletCard({ publicKey, inrBalance }: WalletCardProps) {
         </div>
 
         <div className="flex flex-col items-center px-8 py-20 text-center">
-          <h2 className="text-xl font-bold text-slate-900">
+          <h2 className="text-xl font-semibold text-white">
             You don&apos;t have any assets yet!
           </h2>
-          <p className="mt-1 text-slate-500">
+          <p className="mt-1 text-white/70">
             Start by buying or depositing funds:
           </p>
           <button
             type="button"
-            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+            className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-emerald-950 transition-colors hover:bg-white/90"
           >
             <Plus className="size-4" />
             Add Funds

@@ -17,14 +17,14 @@ async function getBalance() {
     select: { publicKey: true },
   });
 
-  const inrWallet = await db.inrWallet.findUnique({
+  const fiatWallet = await db.inrWallet.findUnique({
     where: { userId },
     select: { balance: true },
   });
 
   return {
     publicKey: wallet?.publicKey ?? null,
-    inrBalance: inrWallet?.balance ?? 0,
+    usdBalance: fiatWallet?.balance ?? 0,
   };
 }
 
@@ -38,7 +38,7 @@ export default async function Dashboard() {
   return (
     <WalletCard
       publicKey={balance.publicKey}
-      inrBalance={balance.inrBalance}
+      usdBalance={balance.usdBalance}
     />
   );
 }
