@@ -20,12 +20,21 @@ const actions = [
   { id: "swap", label: "Swap", icon: ArrowLeftRight, primary: false },
 ] as const;
 
-export function WalletCard() {
+type WalletCardProps = {
+  publicKey: string | null;
+  inrBalance: number;
+};
+
+export function WalletCard({ publicKey, inrBalance }: WalletCardProps) {
   const { data: session } = useSession();
   const [assetTab, setAssetTab] = useState<string>("Tokens");
 
   const name = session?.user?.name?.split(" ")[0] ?? "trader";
   const image = session?.user?.image;
+
+  const shortKey = publicKey
+    ? `${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`
+    : "No wallet";
 
   return (
     <div className="w-full max-w-3xl">
@@ -57,16 +66,17 @@ export function WalletCard() {
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
             <p className="text-6xl font-bold tracking-tight text-slate-900">
-              $0.00
-              <span className="ml-2 text-slate-400">USD</span>
+              {inrBalance.toFixed(2)}
+              <span className="ml-2 text-slate-400">INR</span>
             </p>
 
             <button
               type="button"
+              title={publicKey ?? undefined}
               className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-200"
             >
               <CreditCard className="size-4" />
-              Your Wallet Address
+              {shortKey}
             </button>
           </div>
 
