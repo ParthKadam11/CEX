@@ -8,6 +8,7 @@ async function getAccountBalance(token:{
     mint:string
 },address:string) {
     //ata = associated token account
+    //pda = program derived address
     const ata = await getAssociatedTokenAddress(new PublicKey(token.mint),  new PublicKey(address))
     const account = await getAccount(connection,ata)    
 }
@@ -23,7 +24,7 @@ export async function GET(req:NextRequest){
     const address= searchParams.get('address') as string   
     const balance = await Promise.all(SUPPORTED_TOKENS.map(token=> getAccountBalance(token, address)))
     
-    //pda = program derived address
+
 
 }
 
