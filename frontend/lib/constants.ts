@@ -32,18 +32,29 @@ export const connection = new Connection("https://api.devnet.solana.com")
 
 
 export async function getSupportedTokens(){
-    if(!LAST_UPDATED || new Date().getTime() - LAST_UPDATED < TOKEN_PRICE_REFRESH_INTERVAL){
-        const response = await  axios.get("https://api.binance.com/api/v3/ticker/price", {
-            params: {
-                symbols: '["SOLUSDT","SOLUSDC","USDCUSDT"]'
+    if(!LAST_UPDATED || new Date().getTime() - LAST_UPDATED > TOKEN_PRICE_REFRESH_INTERVAL){
+        const response = await axios.get<{symbol:string, price:string}[]>(
+            "https://api.binance.com/api/v3/ticker/price",
+            {
+                params: {
+                    symbols: '["SOLUSDT","USDCUSDT"]'
+                }
             }
-        })
-        prices=response.data.data
-        LAST_UPDATED=  new Date().getTime()
-    } 
-    return SUPPORTED_TOKENS.map(s=>({
+        )
+        // Binance returns array: [{ symbol, price }, ...]
+        const tickers = Object.fromEntries(
+            response.data.map(t => [t.symbol, t.price])
+        )
+        prices = {
+            SOL: { price: tickers.SOLUSDT },
+            USDC: { price: tickers.USDCUSDT },
+            USDT: { price: "1" },
+        }
+        LAST_UPDATED = new Date().getTime()
+    }
+    return SUPPORTED_TOKENS.map(s => ({
         ...s,
-        price:prices[s.name]
+        price: prices[s.name].price
     }))
 }
 

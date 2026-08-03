@@ -16,10 +16,14 @@ async function getAccountBalance(token:{
     //ata = associated token account
     //pda = program derived address
     const ata = await getAssociatedTokenAddress(new PublicKey(token.mint),  new PublicKey(address))
-    const account = await getAccount(connection,ata)    
-    const mint = await getMint(connection,new PublicKey(token.mint))
-
-    return Number(account.amount) / (10** mint.decimals)
+    try {
+        const account = await getAccount(connection, ata)
+        const mint = await getMint(connection, new PublicKey(token.mint))
+        return Number(account.amount) / (10 ** mint.decimals)
+    } catch {
+        // No ATA yet (wallet never held this token) → balance is 0
+        return 0
+    }
 }
 
 
