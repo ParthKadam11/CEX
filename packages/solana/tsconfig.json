@@ -2,6 +2,7 @@
   "extends": "@cex/typescript-config/base.json",
   "compilerOptions": {
     "composite": true,
+    "incremental":true,
     "module": "ESNext",
     "moduleResolution": "bundler",
     "noEmit": true

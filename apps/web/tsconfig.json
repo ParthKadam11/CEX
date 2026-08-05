@@ -2,6 +2,7 @@
   "extends": "@cex/typescript-config/nextjs.json",
   "compilerOptions": {
     "composite": true,
+    "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./*"]
