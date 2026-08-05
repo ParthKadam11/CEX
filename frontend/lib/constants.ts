@@ -5,30 +5,35 @@ const TOKEN_PRICE_REFRESH_INTERVAL = 60*1000; //every 1min
 let LAST_UPDATED:number|null = null
 let prices:{[key:string]:{
     price:string
-}}= {
-    
-}
+}}= {}
 
-export const SUPPORTED_TOKENS:{
+export interface TokenDetails{
     name:string,
     mint:string,
-    native:boolean
-}[] = [{
+    native:boolean,
+    img:string
+}
+
+export const SUPPORTED_TOKENS:TokenDetails[] = [{
     name:"USDC",
     mint:"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    native:false
+    native:false,
+    img:"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQZ8paXkHD6xnRdkKlQGdJ6e3Q6KQK8PVssgJ1xw-FWVQ&s=10"
 },{
     name:"USDT",
     mint:"Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
-    native:false
+    native:false,
+    img:"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRfvwFlo1CWySx5Uev01AqAOCzH34jk5LfUgQFkix3S_Q&s=10"
 },{
     name:"SOL",
     mint:"So11111111111111111111111111111111111111112",
-    native:true
+    native:true,
+    img:"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRwtBlnZmA0L-S_6bgrfmiN-z30TwY9pS-7EyZRGTF5hA&s=10"
 }
 ]
 
-export const connection = new Connection("https://api.devnet.solana.com")
+// Use mainnet while testing with public whale wallets (devnet balances won't match)
+export const connection = new Connection("https://api.mainnet-beta.solana.com")
 
 
 export async function getSupportedTokens(){

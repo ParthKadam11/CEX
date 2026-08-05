@@ -12,8 +12,9 @@ import {
   Plus,
   Send,
 } from "lucide-react";
+import { useTokens } from "@/app/api/hooks/useToken";
 
-const assetTabs = ["Tokens","Activity"] as const;
+const assetTabs = ["Tokens", "Activity"] as const;
 
 const actions = [
   { id: "send", label: "Send", icon: Send, primary: true },
@@ -29,6 +30,7 @@ type WalletCardProps = {
 
 export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
   const { data: session } = useSession();
+  const { loading, tokenBalances } = useTokens(publicKey ?? "");
   const [assetTab, setAssetTab] = useState<string>("Tokens");
   const [copied, setCopied] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -47,6 +49,9 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
   const shortKey = publicKey
     ? `${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`
     : "No wallet";
+
+  const displayBalance = tokenBalances?.totalBalance ?? usdBalance;
+  const tokens = tokenBalances?.tokens ?? [];
 
   async function copyAddress() {
     if (!publicKey) return;
@@ -94,8 +99,14 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
 
           <div className="mt-1 flex flex-wrap items-center justify-between gap-4">
             <p className="text-5xl font-bold tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
-              ${usdBalance.toFixed(2)}
-              <span className="ml-2 text-white/60">USD</span>
+              {loading ? (
+                <span className="text-white/50">...</span>
+              ) : (
+                <>
+                  ${displayBalance.toFixed(2)}
+                  <span className="ml-2 text-white/60">USD</span>
+                </>
+              )}
             </p>
 
             <button
@@ -153,20 +164,73 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
           </div>
         </div>
 
-        <div className="flex flex-col items-center px-6 py-10 text-center">
-          <h2 className="text-lg font-semibold text-white">
-            You don&apos;t have any assets yet!
-          </h2>
-          <p className="mt-1 text-sm text-white/70">
-            Start by buying or depositing funds:
-          </p>
-          <button
-            type="button"
-            className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-950 transition-colors hover:bg-white/90"
-          >
-            <Plus className="size-4" />
-            Add Funds
-          </button>
+        <div className="px-6 py-6">
+          {assetTab === "Tokens" && (
+            <>
+              {loading ? (
+                <p className="py-6 text-center text-sm text-white/60">
+                  Loading assets...
+                </p>
+              ) : tokens.length > 0 ? (
+                <ul className="divide-y divide-white/10">
+                  {tokens.map((token) => (
+                    <li
+                      key={token.mint}
+                      className="flex items-center justify-between gap-4 py-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={token.img}
+                          alt=""
+                          className="size-10 rounded-full bg-white/10 object-cover"
+                        />
+                        <div>
+                          <p className="font-semibold text-white">
+                            {token.name}
+                          </p>
+                          <p className="text-sm text-white/50">
+                            ${Number(token.price).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-white">
+                          {token.balance.toLocaleString(undefined, {
+                            maximumFractionDigits: 6,
+                          })}
+                        </p>
+                        <p className="text-sm text-white/50">
+                          ${token.usdBalance.toFixed(2)}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="flex flex-col items-center py-4 text-center">
+                  <h2 className="text-lg font-semibold text-white">
+                    You don&apos;t have any assets yet!
+                  </h2>
+                  <p className="mt-1 text-sm text-white/70">
+                    Start by buying or depositing funds:
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-950 transition-colors hover:bg-white/90"
+                  >
+                    <Plus className="size-4" />
+                    Add Funds
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {assetTab === "Activity" && (
+            <p className="py-6 text-center text-sm text-white/60">
+              No recent activity
+            </p>
+          )}
         </div>
       </div>
     </div>

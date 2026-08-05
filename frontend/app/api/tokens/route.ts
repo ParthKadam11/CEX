@@ -27,10 +27,6 @@ async function getAccountBalance(token:{
 }
 
 
-function getPrice(){
-    
-
-}
 
 export async function GET(req:NextRequest){
     const {searchParams} = new URL(req.url)
@@ -38,12 +34,15 @@ export async function GET(req:NextRequest){
     const supportedTokens = await getSupportedTokens()
     const balances = await Promise.all(supportedTokens.map(token=> getAccountBalance(token, address)))
     
-    return NextResponse.json({
-        token: supportedTokens.map((token,index)=> ({
-            ...token,
-            balance:balances[index]
+    const tokens = supportedTokens.map((token,index)=> ({
+        ...token,
+        balance:balances[index],    
+        usdBalance:balances[index]*Number(token.price)
+    })) 
 
-        }))
+    return NextResponse.json({
+        tokens,
+        totalBalance:tokens.reduce((acc,val)=>acc+val.usdBalance,0) 
     })
 
 }

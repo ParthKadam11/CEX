@@ -4,6 +4,13 @@ import { authOptions } from "@/lib/auth";
 import db from "@/app/db";
 import { WalletCard } from "../components/WalletCard";
 
+// TEMP: hardcode a mainnet wallet to test balances — swap which one is active
+const TEST_PUBLIC_KEY =
+  "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9"; // Binance (SOL + tokens)
+// "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"; // large SOL holder
+// "2ojv9BAiHUrvsm9gxDe7fJSzbNZSJcxZvf8dqmWGHG8S"; // Binance deposit
+// "DYw8jCTfwHNRJhhmFcbXvVDTqUMEVFBX6ZKUmG5CNSKK"; // common demo wallet
+
 async function getBalance() {
   const session = await getServerSession(authOptions);
   const userId = session?.user?.uid;
@@ -12,10 +19,10 @@ async function getBalance() {
     return null;
   }
 
-  const wallet = await db.solWallet.findUnique({
-    where: { userId },
-    select: { publicKey: true },
-  });
+  // const wallet = await db.solWallet.findUnique({
+  //   where: { userId },
+  //   select: { publicKey: true },
+  // });
 
   const fiatWallet = await db.inrWallet.findUnique({
     where: { userId },
@@ -23,7 +30,8 @@ async function getBalance() {
   });
 
   return {
-    publicKey: wallet?.publicKey ?? null,
+    // publicKey: wallet?.publicKey ?? null,
+    publicKey: TEST_PUBLIC_KEY,
     usdBalance: fiatWallet?.balance ?? 0,
   };
 }
