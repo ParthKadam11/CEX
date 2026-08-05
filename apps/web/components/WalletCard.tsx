@@ -12,7 +12,7 @@ import {
   Plus,
   Send,
 } from "lucide-react";
-import { useTokens } from "@/app/api/hooks/useToken";
+import { useTokens } from "@/hooks/useTokens";
 
 const assetTabs = ["Tokens", "Activity"] as const;
 

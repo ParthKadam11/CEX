@@ -1,0 +1,27 @@
+{
+  "name": "@cex/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./enums": "./generated/prisma/enums.ts"
+  },
+  "scripts": {
+    "db:generate": "prisma generate",
+    "migrate": "prisma migrate dev",
+    "build": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "dotenv": "^17.4.2",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@cex/typescript-config": "workspace:*",
+    "@types/pg": "^8.20.0",
+    "prisma": "^7.9.1",
+    "typescript": "^5"
+  }
+}

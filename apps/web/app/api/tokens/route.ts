@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {getAccount, getAssociatedTokenAddress, getMint } from "@solana/spl-token"
-import { connection, getSupportedTokens } from "@/lib/constants";
+import { connection, getSupportedTokens } from "@cex/solana";
 import {  LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 
 async function getAccountBalance(token:{
@@ -34,11 +34,14 @@ export async function GET(req:NextRequest){
     const supportedTokens = await getSupportedTokens()
     const balances = await Promise.all(supportedTokens.map(token=> getAccountBalance(token, address)))
     
-    const tokens = supportedTokens.map((token,index)=> ({
-        ...token,
-        balance:balances[index],    
-        usdBalance:balances[index]*Number(token.price)
-    })) 
+    const tokens = supportedTokens.map((token,index)=> {
+        const balance = balances[index] ?? 0
+        return {
+            ...token,
+            balance,
+            usdBalance: balance * Number(token.price),
+        }
+    }) 
 
     return NextResponse.json({
         tokens,

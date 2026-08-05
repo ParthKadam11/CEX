@@ -1,8 +1,7 @@
 import { type NextAuthOptions } from "next-auth"
 import GoogleProvider, { type GoogleProfile } from "next-auth/providers/google"
 import { Keypair } from "@solana/web3.js"
-import { Provider } from "@/generated/prisma/enums"
-import db from "@/app/db"
+import { Provider, prisma as db } from "@cex/db"
 
 export const authOptions: NextAuthOptions = {
   providers: [

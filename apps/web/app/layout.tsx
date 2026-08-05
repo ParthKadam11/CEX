@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Instrument_Serif, Sora } from "next/font/google";
 import "./globals.css";
-import { Appbar } from "./components/Appbar";
+import { Appbar } from "@/components/Appbar";
 import Provider from "./providers";
 
 const sora = Sora({

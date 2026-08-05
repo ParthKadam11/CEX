@@ -1,0 +1,19 @@
+{
+  "name": "cex",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev --filter=@cex/web",
+    "build": "turbo run build",
+    "lint": "turbo run lint --filter=@cex/web",
+    "db:generate": "turbo run db:generate --filter=@cex/db",
+    "db:migrate": "pnpm --filter @cex/db migrate"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

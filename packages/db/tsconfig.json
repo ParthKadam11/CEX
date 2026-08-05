@@ -1,0 +1,11 @@
+{
+  "extends": "@cex/typescript-config/base.json",
+  "compilerOptions": {
+    "composite": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "generated/**/*.ts", "prisma.config.ts"]
+}

@@ -1,4 +1,4 @@
-import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaClient } from "../generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 const globalForPrisma = globalThis as unknown as {
@@ -20,3 +20,5 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export default prisma;
+export { PrismaClient };
+export { Provider } from "../generated/prisma/enums";

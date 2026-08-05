@@ -1,4 +1,4 @@
-import { TokenDetails } from "@/lib/constants";
+import { TokenDetails } from "@cex/solana";
 import axios from "axios";
 import { useEffect, useState } from "react";
 

@@ -1,15 +1,14 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
-import db from "@/app/db";
-import { WalletCard } from "../components/WalletCard";
+import db from "@cex/db";
+import { WalletCard } from "@/components/WalletCard";
 
-// TEMP: hardcode a mainnet wallet to test balances — swap which one is active
 const TEST_PUBLIC_KEY =
-  "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9"; // Binance (SOL + tokens)
-// "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"; // large SOL holder
-// "2ojv9BAiHUrvsm9gxDe7fJSzbNZSJcxZvf8dqmWGHG8S"; // Binance deposit
-// "DYw8jCTfwHNRJhhmFcbXvVDTqUMEVFBX6ZKUmG5CNSKK"; // common demo wallet
+  "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9"; //Binance (SOL + tokens)
+// "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"; //large SOL holder
+// "2ojv9BAiHUrvsm9gxDe7fJSzbNZSJcxZvf8dqmWGHG8S"; //Binance deposit
+// "DYw8jCTfwHNRJhhmFcbXvVDTqUMEVFBX6ZKUmG5CNSKK"; //common demo wallet
 
 async function getBalance() {
   const session = await getServerSession(authOptions);

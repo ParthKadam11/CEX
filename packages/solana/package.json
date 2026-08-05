@@ -1,0 +1,21 @@
+{
+  "name": "@cex/solana",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.4",
+    "axios": "^1.19.0"
+  },
+  "devDependencies": {
+    "@cex/typescript-config": "workspace:*",
+    "typescript": "^5"
+  }
+}

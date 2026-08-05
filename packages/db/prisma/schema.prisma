@@ -16,7 +16,7 @@ model User {
   username      String      @unique
   email         String      @unique
   name          String?
-  password      String?  
+  password      String?
   profilePic    String?
   solWalletId   String?
   solwallet     SolWallet?
@@ -29,14 +29,13 @@ model InrWallet {
   id          String  @id @default(uuid())
   balance     Int
   userId      String  @unique
-  user        User    @relation(fields: [userId],references: [id])
+  user        User    @relation(fields: [userId], references: [id])
 }
 
 model SolWallet {
   id          String  @id @default(uuid())
-  publicKey   String  
+  publicKey   String
   privateKey  String
   userId      String  @unique
-  user        User    @relation(fields: [userId],references: [id])
+  user        User    @relation(fields: [userId], references: [id])
 }
-
