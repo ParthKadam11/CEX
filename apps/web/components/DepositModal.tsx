@@ -5,8 +5,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey } from "@solana/web3.js";
 import { Check, Copy, Wallet, X } from "lucide-react";
-import { SUPPORTED_TOKENS } from "@cex/solana";
-import { buildTransferTransaction } from "@/lib/transfers";
+import { buildSolTransfer } from "@/lib/transfers";
 
 type DepositModalProps = {
   depositAddress: string;
@@ -44,7 +43,6 @@ function DepositForm({
   const { publicKey, sendTransaction, connected } = useWallet();
   const { setVisible } = useWalletModal();
 
-  const [tokenName, setTokenName] = useState("SOL");
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,9 +77,8 @@ function DepositForm({
     setBusy(true);
     try {
       const to = new PublicKey(depositAddress);
-      const tx = await buildTransferTransaction({
+      const tx = await buildSolTransfer({
         connection,
-        tokenName,
         amount: parsed,
         from: publicKey,
         to,
@@ -111,9 +108,11 @@ function DepositForm({
       <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-slate-950/90 p-6 text-white shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="font-display text-2xl tracking-tight">Add Funds</h2>
+            <h2 className="font-display text-2xl tracking-tight">
+              Deposit SOL
+            </h2>
             <p className="mt-1 text-sm text-white/60">
-              Send from Phantom to your CEX deposit address
+              Send Devnet SOL from Phantom to your CEX wallet
             </p>
           </div>
           <button
@@ -145,26 +144,9 @@ function DepositForm({
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {SUPPORTED_TOKENS.map((t) => (
-            <button
-              key={t.name}
-              type="button"
-              onClick={() => setTokenName(t.name)}
-              className={`rounded-2xl border px-3 py-2 text-sm font-semibold transition-colors ${
-                tokenName === t.name
-                  ? "border-white bg-white text-emerald-950"
-                  : "border-white/15 bg-white/5 text-white hover:bg-white/10"
-              }`}
-            >
-              {t.name}
-            </button>
-          ))}
-        </div>
-
         <label className="mt-4 block">
           <span className="text-xs font-medium uppercase tracking-wide text-white/45">
-            Amount
+            Amount (SOL)
           </span>
           <input
             type="number"
@@ -203,7 +185,7 @@ function DepositForm({
             onClick={handleDeposit}
             className="h-11 rounded-2xl border border-white/20 bg-white/15 text-sm font-semibold text-white transition-colors hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Sending…" : `Deposit ${tokenName}`}
+            {busy ? "Sending…" : "Deposit SOL"}
           </button>
         </div>
       </div>

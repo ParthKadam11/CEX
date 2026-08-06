@@ -11,8 +11,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.98.4",
-    "axios": "^1.19.0"
+    "@solana/web3.js": "^1.98.4"
   },
   "devDependencies": {
     "@cex/typescript-config": "workspace:*",

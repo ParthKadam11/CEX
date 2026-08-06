@@ -6,7 +6,6 @@ import { useSession } from "next-auth/react";
 import {
   ArrowDownLeft,
   ArrowDownToLine,
-  ArrowLeftRight,
   ArrowUpRight,
   Check,
   Copy,
@@ -15,22 +14,21 @@ import {
   Plus,
   Send,
 } from "lucide-react";
-import { useTokens } from "@/hooks/useTokens";
+import { useSolBalance } from "@/hooks/useSolBalance";
 import { useActivity } from "@/hooks/useActivity";
 import { DepositModal } from "@/components/DepositModal";
 import { WithdrawModal } from "@/components/WithdrawModal";
 
-const assetTabs = ["Tokens", "Activity"] as const;
+const assetTabs = ["Wallet", "Activity"] as const;
 
 type WalletCardProps = {
   publicKey: string | null;
-  usdBalance: number;
 };
 
-export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
+export function WalletCard({ publicKey }: WalletCardProps) {
   const { data: session } = useSession();
-  const { loading, tokenBalances, error, refetch } = useTokens(publicKey ?? "");
-  const [assetTab, setAssetTab] = useState<string>("Tokens");
+  const { loading, balance, error, refetch } = useSolBalance(publicKey ?? "");
+  const [assetTab, setAssetTab] = useState<string>("Wallet");
   const {
     loading: activityLoading,
     activities,
@@ -56,9 +54,6 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
     ? `${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`
     : "No wallet";
 
-  const displayBalance = tokenBalances?.totalBalance ?? usdBalance;
-  const tokens = tokenBalances?.tokens ?? [];
-
   const actions = [
     {
       id: "send",
@@ -70,7 +65,7 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
     },
     {
       id: "add",
-      label: "Add Funds",
+      label: "Deposit",
       icon: Plus,
       primary: false,
       onClick: () => setDepositOpen(true),
@@ -83,14 +78,6 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
       primary: false,
       onClick: () => setWithdrawOpen(true),
       disabled: !publicKey,
-    },
-    {
-      id: "swap",
-      label: "Swap",
-      icon: ArrowLeftRight,
-      primary: false,
-      onClick: () => undefined,
-      disabled: true,
     },
   ] as const;
 
@@ -140,7 +127,7 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
 
             <div className="mt-6 flex items-center gap-2 text-sm text-white/70">
               <CreditCard className="size-4" />
-              CEX Account Assets
+              CEX Devnet Wallet
             </div>
 
             <div className="mt-1 flex flex-wrap items-center justify-between gap-4">
@@ -149,8 +136,10 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
                   <span className="text-white/50">...</span>
                 ) : (
                   <>
-                    ${displayBalance.toFixed(2)}
-                    <span className="ml-2 text-white/60">USD</span>
+                    {(balance ?? 0).toLocaleString(undefined, {
+                      maximumFractionDigits: 6,
+                    })}
+                    <span className="ml-2 text-white/60">SOL</span>
                   </>
                 )}
               </p>
@@ -174,7 +163,7 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
               </button>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="mt-5 grid grid-cols-3 gap-3">
               {actions.map(({ id, label, primary, onClick, disabled }) => (
                 <button
                   key={id}
@@ -213,59 +202,35 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
           </div>
 
           <div className="px-6 py-6">
-            {assetTab === "Tokens" && (
+            {assetTab === "Wallet" && (
               <>
                 {loading ? (
                   <p className="py-6 text-center text-sm text-white/60">
-                    Loading assets...
+                    Loading balance...
                   </p>
                 ) : error ? (
                   <p className="py-6 text-center text-sm text-rose-300">
                     {error}
                   </p>
-                ) : tokens.some((t) => t.balance > 0) ? (
-                  <ul className="divide-y divide-white/10">
-                    {tokens.map((token) => (
-                      <li
-                        key={token.mint}
-                        className="flex items-center justify-between gap-4 py-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={token.img}
-                            alt=""
-                            className="size-10 rounded-full bg-white/10 object-cover"
-                          />
-                          <div>
-                            <p className="font-semibold text-white">
-                              {token.name}
-                            </p>
-                            <p className="text-sm text-white/50">
-                              Price ${Number(token.price).toFixed(2)}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold text-white">
-                            {token.balance.toLocaleString(undefined, {
-                              maximumFractionDigits: 6,
-                            })}{" "}
-                            {token.name}
-                          </p>
-                          <p className="text-sm text-white/50">
-                            Value ${token.usdBalance.toFixed(2)}
-                          </p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                ) : (balance ?? 0) > 0 ? (
+                  <div className="flex items-center justify-between gap-4 py-2">
+                    <div>
+                      <p className="font-semibold text-white">SOL</p>
+                      <p className="text-sm text-white/50">Available on Devnet</p>
+                    </div>
+                    <p className="font-semibold text-white">
+                      {(balance ?? 0).toLocaleString(undefined, {
+                        maximumFractionDigits: 6,
+                      })}
+                    </p>
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center py-4 text-center">
                     <h2 className="text-lg font-semibold text-white">
-                      You don&apos;t have any assets yet!
+                      No SOL yet
                     </h2>
                     <p className="mt-1 text-sm text-white/70">
-                      Deposit from Phantom to get started:
+                      Deposit Devnet SOL from Phantom to get started
                     </p>
                     <button
                       type="button"
@@ -274,7 +239,7 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
                       className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-950 transition-colors hover:bg-white/90 disabled:opacity-50"
                     >
                       <Plus className="size-4" />
-                      Add Funds
+                      Deposit SOL
                     </button>
                   </div>
                 )}
@@ -338,7 +303,7 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
                               }`}
                             >
                               {item.amount != null
-                                ? `${item.direction === "in" ? "+" : item.direction === "out" ? "−" : ""}${item.amount.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${item.symbol}`
+                                ? `${item.direction === "in" ? "+" : item.direction === "out" ? "−" : ""}${item.amount.toLocaleString(undefined, { maximumFractionDigits: 6 })} SOL`
                                 : item.shortSignature}
                             </p>
                             <a

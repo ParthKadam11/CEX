@@ -5,7 +5,7 @@ import { connection } from "@cex/solana";
 import db from "@cex/db";
 import { authOptions } from "@/lib/auth";
 import { keypairFromStoredSecret } from "@/lib/solana-keypair";
-import { buildTransferTransaction } from "@/lib/transfers";
+import { buildSolTransfer } from "@/lib/transfers";
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -15,20 +15,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { token?: string; amount?: number; destination?: string };
+  let body: { amount?: number; destination?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const token = body.token;
   const amount = body.amount;
   const destination = body.destination?.trim();
 
-  if (!token || typeof amount !== "number" || !destination) {
+  if (typeof amount !== "number" || !destination) {
     return NextResponse.json(
-      { error: "token, amount, and destination are required" },
+      { error: "amount and destination are required" },
       { status: 400 },
     );
   }
@@ -69,9 +68,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const tx = await buildTransferTransaction({
+    const tx = await buildSolTransfer({
       connection,
-      tokenName: token,
       amount,
       from: fromKeypair.publicKey,
       to: destinationKey,

@@ -1,20 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connection, SOLANA_RPC_URL, SUPPORTED_TOKENS } from "@cex/solana";
+import { connection, explorerCluster } from "@cex/solana";
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 
-const MINT_TO_SYMBOL = Object.fromEntries(
-  SUPPORTED_TOKENS.filter((t) => !t.native).map((t) => [t.mint, t.name]),
-);
-
-function explorerCluster(): string {
-  if (SOLANA_RPC_URL.includes("devnet")) return "devnet";
-  if (SOLANA_RPC_URL.includes("testnet")) return "testnet";
-  return "";
-}
-
-function accountKeyString(key: {
-  pubkey: PublicKey | string;
-}): string {
+function accountKeyString(key: { pubkey: PublicKey | string }): string {
   return typeof key.pubkey === "string" ? key.pubkey : key.pubkey.toBase58();
 }
 
@@ -46,7 +34,6 @@ export async function GET(req: NextRequest) {
       const tx = txs[i];
       let direction: "in" | "out" | "unknown" = "unknown";
       let amount: number | null = null;
-      let symbol = "SOL";
 
       if (tx?.meta && !tx.meta.err) {
         const keys = tx.transaction.message.accountKeys.map(accountKeyString);
@@ -55,47 +42,16 @@ export async function GET(req: NextRequest) {
         if (idx >= 0 && tx.meta.preBalances && tx.meta.postBalances) {
           const deltaLamports =
             (tx.meta.postBalances[idx] ?? 0) - (tx.meta.preBalances[idx] ?? 0);
-          // Ignore tiny fee-only changes when another asset moved; still show SOL if meaningful
           if (Math.abs(deltaLamports) > 5000) {
             amount = Math.abs(deltaLamports) / LAMPORTS_PER_SOL;
             direction = deltaLamports > 0 ? "in" : "out";
-            symbol = "SOL";
           }
-        }
-
-        // Prefer SPL token delta for this owner when present
-        const preToken = tx.meta.preTokenBalances ?? [];
-        const postToken = tx.meta.postTokenBalances ?? [];
-        const mints = new Set(
-          [...preToken, ...postToken]
-            .filter((b) => b.owner === address)
-            .map((b) => b.mint),
-        );
-
-        for (const mint of mints) {
-          const pre = preToken.find(
-            (b) => b.owner === address && b.mint === mint,
-          );
-          const post = postToken.find(
-            (b) => b.owner === address && b.mint === mint,
-          );
-          const preAmt = Number(pre?.uiTokenAmount.uiAmountString ?? 0);
-          const postAmt = Number(post?.uiTokenAmount.uiAmountString ?? 0);
-          const delta = postAmt - preAmt;
-          if (delta === 0) continue;
-
-          amount = Math.abs(delta);
-          direction = delta > 0 ? "in" : "out";
-          symbol = MINT_TO_SYMBOL[mint] ?? mint.slice(0, 4);
-          break;
         }
       }
 
-      const explorerBase = "https://explorer.solana.com/tx/";
       const explorerUrl =
-        explorerBase +
-        sig.signature +
-        (cluster ? `?cluster=${cluster}` : "");
+        `https://explorer.solana.com/tx/${sig.signature}` +
+        (cluster === "mainnet-beta" ? "" : `?cluster=${cluster}`);
 
       return {
         signature: sig.signature,
@@ -104,7 +60,7 @@ export async function GET(req: NextRequest) {
         status: sig.err ? "failed" : "success",
         direction,
         amount,
-        symbol,
+        symbol: "SOL",
         explorerUrl,
       };
     });

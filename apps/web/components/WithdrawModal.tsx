@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { Wallet, X } from "lucide-react";
-import { SUPPORTED_TOKENS } from "@cex/solana";
 import axios from "axios";
 
 type WithdrawModalProps = {
@@ -29,7 +28,6 @@ function WithdrawForm({
   const { setVisible } = useWalletModal();
   const suggestedDestination = publicKey?.toBase58() ?? "";
 
-  const [tokenName, setTokenName] = useState("SOL");
   const [amount, setAmount] = useState("");
   const [destination, setDestination] = useState(suggestedDestination);
   const [status, setStatus] = useState<string | null>(null);
@@ -60,7 +58,6 @@ function WithdrawForm({
     setBusy(true);
     try {
       const { data } = await axios.post<{ signature: string }>("/api/withdraw", {
-        token: tokenName,
         amount: parsed,
         destination: destinationValue.trim(),
       });
@@ -90,9 +87,11 @@ function WithdrawForm({
       <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-slate-950/90 p-6 text-white shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="font-display text-2xl tracking-tight">Withdraw</h2>
+            <h2 className="font-display text-2xl tracking-tight">
+              Withdraw SOL
+            </h2>
             <p className="mt-1 text-sm text-white/60">
-              Send from your CEX wallet to Phantom (or any address)
+              Send Devnet SOL from your CEX wallet to Phantom
             </p>
           </div>
           <button
@@ -102,23 +101,6 @@ function WithdrawForm({
           >
             <X className="size-5" />
           </button>
-        </div>
-
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {SUPPORTED_TOKENS.map((t) => (
-            <button
-              key={t.name}
-              type="button"
-              onClick={() => setTokenName(t.name)}
-              className={`rounded-2xl border px-3 py-2 text-sm font-semibold transition-colors ${
-                tokenName === t.name
-                  ? "border-white bg-white text-emerald-950"
-                  : "border-white/15 bg-white/5 text-white hover:bg-white/10"
-              }`}
-            >
-              {t.name}
-            </button>
-          ))}
         </div>
 
         <label className="mt-4 block">
@@ -136,7 +118,7 @@ function WithdrawForm({
 
         <label className="mt-4 block">
           <span className="text-xs font-medium uppercase tracking-wide text-white/45">
-            Amount
+            Amount (SOL)
           </span>
           <input
             type="number"
@@ -175,7 +157,7 @@ function WithdrawForm({
             onClick={handleWithdraw}
             className="h-11 rounded-2xl border border-white/20 bg-white/15 text-sm font-semibold text-white transition-colors hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Sending…" : `Withdraw ${tokenName}`}
+            {busy ? "Sending…" : "Withdraw SOL"}
           </button>
         </div>
       </div>
