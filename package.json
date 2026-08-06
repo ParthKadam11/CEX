@@ -2,7 +2,8 @@
   "name": "cex",
   "private": true,
   "scripts": {
-    "dev": "turbo run dev --filter=@cex/web",
+    "dev": "pnpm --filter @cex/web dev",
+    "dev:turbo": "turbo run dev --filter=@cex/web",
     "build": "turbo run build",
     "lint": "turbo run lint --filter=@cex/web",
     "db:generate": "turbo run db:generate --filter=@cex/db",

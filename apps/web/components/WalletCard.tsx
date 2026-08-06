@@ -4,15 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useSession } from "next-auth/react";
 import {
+  ArrowDownLeft,
   ArrowDownToLine,
   ArrowLeftRight,
+  ArrowUpRight,
   Check,
   Copy,
   CreditCard,
+  ExternalLink,
   Plus,
   Send,
 } from "lucide-react";
 import { useTokens } from "@/hooks/useTokens";
+import { useActivity } from "@/hooks/useActivity";
 import { DepositModal } from "@/components/DepositModal";
 import { WithdrawModal } from "@/components/WithdrawModal";
 
@@ -27,6 +31,11 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
   const { data: session } = useSession();
   const { loading, tokenBalances, error, refetch } = useTokens(publicKey ?? "");
   const [assetTab, setAssetTab] = useState<string>("Tokens");
+  const {
+    loading: activityLoading,
+    activities,
+    error: activityError,
+  } = useActivity(publicKey ?? "", assetTab === "Activity");
   const [copied, setCopied] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -232,7 +241,7 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
                               {token.name}
                             </p>
                             <p className="text-sm text-white/50">
-                              ${Number(token.price).toFixed(2)}
+                              Price ${Number(token.price).toFixed(2)}
                             </p>
                           </div>
                         </div>
@@ -240,10 +249,11 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
                           <p className="font-semibold text-white">
                             {token.balance.toLocaleString(undefined, {
                               maximumFractionDigits: 6,
-                            })}
+                            })}{" "}
+                            {token.name}
                           </p>
                           <p className="text-sm text-white/50">
-                            ${token.usdBalance.toFixed(2)}
+                            Value ${token.usdBalance.toFixed(2)}
                           </p>
                         </div>
                       </li>
@@ -272,9 +282,85 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
             )}
 
             {assetTab === "Activity" && (
-              <p className="py-6 text-center text-sm text-white/60">
-                No recent activity
-              </p>
+              <>
+                {activityLoading ? (
+                  <p className="py-6 text-center text-sm text-white/60">
+                    Loading activity...
+                  </p>
+                ) : activityError ? (
+                  <p className="py-6 text-center text-sm text-rose-300">
+                    {activityError}
+                  </p>
+                ) : activities && activities.length > 0 ? (
+                  <ul className="divide-y divide-white/10">
+                    {activities.map((item) => {
+                      const when = item.blockTime
+                        ? new Date(item.blockTime * 1000).toLocaleString()
+                        : "Unknown time";
+                      const label =
+                        item.direction === "in"
+                          ? "Received"
+                          : item.direction === "out"
+                            ? "Sent"
+                            : "Transaction";
+                      const Icon =
+                        item.direction === "in"
+                          ? ArrowDownLeft
+                          : item.direction === "out"
+                            ? ArrowUpRight
+                            : ExternalLink;
+
+                      return (
+                        <li
+                          key={item.signature}
+                          className="flex items-center justify-between gap-4 py-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex size-10 items-center justify-center rounded-full bg-white/10">
+                              <Icon className="size-4 text-white/80" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-white">
+                                {label}
+                                {item.status === "failed" ? " (failed)" : ""}
+                              </p>
+                              <p className="text-sm text-white/50">{when}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p
+                              className={`font-semibold ${
+                                item.direction === "in"
+                                  ? "text-emerald-300"
+                                  : item.direction === "out"
+                                    ? "text-white"
+                                    : "text-white/80"
+                              }`}
+                            >
+                              {item.amount != null
+                                ? `${item.direction === "in" ? "+" : item.direction === "out" ? "−" : ""}${item.amount.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${item.symbol}`
+                                : item.shortSignature}
+                            </p>
+                            <a
+                              href={item.explorerUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-sm text-white/50 hover:text-white"
+                            >
+                              {item.shortSignature}
+                              <ExternalLink className="size-3" />
+                            </a>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="py-6 text-center text-sm text-white/60">
+                    No recent activity
+                  </p>
+                )}
+              </>
             )}
           </div>
         </div>
