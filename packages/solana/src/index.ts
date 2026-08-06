@@ -33,10 +33,13 @@ export const SUPPORTED_TOKENS: TokenDetails[] = [
   },
 ];
 
-// Use mainnet while testing with public whale wallets (devnet balances won't match)
-export const connection = new Connection(
-  "https://api.mainnet-beta.solana.com",
-);
+// Prefer env RPC; default mainnet (matches supported token mints)
+export const SOLANA_RPC_URL =
+  process.env.NEXT_PUBLIC_SOLANA_RPC_URL ??
+  process.env.SOLANA_RPC_URL ??
+  "https://api.mainnet-beta.solana.com";
+
+export const connection = new Connection(SOLANA_RPC_URL);
 
 export async function getSupportedTokens() {
   if (

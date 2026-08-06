@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@cex/db", "@cex/solana"],
+  transpilePackages: [
+    "@cex/db",
+    "@cex/solana",
+    "@solana/wallet-adapter-base",
+    "@solana/wallet-adapter-react",
+    "@solana/wallet-adapter-react-ui",
+  ],
+  turbopack: {},
   images: {
     remotePatterns: [
       {

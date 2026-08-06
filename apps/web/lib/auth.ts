@@ -2,6 +2,7 @@ import { type NextAuthOptions } from "next-auth"
 import GoogleProvider, { type GoogleProfile } from "next-auth/providers/google"
 import { Keypair } from "@solana/web3.js"
 import { Provider, prisma as db } from "@cex/db"
+import { serializeSecretKey } from "@/lib/solana-keypair"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -48,7 +49,7 @@ export const authOptions: NextAuthOptions = {
           solwallet: {
             create: {
               publicKey: keypair.publicKey.toBase58(),
-              privateKey: keypair.secretKey.toString(),
+              privateKey: serializeSecretKey(keypair.secretKey),
             },
           },
           inrWallet: {
