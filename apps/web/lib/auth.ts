@@ -3,6 +3,7 @@ import GoogleProvider, { type GoogleProfile } from "next-auth/providers/google"
 import { Keypair } from "@solana/web3.js"
 import { Provider, prisma as db } from "@cex/db"
 import { serializeSecretKey } from "@/lib/solana-keypair"
+import { STARTING_USD_BALANCE } from "@/lib/constants"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -52,8 +53,9 @@ export const authOptions: NextAuthOptions = {
               privateKey: serializeSecretKey(keypair.secretKey),
             },
           },
-          inrWallet: {
-            create: { balance: 0 },
+          // Simulated USD quote currency (UsdWallet — DB only)
+          usdWallet: {
+            create: { balance: STARTING_USD_BALANCE },
           },
         },
       })

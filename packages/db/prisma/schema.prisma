@@ -20,12 +20,13 @@ model User {
   profilePic    String?
   solWalletId   String?
   solwallet     SolWallet?
-  inrWalletId   String?
-  inrWallet     InrWallet?
+  usdWalletId   String?
+  usdWallet     UsdWallet?
   provider      Provider
 }
 
-model InrWallet {
+/// Simulated USD quote currency — DB only (not on-chain).
+model UsdWallet {
   id          String  @id @default(uuid())
   balance     Int
   userId      String  @unique

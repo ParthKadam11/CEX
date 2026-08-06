@@ -23,9 +23,11 @@ const assetTabs = ["Wallet", "Activity"] as const;
 
 type WalletCardProps = {
   publicKey: string | null;
+  /** Simulated USD (DB only — not depositable/withdrawable). */
+  usdBalance: number;
 };
 
-export function WalletCard({ publicKey }: WalletCardProps) {
+export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
   const { data: session } = useSession();
   const { loading, balance, error, refetch } = useSolBalance(publicKey ?? "");
   const [assetTab, setAssetTab] = useState<string>("Wallet");
@@ -212,31 +214,51 @@ export function WalletCard({ publicKey }: WalletCardProps) {
                   <p className="py-6 text-center text-sm text-rose-300">
                     {error}
                   </p>
-                ) : (balance ?? 0) > 0 ? (
-                  <div className="flex items-center justify-between gap-4 py-2">
-                    <div>
-                      <p className="font-semibold text-white">SOL</p>
-                      <p className="text-sm text-white/50">Available on Devnet</p>
-                    </div>
-                    <p className="font-semibold text-white">
-                      {(balance ?? 0).toLocaleString(undefined, {
-                        maximumFractionDigits: 6,
-                      })}
-                    </p>
-                  </div>
                 ) : (
-                  <div className="flex flex-col items-center py-4 text-center">
-                    <h2 className="text-lg font-semibold text-white">
-                      No SOL yet
-                    </h2>
-                    <p className="mt-1 text-sm text-white/70">
-                      Deposit Devnet SOL from Phantom to get started
+                  <ul className="divide-y divide-white/10">
+                    <li className="flex items-center justify-between gap-4 py-3">
+                      <div>
+                        <p className="font-semibold text-white">SOL</p>
+                        <p className="text-sm text-white/50">
+                          Devnet · deposit & withdraw
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-white">
+                          {(balance ?? 0).toLocaleString(undefined, {
+                            maximumFractionDigits: 6,
+                          })}
+                        </p>
+                        <p className="text-sm text-white/50">Available</p>
+                      </div>
+                    </li>
+                    <li className="flex items-center justify-between gap-4 py-3">
+                      <div>
+                        <p className="font-semibold text-white">USD</p>
+                        <p className="text-sm text-white/50">
+                          Simulated · quote currency
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-white">
+                          {usdBalance.toLocaleString()}
+                        </p>
+                        <p className="text-sm text-white/50">Available</p>
+                      </div>
+                    </li>
+                  </ul>
+                )}
+
+                {!loading && !error && (balance ?? 0) === 0 && (
+                  <div className="mt-4 flex flex-col items-center border-t border-white/10 pt-4 text-center">
+                    <p className="text-sm text-white/70">
+                      Deposit Devnet SOL from Phantom to start trading later
                     </p>
                     <button
                       type="button"
                       disabled={!publicKey}
                       onClick={() => setDepositOpen(true)}
-                      className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-950 transition-colors hover:bg-white/90 disabled:opacity-50"
+                      className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-950 transition-colors hover:bg-white/90 disabled:opacity-50"
                     >
                       <Plus className="size-4" />
                       Deposit SOL
