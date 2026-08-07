@@ -129,22 +129,30 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
 
             <div className="mt-6 flex items-center gap-2 text-sm text-white/70">
               <CreditCard className="size-4" />
-              CEX Devnet Wallet
+              Account balances
             </div>
 
-            <div className="mt-1 flex flex-wrap items-center justify-between gap-4">
-              <p className="text-5xl font-bold tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
-                {loading ? (
-                  <span className="text-white/50">...</span>
-                ) : (
-                  <>
-                    {(balance ?? 0).toLocaleString(undefined, {
-                      maximumFractionDigits: 6,
-                    })}
-                    <span className="ml-2 text-white/60">SOL</span>
-                  </>
-                )}
-              </p>
+            <div className="mt-1 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-5xl font-bold tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
+                  ${usdBalance.toLocaleString()}
+                  <span className="ml-2 text-2xl font-semibold text-white/60">
+                    USD
+                  </span>
+                </p>
+                <p className="mt-2 text-lg text-white/70">
+                  {loading ? (
+                    <span className="text-white/40">… SOL</span>
+                  ) : (
+                    <>
+                      {(balance ?? 0).toLocaleString(undefined, {
+                        maximumFractionDigits: 6,
+                      })}{" "}
+                      <span className="text-white/50">SOL</span>
+                    </>
+                  )}
+                </p>
+              </div>
 
               <button
                 type="button"
