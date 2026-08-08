@@ -1,6 +1,5 @@
 /*
-TO-DO
-
+Includes:
 addOrder(order) 
 peekFirst()
 removeFirst()
@@ -8,7 +7,6 @@ removeOrder(orderId)
 getTotalVolume()
 getOrderCount()
 isEmpty()
-
 */
 
 import { Order } from "@cex/exchange-types";
