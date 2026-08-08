@@ -1,0 +1,17 @@
+{
+  "name": "@cex/exchange-types",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cex/typescript-config": "workspace:*",
+    "typescript": "^5"
+  }
+}

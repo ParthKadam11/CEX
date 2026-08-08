@@ -2,5 +2,9 @@
   "name": "@cex/typescript-config",
   "version": "0.0.0",
   "private": true,
-  "files": ["base.json", "nextjs.json"]
+  "files": ["base.json", "nextjs.json"],
+  "exports": {
+    "./base.json": "./base.json",
+    "./nextjs.json": "./nextjs.json"
+  }
 }

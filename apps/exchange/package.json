@@ -1,0 +1,21 @@
+{
+  "name": "@cex/exchange",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cex/exchange-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@cex/typescript-config": "workspace:*",
+    "@types/node": "^20",
+    "tsx": "^4.20.0",
+    "typescript": "^5"
+  }
+}
