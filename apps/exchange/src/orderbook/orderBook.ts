@@ -1,7 +1,5 @@
 /*
-TO-DO OrderBook
-
-methods:
+methods 
   add(order)          
   remove(orderId)       
   getBestBid()           
@@ -16,7 +14,6 @@ methods:
 import { BookLevel, OrderBookSnapshot, Side, type MarketSymbol, type Order } from "@cex/exchange-types";
 import { PriceLevel } from "./priceLevel";
 
-// Stub — implement next
 export class OrderBook {
   private symbol :MarketSymbol
   private bids: Map<number, PriceLevel> =new Map()
