@@ -1,23 +1,33 @@
-import { Side, TimeInForce, type Order, type Trade } from "@cex/exchange-types";
+import {
+  Side,
+  TimeInForce,
+  type Order,
+  type PlacementResult,
+} from "@cex/exchange-types";
 import { MatchingEngine } from "../matching/engine.js";
 import { OrderBook } from "../orderbook/orderBook.js";
-import type { PriceLevel } from "../orderbook/priceLevel.js";
+import { remaining } from "../orderbook/orderHelpers.js";
 
-export type PlacementResult = {
-  order: Order;
-  trades: Trade[];
-  accepted: boolean;
-};
+/*
+  OrderPlacementService = apply TimeInForce around MatchingEngine.
 
-function remaining(order: Order): number {
-  return order.quantity - order.filledQuantity;
-}
+  Flow:
+    1. reject unsupported TIF (e.g. FOK_BUDGET for now)
+    2. FOK → read-only liquidity check; if not enough, REJECT (book untouched)
+    3. match against the book
+    4. leftover handling:
+         GTC → rest remainder on book
+         IOC → cancel remainder (do not rest)
+         FOK → should be fully filled after step 2
 
-//Uses TimeInForce 
+  Call place() one-at-a-time per market (no concurrent book mutation).
+*/
+
 export class OrderPlacementService {
   constructor(private readonly matcher = new MatchingEngine()) {}
 
   place(order: Order, book: OrderBook): PlacementResult {
+    // only GTC / IOC / FOK supported right now
     if (
       order.timeInForce !== TimeInForce.GTC &&
       order.timeInForce !== TimeInForce.IOC &&
@@ -27,68 +37,49 @@ export class OrderPlacementService {
       return { order, trades: [], accepted: false };
     }
 
+    // FOK: all-or-nothing — check before mutating the book
     if (order.timeInForce === TimeInForce.FOK && !this.canFullyFill(order, book)) {
       order.status = "REJECTED";
       return { order, trades: [], accepted: false };
     }
 
+    // cross against resting liquidity
     const { trades, taker } = this.matcher.match(order, book);
 
+    // what to do with unfilled size
     if (remaining(taker) > 0) {
       if (taker.timeInForce === TimeInForce.GTC) {
+        // rest leftover as a maker
         book.add(taker);
-        // matcher already set OPEN / PARTIALLY_FILLED
       } else if (taker.timeInForce === TimeInForce.IOC) {
+        // immediate-or-cancel: never rest
         taker.status = "CANCELLED";
       }
-      // FOK should never reach here after canFullyFill
+      // FOK should not reach here with leftover (precheck passed)
     }
 
-    return {
-      order: taker,
-      trades,
-      accepted: true,
-    };
+    return { order: taker, trades, accepted: true };
   }
 
-  // Read-only walk of crossing liquidity
+  // read-only: is there enough crossing volume to fill the whole order?
   private canFullyFill(taker: Order, book: OrderBook): boolean {
-    const needed = remaining(taker);
-    if (needed <= 0) return true;
+    let need = remaining(taker);
+    if (need <= 0) return true;
 
-    if (taker.side === Side.BUY) {
-      return this.availableAskLiquidity(taker.price, book) >= needed;
+    // buy walks asks (low→high); sell walks bids (high→low)
+    const levels =
+      taker.side === Side.BUY
+        ? book.iterateAsksFromBest()
+        : book.iterateBidsFromBest();
+
+    for (const level of levels) {
+      // stop when price no longer crosses the limit
+      if (taker.side === Side.BUY && level.price > taker.price) break;
+      if (taker.side === Side.SELL && level.price < taker.price) break;
+
+      need -= level.getTotalVolume();
+      if (need <= 0) return true; // early exit once we have enough
     }
-    return this.availableBidLiquidity(taker.price, book) >= needed;
-  }
-
-  private availableAskLiquidity(limitPrice: number, book: OrderBook): number {
-    const asks = book.getAsks();
-    const prices = Array.from(asks.keys())
-      .filter((p) => p <= limitPrice)
-      .sort((a, b) => a - b);
-
-    let available = 0;
-    for (const price of prices) {
-      available += this.levelVolume(asks.get(price)!);
-    }
-    return available;
-  }
-
-  private availableBidLiquidity(limitPrice: number, book: OrderBook): number {
-    const bids = book.getBids();
-    const prices = Array.from(bids.keys())
-      .filter((p) => p >= limitPrice)
-      .sort((a, b) => b - a);
-
-    let available = 0;
-    for (const price of prices) {
-      available += this.levelVolume(bids.get(price)!);
-    }
-    return available;
-  }
-
-  private levelVolume(level: PriceLevel): number {
-    return level.getTotalVolume();
+    return false;
   }
 }

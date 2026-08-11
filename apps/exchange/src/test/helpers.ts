@@ -1,4 +1,5 @@
 import { OrderType, Side, TimeInForce, type Order } from "@cex/exchange-types";
+import { remaining } from "../orderbook/orderHelpers.js";
 
 export function makeOrder(
   partial: Pick<Order, "orderId" | "side" | "price" | "quantity"> &
@@ -16,6 +17,4 @@ export function makeOrder(
   };
 }
 
-export function remaining(order: Order): number {
-  return order.quantity - order.filledQuantity;
-}
+export { remaining };

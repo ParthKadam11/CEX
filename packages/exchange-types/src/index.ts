@@ -1,4 +1,7 @@
-export enum Side{"BUY", "SELL"};
+export enum Side {
+  BUY = "BUY",
+  SELL = "SELL",
+}
 
 export enum OrderType{"LIMIT"}; // MARKET later
 
@@ -48,14 +51,6 @@ export interface Order {
   timestamp: number;
 }
 
-export interface PriceLevel {
-  price: number;
-  orders: Order[]; // FIFO at this price (MBO)
-  // derived:
-  // quantity = sum(quantity - filledQuantity)
-  // count = orders.length
-}
-
 export interface Trade {
   tradeId: string;
   market: MarketSymbol;
@@ -76,10 +71,16 @@ export interface BookLevel {
 
 export interface OrderBookSnapshot {
   market: MarketSymbol;
-  bids: BookLevel[]; // best bid first (desc)
-  asks: BookLevel[]; // best ask first (asc)
+  bids: BookLevel[];
+  asks: BookLevel[];
   bbo: {
     bestBid: number | null;
     bestAsk: number | null;
   };
+}
+
+export interface PlacementResult {
+  order: Order;
+  trades: Trade[];
+  accepted: boolean;
 }
