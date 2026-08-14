@@ -31,6 +31,11 @@ export class OrderEventLog {
     return this.events.filter((e) => e.orderId === orderId);
   }
 
+  // Activity feed for one user across all their orders.
+  forUser(userId: string): OrderEvent[] {
+    return this.events.filter((e) => e.userId === userId);
+  }
+
   clear(): void {
     this.events = [];
     this.seq = 0;

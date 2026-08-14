@@ -110,3 +110,10 @@ export interface OrderEvent {
   quantity?: number;
   reason?: RejectReason | string;
 }
+
+export type OrderQueryFilter = {
+  status?: OrderStatus | readonly OrderStatus[];
+  market?: MarketSymbol;
+  /** OPEN + PARTIALLY_FILLED only */
+  openOnly?: boolean;
+};

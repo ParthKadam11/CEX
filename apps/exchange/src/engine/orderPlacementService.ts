@@ -13,12 +13,15 @@ import {
   transitionReject,
 } from "../order/orderStateMachine.js";
 import { OrderEventLog } from "../order/orderEventLog.js";
+import { OrderStore } from "../order/orderStore.js";
+import { OrderQueryService } from "../order/orderQueryService.js";
 
 /*
-  OrderPlacementService = TimeInForce policy + order event log.
+  OrderPlacementService = TimeInForce policy + order event log + order store.
 
   MatchingEngine only crosses orders. This class decides accept / reject /
-  rest / cancel, and records what happened in the order event log.
+  rest / cancel, records what happened in the order event log, and keeps
+  OrderStore in sync for queries.
 
   Flow:
     1. reject unsupported TIF (e.g. FOK_BUDGET for now) → log REJECTED
@@ -33,12 +36,23 @@ import { OrderEventLog } from "../order/orderEventLog.js";
 */
 
 export class OrderPlacementService {
-  constructor(
-    private readonly matcher = new MatchingEngine(),
-    private readonly log = new OrderEventLog(),
-  ) {}
+  private readonly matcher: MatchingEngine;
+  private readonly log: OrderEventLog;
+  private readonly store: OrderStore;
+  readonly queries: OrderQueryService;
 
-  // Read order history / event log. 
+  constructor(
+    matcher = new MatchingEngine(),
+    log = new OrderEventLog(),
+    store = new OrderStore(),
+  ) {
+    this.matcher = matcher;
+    this.log = log;
+    this.store = store;
+    this.queries = new OrderQueryService(store, log);
+  }
+
+  // Read order history / event log.
   get eventLog(): OrderEventLog {
     return this.log;
   }
@@ -61,6 +75,7 @@ export class OrderPlacementService {
         status: order.status,
         reason: "UNSUPPORTED_TIF",
       });
+      this.store.upsert(order);
       return { order, trades: [], accepted: false };
     }
 
@@ -77,6 +92,7 @@ export class OrderPlacementService {
         status: order.status,
         reason: "FOK_INSUFFICIENT_LIQUIDITY",
       });
+      this.store.upsert(order);
       return { order, trades: [], accepted: false };
     }
 
@@ -121,6 +137,8 @@ export class OrderPlacementService {
       // FOK should not reach here with leftover (precheck passed)
     }
 
+    // live query index (same Order refs the book/matcher already mutated)
+    this.store.upsert(taker);
     return { order: taker, trades, accepted: true };
   }
 
