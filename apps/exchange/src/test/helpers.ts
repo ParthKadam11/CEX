@@ -11,7 +11,7 @@ export function makeOrder(
     type: OrderType.LIMIT,
     timeInForce: TimeInForce.GTC,
     filledQuantity: 0,
-    status: "OPEN",
+    status: "NEW",
     timestamp: Date.now(),
     ...partial,
   };

@@ -7,6 +7,10 @@ import {
 import { MatchingEngine } from "../matching/engine.js";
 import { OrderBook } from "../orderbook/orderBook.js";
 import { remaining } from "../orderbook/orderHelpers.js";
+import {
+  transitionCancel,
+  transitionReject,
+} from "../order/orderStateMachine.js";
 
 /*
   OrderPlacementService = apply TimeInForce around MatchingEngine.
@@ -14,7 +18,7 @@ import { remaining } from "../orderbook/orderHelpers.js";
   Flow:
     1. reject unsupported TIF (e.g. FOK_BUDGET for now)
     2. FOK → read-only liquidity check; if not enough, REJECT (book untouched)
-    3. match against the book
+    3. match against the book (status via state machine on fills)
     4. leftover handling:
          GTC → rest remainder on book
          IOC → cancel remainder (do not rest)
@@ -33,13 +37,13 @@ export class OrderPlacementService {
       order.timeInForce !== TimeInForce.IOC &&
       order.timeInForce !== TimeInForce.FOK
     ) {
-      order.status = "REJECTED";
+      transitionReject(order);
       return { order, trades: [], accepted: false };
     }
 
     // FOK: all-or-nothing — check before mutating the book
     if (order.timeInForce === TimeInForce.FOK && !this.canFullyFill(order, book)) {
-      order.status = "REJECTED";
+      transitionReject(order);
       return { order, trades: [], accepted: false };
     }
 
@@ -53,7 +57,7 @@ export class OrderPlacementService {
         book.add(taker);
       } else if (taker.timeInForce === TimeInForce.IOC) {
         // immediate-or-cancel: never rest
-        taker.status = "CANCELLED";
+        transitionCancel(taker);
       }
       // FOK should not reach here with leftover (precheck passed)
     }
