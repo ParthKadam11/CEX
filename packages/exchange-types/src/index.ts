@@ -84,3 +84,29 @@ export interface PlacementResult {
   trades: Trade[];
   accepted: boolean;
 }
+
+
+export type OrderEventType =
+  | "REJECTED"
+  | "FILL"
+  | "RESTING"
+  | "CANCELLED"
+  | "STATUS";
+
+export type RejectReason = "UNSUPPORTED_TIF" | "FOK_INSUFFICIENT_LIQUIDITY";
+
+export interface OrderEvent {
+  seq: number;
+  type: OrderEventType;
+  orderId: string;
+  userId: string;
+  market: MarketSymbol;
+  timestamp: number;
+  status?: OrderStatus;
+  fromStatus?: OrderStatus;
+  toStatus?: OrderStatus;
+  tradeId?: string;
+  price?: number;
+  quantity?: number;
+  reason?: RejectReason | string;
+}
