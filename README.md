@@ -91,5 +91,5 @@ pnpm --filter @cex/exchange test:watch   # watch mode
 
 Built: order book, matching, time-in-force, state machine, event log, order queries (all in-memory + tested).
 
-Not yet: account balances / ledger, trade settlement, fees, cancel/amend API, persistence, and the HTTP/WS bridge from the web app to the engine.
+To-do: account balances / ledger, trade settlement, fees, cancel/amend API, persistence, and the HTTP/WS bridge from the web app to the engine.
 
