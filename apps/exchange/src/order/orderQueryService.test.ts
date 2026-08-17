@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Side, TimeInForce } from "@cex/exchange-types";
-import { OrderBook } from "../orderbook/orderBook.js";
-import { makeOrder } from "../test/helpers.js";
+import { OrderBook } from "../book/orderBook.js";
+import { fund, makeOrder } from "../test/helpers.js";
 import { OrderEventLog } from "./orderEventLog.js";
 import { OrderStore } from "./orderStore.js";
 import { OrderQueryService } from "./orderQueryService.js";
-import { OrderPlacementService } from "../engine/orderPlacementService.js";
+import { OrderPlacementService } from "../placement/orderPlacementService.js";
 
 describe("OrderStore", () => {
   it("upserts by id and indexes by user", () => {
@@ -102,8 +102,9 @@ describe("OrderPlacementService queries", () => {
   it("indexes resting GTC and filled maker after a cross", () => {
     const book = new OrderBook("SOL-USD");
     const service = new OrderPlacementService();
+    fund(service, "seller", { SOL: 2 });
+    fund(service, "buyer", { USD: 500 });
 
-    // both sides go through place so both land in the store
     service.place(
       makeOrder({
         orderId: "s1",
@@ -138,6 +139,7 @@ describe("OrderPlacementService queries", () => {
   it("keeps rejected and cancelled orders queryable", () => {
     const book = new OrderBook("SOL-USD");
     const service = new OrderPlacementService();
+    fund(service, "u1", { USD: 100 });
 
     service.place(
       makeOrder({
@@ -167,8 +169,8 @@ describe("OrderPlacementService queries", () => {
     expect(service.queries.getById("rej")?.status).toBe("REJECTED");
     expect(service.queries.getById("ioc")?.status).toBe("CANCELLED");
     expect(service.queries.getOpenByUser("u1")).toEqual([]);
-    expect(service.queries.getByUser("u1", { status: ["REJECTED", "CANCELLED"] })).toHaveLength(
-      2,
-    );
+    expect(
+      service.queries.getByUser("u1", { status: ["REJECTED", "CANCELLED"] }),
+    ).toHaveLength(2);
   });
 });

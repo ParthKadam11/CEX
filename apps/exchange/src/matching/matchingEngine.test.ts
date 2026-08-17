@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Side } from "@cex/exchange-types";
-import { MatchingEngine } from "./engine.js";
-import { OrderBook } from "../orderbook/orderBook.js";
+import { MatchingEngine } from "./matchingEngine.js";
+import { OrderBook } from "../book/orderBook.js";
 import { makeOrder, remaining } from "../test/helpers.js";
 
 describe("MatchingEngine", () => {

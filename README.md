@@ -73,14 +73,25 @@ pnpm test:exchange  # run the exchange engine test suite
 
 Lives in `apps/exchange`. Runs single-threaded per market (LMAX-style), all in-memory for now.
 
+```
+src/
+  market/      # base/quote + lock-amount helpers
+  book/        # order book + price levels
+  matching/    # MatchingEngine
+  placement/   # OrderPlacementService (TIF + balances orchestration)
+  order/       # state machine, store, queries, event log, helpers
+  account/     # BalanceStore, Ledger, BalanceService
+  test/        # shared test helpers
+```
+
 | Area | What it does |
 |------|--------------|
-| `orderbook/` | Order book with `Map` price levels + sorted price arrays for O(1) best bid/ask; FIFO queues per price |
-| `matching/` | Price-time priority matching; trades at the maker's price |
-| `engine/orderPlacementService.ts` | Time-in-force policy (GTC / IOC / FOK), routes leftover to rest/cancel |
-| `order/orderStateMachine.ts` | Legal status transitions (NEW → OPEN → PARTIALLY_FILLED → FILLED / CANCELLED / REJECTED) |
-| `order/orderEventLog.ts` | Append-only order history / audit trail |
-| `order/orderStore.ts` + `orderQueryService.ts` | Live query index: by id, by user, open orders, history |
+| `book/` | Order book with `Map` price levels + sorted price arrays for O(1) best bid/ask; FIFO queues per price |
+| `matching/matchingEngine.ts` | Price-time priority matching; trades at the maker's price |
+| `placement/orderPlacementService.ts` | Time-in-force (GTC / IOC / FOK), lock/settle/unlock balances, rest/cancel leftover |
+| `order/` | State machine, event log, live order store + queries |
+| `account/` | Available/locked balances + append-only ledger |
+| `market/assets.ts` | Market base/quote and lock-amount helpers |
 
 ```bash
 pnpm --filter @cex/exchange test         # run once
@@ -89,7 +100,7 @@ pnpm --filter @cex/exchange test:watch   # watch mode
 
 ### Status
 
-Built: order book, matching, time-in-force, state machine, event log, order queries (all in-memory + tested).
+Built: order book, matching, time-in-force, state machine, event log, order queries, balances/ledger, trade settlement on place (all in-memory + tested).
 
-To-do: account balances / ledger, trade settlement, fees, cancel/amend API, persistence, and the HTTP/WS bridge from the web app to the engine.
+Not yet: fees, cancel/amend API, persistence, and the HTTP/WS bridge from the web app to the engine.
 

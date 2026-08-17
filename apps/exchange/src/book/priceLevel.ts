@@ -1,5 +1,5 @@
 import type { Order } from "@cex/exchange-types";
-import { remaining, updateStatus } from "./orderHelpers.js";
+import { remaining, updateStatus } from "../order/orderHelpers.js";
 
 /*
   PriceLevel = all resting orders at ONE price (e.g. all bids at 100).

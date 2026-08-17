@@ -126,7 +126,10 @@ export type OrderEventType =
   | "CANCELLED"
   | "STATUS";
 
-export type RejectReason = "UNSUPPORTED_TIF" | "FOK_INSUFFICIENT_LIQUIDITY";
+export type RejectReason =
+  | "UNSUPPORTED_TIF"
+  | "FOK_INSUFFICIENT_LIQUIDITY"
+  | "INSUFFICIENT_BALANCE";
 
 export interface OrderEvent {
   seq: number;

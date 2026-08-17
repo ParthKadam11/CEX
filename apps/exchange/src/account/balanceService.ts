@@ -4,6 +4,7 @@ import type {
   LedgerEntry,
   LedgerReason,
   LedgerRefType,
+  Trade,
 } from "@cex/exchange-types";
 import { BalanceStore } from "./balanceStore.js";
 import { Ledger } from "./ledger.js";
@@ -103,6 +104,41 @@ export class BalanceService {
     ref?: BalanceRef,
   ): { balance: Balance; entry: LedgerEntry } {
     return this.credit(userId, asset, amount, "SETTLE_CREDIT", ref);
+  }
+
+  /**
+   * Move funds for one trade (both sides).
+   * Buyer: spend quote from lock (release limit−trade price improvement), receive base.
+   * Seller: spend base from lock, receive quote.
+   * Returns how much reserved lock to release from each order's tracked lock.
+   */
+  settleTrade(args: {
+    trade: Trade;
+    buyLimitPrice: number;
+    base: AssetId;
+    quote: AssetId;
+  }): { buyLockRelease: number; sellLockRelease: number } {
+    const { trade, buyLimitPrice, base, quote } = args;
+    const cost = trade.price * trade.quantity;
+    const reservedBuy = buyLimitPrice * trade.quantity;
+    const ref: BalanceRef = { refType: "TRADE", refId: trade.tradeId };
+
+    this.debitLocked(trade.buyerUserId, quote, cost, ref);
+    if (reservedBuy > cost) {
+      this.unlock(trade.buyerUserId, quote, reservedBuy - cost, {
+        refType: "ORDER",
+        refId: trade.buyOrderId,
+      });
+    }
+    this.settleCredit(trade.buyerUserId, base, trade.quantity, ref);
+
+    this.debitLocked(trade.sellerUserId, base, trade.quantity, ref);
+    this.settleCredit(trade.sellerUserId, quote, cost, ref);
+
+    return {
+      buyLockRelease: reservedBuy,
+      sellLockRelease: trade.quantity,
+    };
   }
 
   private write(

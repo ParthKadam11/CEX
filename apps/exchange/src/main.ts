@@ -4,7 +4,7 @@ import {
   TimeInForce,
   type Order,
 } from "@cex/exchange-types";
-import { OrderBook } from "./orderbook/orderBook.js";
+import { OrderBook } from "./book/orderBook.js";
 
 function order(
   orderId: string,

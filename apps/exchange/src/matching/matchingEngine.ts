@@ -1,6 +1,6 @@
 import { Side, type Order, type Trade } from "@cex/exchange-types";
-import { OrderBook } from "../orderbook/orderBook.js";
-import { remaining, updateStatus } from "../orderbook/orderHelpers.js";
+import { OrderBook } from "../book/orderBook.js";
+import { remaining, updateStatus } from "../order/orderHelpers.js";
 
 /*
   MatchingEngine = cross the incoming order (taker) against the book.
