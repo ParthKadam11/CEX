@@ -22,9 +22,18 @@ export type OrderStatus =
 
 export type MarketSymbol = "SOL-USD";
 
+export type AssetId = "SOL" | "USD";
+
 export interface Asset {
-  id: "SOL" | "USD";
+  id: AssetId;
   decimals: number;
+}
+
+export interface Balance {
+  userId: string;
+  asset: AssetId;
+  available: number;
+  locked: number;
 }
 
 export interface Market {
