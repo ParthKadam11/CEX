@@ -9,7 +9,7 @@ export enum TimeInForce {
   GTC = "GTC", // Good-Till-Cancelled
   IOC = "IOC", // Immediate-or-Cancel
   FOK = "FOK", // Fill-or-Kill
-  FOK_BUDGET = "FOK_BUDGET" // Fill-or-Kill with budget
+  FOK_BUDGET = "FOK_BUDGET" // Fill-or-Kill with budget not implemented yet
 }
 
 export type OrderStatus =
@@ -34,6 +34,30 @@ export interface Balance {
   asset: AssetId;
   available: number;
   locked: number;
+}
+
+export type LedgerReason =
+  | "DEPOSIT"
+  | "LOCK_ORDER"
+  | "UNLOCK_ORDER"
+  | "SETTLE_DEBIT"
+  | "SETTLE_CREDIT"
+  | "WITHDRAW";
+
+export type LedgerRefType = "ORDER" | "TRADE" | "DEPOSIT" | "WITHDRAW";
+
+export interface LedgerEntry {
+  seq: number;
+  userId: string;
+  asset: AssetId;
+  availableDelta: number;
+  lockedDelta: number;
+  availableAfter: number;
+  lockedAfter: number;
+  reason: LedgerReason;
+  refType?: LedgerRefType;
+  refId?: string;
+  timestamp: number;
 }
 
 export interface Market {
@@ -123,6 +147,5 @@ export interface OrderEvent {
 export type OrderQueryFilter = {
   status?: OrderStatus | readonly OrderStatus[];
   market?: MarketSymbol;
-  /** OPEN + PARTIALLY_FILLED only */
   openOnly?: boolean;
 };

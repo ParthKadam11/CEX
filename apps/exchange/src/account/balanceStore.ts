@@ -37,14 +37,10 @@ export class BalanceStore {
   private readonly balances = new Map<string, Balance>();
 
   get(userId: string, asset: AssetId): Balance {
-    return (
-      this.balances.get(key(userId, asset)) ?? {
-        userId,
-        asset,
-        available: 0,
-        locked: 0,
-      }
-    );
+    const bal = this.balances.get(key(userId, asset));
+    return bal
+      ? { ...bal }
+      : { userId, asset, available: 0, locked: 0 };
   }
 
   getByUser(userId: string): Balance[] {
