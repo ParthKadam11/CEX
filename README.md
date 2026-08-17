@@ -91,8 +91,5 @@ pnpm --filter @cex/exchange test:watch   # watch mode
 
 Built: order book, matching, time-in-force, state machine, event log, order queries (all in-memory + tested).
 
-Not yet: account balances / ledger, trade settlement, fees, cancel/amend API, persistence, and the HTTP/WS bridge from the web app to the engine.
+To-do: account balances / ledger, trade settlement, fees, cancel/amend API, persistence, and the HTTP/WS bridge from the web app to the engine.
 
-## Web app
-
-`apps/web` — see [`apps/web/README.md`](apps/web/README.md). Model is **hybrid CEX**: custodial exchange wallets hold balances, Phantom is used only for deposit/withdraw. Uses Solana **devnet**, so no real funds are involved.
