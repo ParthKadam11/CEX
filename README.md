@@ -10,7 +10,7 @@ The engine (order book, matching, time-in-force, order lifecycle) is written and
 - **Web:** Next.js 16, React 19, Tailwind v4, NextAuth (Google), Solana wallet-adapter
 - **Exchange engine:** TypeScript, tested with Vitest
 - **Data:** Prisma + Postgres
-- **Chain:** Solana (`@solana/web3.js`), devnet by default
+- **Chain:** Solana (devnet by default)
 
 ## Layout
 
