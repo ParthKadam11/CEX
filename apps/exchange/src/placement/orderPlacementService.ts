@@ -2,6 +2,7 @@ import {
   Side,
   TimeInForce,
   type AssetId,
+  type CancelResult,
   type Order,
   type PlacementResult,
   type Trade,
@@ -10,6 +11,7 @@ import { MatchingEngine } from "../matching/matchingEngine.js";
 import { OrderBook } from "../book/orderBook.js";
 import { remaining } from "../order/orderHelpers.js";
 import {
+  isTerminal,
   transitionCancel,
   transitionReject,
 } from "../order/orderStateMachine.js";
@@ -31,7 +33,7 @@ type OrderLock = { asset: AssetId; amount: number };
   MatchingEngine only crosses orders. This class:
     - locks funds before matching
     - settles balances on each trade
-    - unlocks leftovers (IOC cancel / FOK reject after lock)
+    - unlocks leftovers (IOC leftover / FOK reject / user cancel)
     - records order events and keeps OrderStore in sync
 
   Flow:
@@ -150,6 +152,34 @@ export class OrderPlacementService {
 
     this.store.upsert(taker);
     return { order: taker, trades, accepted: true };
+  }
+
+  // Cancel a resting order (OPEN / PARTIALLY_FILLED). Pulls it off the book, unlocks leftover funds, logs CANCELLED.
+  cancel(orderId: string, book: OrderBook): CancelResult {
+    const order = this.store.get(orderId);
+    if (!order) {
+      return { cancelled: false, reason: "UNKNOWN_ORDER" };
+    }
+    if (isTerminal(order.status)) {
+      return { order, cancelled: false, reason: "NOT_CANCELLABLE" };
+    }
+
+    book.remove(orderId);
+    this.unlockOrder(order);
+
+    const fromStatus = order.status;
+    transitionCancel(order);
+    this.log.append({
+      type: "CANCELLED",
+      orderId: order.orderId,
+      userId: order.userId,
+      market: order.market,
+      fromStatus,
+      status: order.status,
+      quantity: remaining(order),
+    });
+    this.store.upsert(order);
+    return { order, cancelled: true };
   }
 
   private reject(

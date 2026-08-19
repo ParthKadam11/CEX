@@ -392,4 +392,124 @@ describe("OrderPlacementService", () => {
     );
     expect(service.balances.get("buyer", "USD").available).toBe(50);
   });
+
+  it("cancel: resting GTC leaves the book and unlocks funds", () => {
+    const book = new OrderBook("SOL-USD");
+    const service = new OrderPlacementService();
+    fund(service, "buyer", { USD: 100 });
+
+    service.place(
+      makeOrder({
+        orderId: "b1",
+        side: Side.BUY,
+        price: 100,
+        quantity: 1,
+        userId: "buyer",
+      }),
+      book,
+    );
+
+    const result = service.cancel("b1", book);
+
+    expect(result.cancelled).toBe(true);
+    expect(result.order?.status).toBe("CANCELLED");
+    expect(book.getOrder("b1")).toBeUndefined();
+    expect(service.queries.getOpenByUser("buyer")).toEqual([]);
+    expect(service.balances.get("buyer", "USD")).toEqual({
+      userId: "buyer",
+      asset: "USD",
+      available: 100,
+      locked: 0,
+    });
+    expect(service.eventLog.forOrder("b1").some((e) => e.type === "CANCELLED")).toBe(
+      true,
+    );
+  });
+
+  it("cancel: partial fill unlocks only the leftover lock", () => {
+    const book = new OrderBook("SOL-USD");
+    const service = new OrderPlacementService();
+    fund(service, "seller", { SOL: 2 });
+    fund(service, "buyer", { USD: 500 });
+
+    service.place(
+      makeOrder({
+        orderId: "s1",
+        side: Side.SELL,
+        price: 100,
+        quantity: 2,
+        userId: "seller",
+      }),
+      book,
+    );
+    service.place(
+      makeOrder({
+        orderId: "b1",
+        side: Side.BUY,
+        price: 100,
+        quantity: 5,
+        userId: "buyer",
+      }),
+      book,
+    );
+
+    const result = service.cancel("b1", book);
+
+    expect(result.cancelled).toBe(true);
+    expect(result.order?.status).toBe("CANCELLED");
+    expect(result.order?.filledQuantity).toBe(2);
+    expect(book.getOrder("b1")).toBeUndefined();
+    expect(service.balances.get("buyer", "USD")).toEqual({
+      userId: "buyer",
+      asset: "USD",
+      available: 300,
+      locked: 0,
+    });
+    expect(service.balances.get("buyer", "SOL").available).toBe(2);
+  });
+
+  it("cancel: unknown order is a no-op", () => {
+    const book = new OrderBook("SOL-USD");
+    const service = new OrderPlacementService();
+
+    expect(service.cancel("missing", book)).toEqual({
+      cancelled: false,
+      reason: "UNKNOWN_ORDER",
+    });
+  });
+
+  it("cancel: filled order is not cancellable", () => {
+    const book = new OrderBook("SOL-USD");
+    const service = new OrderPlacementService();
+    fund(service, "seller", { SOL: 1 });
+    fund(service, "buyer", { USD: 100 });
+
+    service.place(
+      makeOrder({
+        orderId: "s1",
+        side: Side.SELL,
+        price: 100,
+        quantity: 1,
+        userId: "seller",
+      }),
+      book,
+    );
+    service.place(
+      makeOrder({
+        orderId: "b1",
+        side: Side.BUY,
+        price: 100,
+        quantity: 1,
+        userId: "buyer",
+      }),
+      book,
+    );
+
+    const result = service.cancel("s1", book);
+    expect(result.cancelled).toBe(false);
+    expect(result.reason).toBe("NOT_CANCELLABLE");
+    expect(result.order?.status).toBe("FILLED");
+    expect(service.balances.get("seller", "SOL").locked).toBe(0);
+  });
 });
+

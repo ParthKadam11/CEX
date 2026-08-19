@@ -118,6 +118,14 @@ export interface PlacementResult {
   accepted: boolean;
 }
 
+export type CancelFailReason = "UNKNOWN_ORDER" | "NOT_CANCELLABLE";
+
+export interface CancelResult {
+  order?: Order;
+  cancelled: boolean;
+  reason?: CancelFailReason;
+}
+
 
 export type OrderEventType =
   | "REJECTED"
