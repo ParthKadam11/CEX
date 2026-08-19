@@ -44,5 +44,9 @@ next-env.d.ts
 # turbo
 .turbo
 
+# exchange WAL (command journal)
+apps/exchange/data
+
+
 # prisma generated clients
 packages/db/generated

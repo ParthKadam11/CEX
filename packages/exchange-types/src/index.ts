@@ -160,3 +160,25 @@ export type OrderQueryFilter = {
   market?: MarketSymbol;
   openOnly?: boolean;
 };
+
+/** Durable engine commands (WAL). Replay restores RAM after restart. */
+export type EngineCommandBody =
+  | {
+      type: "CREDIT";
+      userId: string;
+      asset: AssetId;
+      amount: number;
+      timestamp: number;
+    }
+  | {
+      type: "PLACE";
+      order: Order;
+      timestamp: number;
+    }
+  | {
+      type: "CANCEL";
+      orderId: string;
+      timestamp: number;
+    };
+
+export type EngineCommand = EngineCommandBody & { seq: number };
