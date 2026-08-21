@@ -27,8 +27,16 @@ import {
 import { InsufficientBalanceError } from "../account/balanceStore.js";
 import { lockForOrder, marketAssets } from "../market/assets.js";
 import { lotsForBudget, orderUnitsOk, quoteNotional } from "../market/units.js";
+import { cloneOrder } from "../journal/cloneOrder.js";
+import type { EngineSnapshot } from "../journal/snapshot.js";
 
 type OrderLock = { asset: AssetId; amount: number };
+
+export type RamBounds = {
+  maxTerminalOrders: number;
+  maxOrderEvents: number;
+  maxLedgerEntries: number;
+};
 
 /*
   OrderPlacementService = TimeInForce + balances + order event log + order store.
@@ -75,6 +83,66 @@ export class OrderPlacementService {
 
   get balances(): BalanceService {
     return this.money;
+  }
+
+  captureSnapshot(
+    market: EngineSnapshot["market"],
+    walSeq: number,
+  ): EngineSnapshot {
+    return {
+      version: 1,
+      market,
+      walSeq,
+      tradeSeq: this.matcher.getTradeSeq(),
+      eventSeq: this.log.currentSeq,
+      ledgerSeq: this.money.ledger.currentSeq,
+      balances: this.money.balances.listAll(),
+      orders: this.store.all().map(cloneOrder),
+      events: [...this.log.all()],
+      ledger: [...this.money.ledger.all()],
+    };
+  }
+
+  restoreSnapshot(snapshot: EngineSnapshot, book: OrderBook): void {
+    this.store.clear();
+    this.locks.clear();
+    this.money.balances.loadAll(snapshot.balances);
+    this.money.ledger.replace(snapshot.ledger, snapshot.ledgerSeq);
+    this.log.replace(snapshot.events, snapshot.eventSeq);
+    this.matcher.setTradeSeq(snapshot.tradeSeq);
+
+    for (const recorded of snapshot.orders) {
+      const order = cloneOrder(recorded);
+      this.store.upsert(order);
+      if (isTerminal(order.status)) continue;
+      book.add(order);
+      const need = lockForOrder(order);
+      if (need && need.amount > 0) {
+        this.locks.set(order.orderId, {
+          asset: need.asset,
+          amount: need.amount,
+        });
+      }
+    }
+  }
+
+  pruneRam(bounds: RamBounds): void {
+    const terminals = this.store
+      .all()
+      .filter((order) => isTerminal(order.status))
+      .sort((a, b) => a.timestamp - b.timestamp || a.orderId.localeCompare(b.orderId));
+    const overflow = terminals.length - bounds.maxTerminalOrders;
+    if (overflow > 0) {
+      for (const order of terminals.slice(0, overflow)) {
+        this.store.remove(order.orderId);
+        this.locks.delete(order.orderId);
+      }
+    }
+
+    const keep = new Set(this.store.all().map((order) => order.orderId));
+    this.log.retain(keep);
+    this.log.trimOldest(bounds.maxOrderEvents);
+    this.money.ledger.trimNewest(bounds.maxLedgerEntries);
   }
 
   place(order: Order, book: OrderBook): PlacementResult {

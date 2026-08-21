@@ -24,6 +24,20 @@ describe("OrderStore", () => {
     expect(store.getByUser("nobody")).toEqual([]);
   });
 
+  it("prunes matching orders from both indexes", () => {
+    const store = new OrderStore();
+    const a = makeOrder({ orderId: "a", side: Side.BUY, price: 100, quantity: 1, userId: "u1" });
+    const b = makeOrder({ orderId: "b", side: Side.SELL, price: 101, quantity: 1, userId: "u1" });
+    a.status = "FILLED";
+    store.upsert(a);
+    store.upsert(b);
+    store.pruneIf((order) => order.status === "FILLED");
+
+    expect(store.get("a")).toBeUndefined();
+    expect(store.get("b")).toBe(b);
+    expect(store.getByUser("u1").map((o) => o.orderId)).toEqual(["b"]);
+  });
+
   it("keeps the same object reference so mutations are visible", () => {
     const store = new OrderStore();
     const order = makeOrder({ orderId: "a", side: Side.BUY, price: 100, quantity: 2 });

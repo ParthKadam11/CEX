@@ -99,4 +99,32 @@ describe("exchange HTTP + SSE", () => {
     expect(credit.status).toBe(400);
     expect(await credit.json()).toEqual({ error: "INVALID_UNITS" });
   });
+
+  it("group-commits concurrent credits", async () => {
+    const bus = new EventBus();
+    const wal = tempWal();
+    const runtime = MarketRuntime.open("SOL-USD", wal, bus);
+    const app = createExchangeApp(runtime, bus);
+
+    const responses = await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        app.request("/v1/markets/SOL-USD/credit", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            userId: `u${i}`,
+            asset: "USD",
+            amount: 1,
+          }),
+        }),
+      ),
+    );
+    expect(responses.every((res) => res.status === 200)).toBe(true);
+
+    await runtime.close();
+    const restarted = MarketRuntime.open("SOL-USD", wal);
+    expect(restarted.balances.get("u0", "USD").available).toBe(1);
+    expect(restarted.balances.get("u19", "USD").available).toBe(1);
+    await restarted.close();
+  });
 });

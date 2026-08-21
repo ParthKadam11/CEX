@@ -589,6 +589,7 @@ describe("Exchange E2E — feature checklist", () => {
       expect(walLines.length).toBeGreaterThanOrEqual(4);
 
       // crash simulation: new process, same file
+      await live.close();
       const restarted = MarketRuntime.open("SOL-USD", walPath);
       expect(restarted.book.getSnapshot()).toEqual(snapshot);
       expect(restarted.queries.getById("wal-s1")).toMatchObject({
@@ -606,6 +607,7 @@ describe("Exchange E2E — feature checklist", () => {
       expect(
         fs.readFileSync(walPath, "utf8").trim().split("\n").filter(Boolean),
       ).toHaveLength(walLines.length);
+      await restarted.close();
     });
 
     it("persists cancel across a second restart", async () => {
@@ -624,10 +626,12 @@ describe("Exchange E2E — feature checklist", () => {
         timeInForce: "GTC",
       });
 
+      await runtime.close();
       runtime = MarketRuntime.open("SOL-USD", walPath);
       app = createExchangeApp(runtime, new EventBus());
       expect((await body(await cancel(app, "wal-cx"))).cancelled).toBe(true);
 
+      await runtime.close();
       const again = MarketRuntime.open("SOL-USD", walPath);
       expect(again.book.getOrder("wal-cx")).toBeUndefined();
       expect(again.queries.getById("wal-cx")?.status).toBe("CANCELLED");
@@ -637,6 +641,7 @@ describe("Exchange E2E — feature checklist", () => {
         available: 2,
         locked: 0,
       });
+      await again.close();
     });
   });
 });

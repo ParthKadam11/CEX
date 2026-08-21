@@ -10,7 +10,7 @@ function tempWalPath(): string {
 }
 
 describe("FileWal", () => {
-  it("appends JSON lines with growing seq and survives a new instance", () => {
+  it("appends JSON lines with growing seq and survives a new instance", async () => {
     const file = tempWalPath();
     const wal = new FileWal(file);
     wal.append({
@@ -25,6 +25,8 @@ describe("FileWal", () => {
       orderId: "b1",
       timestamp: 2,
     });
+    await wal.flush();
+    wal.close();
 
     const again = new FileWal(file);
     const all = again.readAll();
@@ -37,6 +39,64 @@ describe("FileWal", () => {
       orderId: "b2",
       timestamp: 3,
     });
+    await again.flush();
     expect(again.readAll()[2]?.seq).toBe(3);
+    again.close();
+  });
+
+  it("readAfter and truncateAfter keep only the tail", async () => {
+    const file = tempWalPath();
+    const wal = new FileWal(file);
+    wal.append({
+      type: "CREDIT",
+      userId: "u1",
+      asset: "USD",
+      amount: 1,
+      timestamp: 1,
+    });
+    wal.append({
+      type: "CREDIT",
+      userId: "u1",
+      asset: "USD",
+      amount: 2,
+      timestamp: 2,
+    });
+    wal.append({
+      type: "CANCEL",
+      orderId: "b1",
+      timestamp: 3,
+    });
+
+    expect(wal.readAfter(1).map((c) => c.seq)).toEqual([2, 3]);
+
+    wal.truncateAfter(2);
+    expect(wal.currentSeq).toBe(3);
+    expect(wal.readAll().map((c) => c.seq)).toEqual([3]);
+
+    wal.append({
+      type: "CANCEL",
+      orderId: "b2",
+      timestamp: 4,
+    });
+    await wal.flush();
+    expect(wal.readAll().map((c) => c.seq)).toEqual([3, 4]);
+    wal.close();
+  });
+
+  it("group-commits many appends with one flush", async () => {
+    const file = tempWalPath();
+    const wal = new FileWal(file);
+    for (let i = 0; i < 20; i++) {
+      wal.append({
+        type: "CREDIT",
+        userId: "u1",
+        asset: "USD",
+        amount: 1,
+        timestamp: i,
+      });
+    }
+    await wal.flush();
+    expect(wal.readAll()).toHaveLength(20);
+    wal.close();
   });
 });

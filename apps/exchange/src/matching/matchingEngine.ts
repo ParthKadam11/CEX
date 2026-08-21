@@ -63,6 +63,14 @@ export class MatchingEngine {
     return { trades, taker };
   }
 
+  getTradeSeq(): number {
+    return this.tradeSeq;
+  }
+
+  setTradeSeq(seq: number): void {
+    this.tradeSeq = seq;
+  }
+
   private trade(buy: Order, sell: Order, price: number, quantity: number): Trade {
     this.tradeSeq += 1;
     return {

@@ -78,7 +78,7 @@ export function createExchangeApp(runtime: MarketRuntime, bus: EventBus) {
       return c.json({ error: "INVALID_ASSET" }, 400);
     }
 
-    const result = runtime.credit(body.userId, body.asset, amount);
+    const result = await runtime.credit(body.userId, body.asset, amount);
     return c.json({ balance: result.balance, entry: result.entry });
   });
 
@@ -141,17 +141,17 @@ export function createExchangeApp(runtime: MarketRuntime, bus: EventBus) {
       timestamp: Date.now(),
     };
 
-    const result = runtime.place(order);
+    const result = await runtime.place(order);
     return c.json(result, result.accepted ? 200 : 400);
   });
 
-  app.delete("/v1/markets/:market/orders/:orderId", (c) => {
+  app.delete("/v1/markets/:market/orders/:orderId", async (c) => {
     const market = c.req.param("market");
     if (!isMarket(market) || market !== runtime.market) {
       return c.json({ error: "UNKNOWN_MARKET" }, 404);
     }
 
-    const result = runtime.cancel(c.req.param("orderId"));
+    const result = await runtime.cancel(c.req.param("orderId"));
     return c.json(result, result.cancelled ? 200 : 400);
   });
 

@@ -21,6 +21,12 @@ const bus = new EventBus();
 const runtime = MarketRuntime.open(market, walPath, bus);
 const app = createExchangeApp(runtime, bus);
 
+const shutdown = () => {
+  void runtime.close().finally(() => process.exit(0));
+};
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(
     `exchange listening on http://localhost:${info.port} market=${market} wal=${walPath}`,

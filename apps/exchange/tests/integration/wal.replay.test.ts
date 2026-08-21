@@ -12,14 +12,14 @@ function tempWalPath(): string {
 }
 
 describe("MarketRuntime WAL replay", () => {
-  it("restores balances, book, and orders after a restart", () => {
+  it("restores balances, book, and orders after a restart", async () => {
     const file = tempWalPath();
     const live = MarketRuntime.open("SOL-USD", file);
 
-    live.credit("seller", "SOL", 2);
-    live.credit("buyer", "USD", 500);
+    await live.credit("seller", "SOL", 2);
+    await live.credit("buyer", "USD", 500);
 
-    live.place(
+    await live.place(
       makeOrder({
         orderId: "s1",
         side: Side.SELL,
@@ -28,7 +28,7 @@ describe("MarketRuntime WAL replay", () => {
         userId: "seller",
       }),
     );
-    live.place(
+    await live.place(
       makeOrder({
         orderId: "b1",
         side: Side.BUY,
@@ -49,6 +49,7 @@ describe("MarketRuntime WAL replay", () => {
     });
 
     const linesBefore = fs.readFileSync(file, "utf8").trim().split("\n").length;
+    await live.close();
 
     const restarted = MarketRuntime.open("SOL-USD", file);
 
@@ -67,13 +68,14 @@ describe("MarketRuntime WAL replay", () => {
     expect(fs.readFileSync(file, "utf8").trim().split("\n")).toHaveLength(
       linesBefore,
     );
+    await restarted.close();
   });
 
-  it("restores a cancel so leftover funds are unlocked after restart", () => {
+  it("restores a cancel so leftover funds are unlocked after restart", async () => {
     const file = tempWalPath();
     const live = MarketRuntime.open("SOL-USD", file);
-    live.credit("buyer", "USD", 100);
-    live.place(
+    await live.credit("buyer", "USD", 100);
+    await live.place(
       makeOrder({
         orderId: "b1",
         side: Side.BUY,
@@ -82,7 +84,8 @@ describe("MarketRuntime WAL replay", () => {
         userId: "buyer",
       }),
     );
-    expect(live.cancel("b1").cancelled).toBe(true);
+    expect((await live.cancel("b1")).cancelled).toBe(true);
+    await live.close();
 
     const restarted = MarketRuntime.open("SOL-USD", file);
     expect(restarted.book.getOrder("b1")).toBeUndefined();
@@ -93,5 +96,20 @@ describe("MarketRuntime WAL replay", () => {
       available: 100,
       locked: 0,
     });
+    await restarted.close();
+  });
+
+  it("group-commits concurrent credits onto one fsync", async () => {
+    const file = tempWalPath();
+    const live = MarketRuntime.open("SOL-USD", file);
+    await Promise.all(
+      Array.from({ length: 40 }, (_, i) => live.credit(`u${i}`, "USD", 1)),
+    );
+    await live.close();
+
+    const restarted = MarketRuntime.open("SOL-USD", file);
+    expect(restarted.balances.get("u0", "USD").available).toBe(1);
+    expect(restarted.balances.get("u39", "USD").available).toBe(1);
+    await restarted.close();
   });
 });

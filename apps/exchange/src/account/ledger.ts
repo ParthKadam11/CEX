@@ -21,6 +21,20 @@ export class Ledger {
     return full;
   }
 
+  get currentSeq(): number {
+    return this.seq;
+  }
+
+  replace(entries: readonly LedgerEntry[], seq: number): void {
+    this.entries = [...entries];
+    this.seq = seq;
+  }
+
+  trimNewest(max: number): void {
+    if (max < 0 || this.entries.length <= max) return;
+    this.entries = this.entries.slice(this.entries.length - max);
+  }
+
   all(): readonly LedgerEntry[] {
     return this.entries;
   }

@@ -52,6 +52,17 @@ export class BalanceStore {
     return out;
   }
 
+  listAll(): Balance[] {
+    return [...this.balances.values()].map((bal) => ({ ...bal }));
+  }
+
+  loadAll(balances: readonly Balance[]): void {
+    this.balances.clear();
+    for (const bal of balances) {
+      this.balances.set(key(bal.userId, bal.asset), { ...bal });
+    }
+  }
+
   // Deposit / credit into available.
   credit(userId: string, asset: AssetId, amount: number): Balance {
     this.assertPositive(amount);

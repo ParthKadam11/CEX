@@ -26,6 +26,25 @@ export class OrderStore {
     return this.byId.get(orderId);
   }
 
+  all(): Order[] {
+    return [...this.byId.values()];
+  }
+
+  remove(orderId: string): void {
+    const order = this.byId.get(orderId);
+    if (!order) return;
+    this.byId.delete(orderId);
+    const ids = this.byUser.get(order.userId);
+    ids?.delete(orderId);
+    if (ids && ids.size === 0) this.byUser.delete(order.userId);
+  }
+
+  pruneIf(pred: (order: Order) => boolean): void {
+    for (const order of this.all()) {
+      if (pred(order)) this.remove(order.orderId);
+    }
+  }
+
   // Current orders for a user (any status), newest-ish by insertion order of ids.
   getByUser(userId: string): Order[] {  //O(k) list for a user
     const ids = this.byUser.get(userId);

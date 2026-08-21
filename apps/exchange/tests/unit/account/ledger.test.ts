@@ -81,6 +81,41 @@ describe("Ledger", () => {
 
     expect(ledger.replay("u1", "USD")).toEqual({ available: 800, locked: 100 });
   });
+
+  it("trimNewest keeps the latest entries and seq", () => {
+    const ledger = new Ledger();
+    ledger.append({
+      userId: "u1",
+      asset: "USD",
+      availableDelta: 1,
+      lockedDelta: 0,
+      availableAfter: 1,
+      lockedAfter: 0,
+      reason: "DEPOSIT",
+    });
+    ledger.append({
+      userId: "u1",
+      asset: "USD",
+      availableDelta: 2,
+      lockedDelta: 0,
+      availableAfter: 3,
+      lockedAfter: 0,
+      reason: "DEPOSIT",
+    });
+    ledger.append({
+      userId: "u1",
+      asset: "USD",
+      availableDelta: 3,
+      lockedDelta: 0,
+      availableAfter: 6,
+      lockedAfter: 0,
+      reason: "DEPOSIT",
+    });
+    ledger.trimNewest(1);
+    expect(ledger.all()).toHaveLength(1);
+    expect(ledger.all()[0]?.availableDelta).toBe(3);
+    expect(ledger.currentSeq).toBe(3);
+  });
 });
 
 describe("BalanceService", () => {

@@ -34,6 +34,18 @@ describe("OrderEventLog", () => {
     expect(log.all()[2]?.seq).toBe(3);
     expect(log.forOrder("a").map((e) => e.type)).toEqual(["REJECTED", "FILL"]);
   });
+
+  it("retain drops events for pruned orders and keeps seq", () => {
+    const log = new OrderEventLog();
+    log.append({ type: "RESTING", orderId: "a", userId: "u1", market: "SOL-USD" });
+    log.append({ type: "RESTING", orderId: "b", userId: "u1", market: "SOL-USD" });
+    log.retain(new Set(["b"]));
+    expect(log.all().map((e) => e.orderId)).toEqual(["b"]);
+    expect(log.currentSeq).toBe(2);
+    log.trimOldest(0);
+    expect(log.all()).toEqual([]);
+    expect(log.currentSeq).toBe(2);
+  });
 });
 
 describe("OrderPlacementService event log", () => {

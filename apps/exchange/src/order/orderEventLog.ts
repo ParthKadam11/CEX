@@ -33,6 +33,24 @@ export class OrderEventLog {
     return full;
   }
 
+  get currentSeq(): number {
+    return this.seq;
+  }
+
+  replace(events: readonly OrderEvent[], seq: number): void {
+    this.events = [...events];
+    this.seq = seq;
+  }
+
+  retain(orderIds: ReadonlySet<string>): void {
+    this.events = this.events.filter((event) => orderIds.has(event.orderId));
+  }
+
+  trimOldest(max: number): void {
+    if (max < 0 || this.events.length <= max) return;
+    this.events = this.events.slice(this.events.length - max);
+  }
+
   all(): readonly OrderEvent[] {
     return this.events;
   }
