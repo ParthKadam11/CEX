@@ -6,6 +6,7 @@ import type {
   LedgerRefType,
   Trade,
 } from "@cex/exchange-types";
+import { quoteNotional } from "../market/units.js";
 import { BalanceStore } from "./balanceStore.js";
 import { Ledger } from "./ledger.js";
 
@@ -119,8 +120,8 @@ export class BalanceService {
     quote: AssetId;
   }): { buyLockRelease: number; sellLockRelease: number } {
     const { trade, buyLimitPrice, base, quote } = args;
-    const cost = trade.price * trade.quantity;
-    const reservedBuy = buyLimitPrice * trade.quantity;
+    const cost = quoteNotional(trade.price, trade.quantity);
+    const reservedBuy = quoteNotional(buyLimitPrice, trade.quantity);
     const ref: BalanceRef = { refType: "TRADE", refId: trade.tradeId };
 
     this.debitLocked(trade.buyerUserId, quote, cost, ref);

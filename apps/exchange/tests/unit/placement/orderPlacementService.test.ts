@@ -594,7 +594,7 @@ describe("OrderPlacementService", () => {
       book,
     );
 
-    // budget 250 → 2 @ 100 = 200, then only 50 left → 50/120 of next ask
+    // budget 250 → 2 @ 100 = 200; leftover 50 cannot buy 1 lot at 120
     const result = service.place(
       makeOrder({
         orderId: "b1",
@@ -610,16 +610,23 @@ describe("OrderPlacementService", () => {
     );
 
     expect(result.accepted).toBe(true);
-    expect(result.trades.length).toBeGreaterThanOrEqual(2);
-    expect(result.order.filledQuantity).toBeCloseTo(2 + 50 / 120, 10);
+    expect(result.trades).toHaveLength(1);
+    expect(result.order.filledQuantity).toBe(2);
     expect(result.order.status).toBe("CANCELLED");
     expect(book.getOrder("b1")).toBeUndefined();
-    expect(service.balances.get("buyer", "USD").locked).toBe(0);
-    expect(service.balances.get("buyer", "USD").available).toBeCloseTo(250, 8);
-    expect(service.balances.get("buyer", "SOL").available).toBeCloseTo(
-      2 + 50 / 120,
-      10,
-    );
+    expect(service.balances.get("buyer", "USD")).toEqual({
+      userId: "buyer",
+      asset: "USD",
+      available: 300,
+      locked: 0,
+    });
+    expect(service.balances.get("buyer", "SOL").available).toBe(2);
+    // leftover 50 quote cannot buy 1 lot at 120; ask2 still full
+    expect(book.getSnapshot().asks[0]).toEqual({
+      price: 120,
+      quantity: 2,
+      count: 1,
+    });
   });
 
   it("MARKET buy without quoteBudget is rejected", () => {
@@ -645,6 +652,28 @@ describe("OrderPlacementService", () => {
     expect(service.eventLog.forOrder("b1")[0]?.reason).toBe(
       "MARKET_MISSING_QUOTE_BUDGET",
     );
+  });
+
+  it("rejects non-integer price / quantity", () => {
+    const book = new OrderBook("SOL-USD");
+    const service = new OrderPlacementService();
+    fund(service, "buyer", { USD: 200 });
+
+    const result = service.place(
+      makeOrder({
+        orderId: "b-float",
+        side: Side.BUY,
+        price: 100.5,
+        quantity: 1,
+        userId: "buyer",
+      }),
+      book,
+    );
+
+    expect(result.accepted).toBe(false);
+    expect(result.order.status).toBe("REJECTED");
+    expect(service.eventLog.forOrder("b-float")[0]?.reason).toBe("INVALID_UNITS");
+    expect(service.balances.get("buyer", "USD").available).toBe(200);
   });
 });
 

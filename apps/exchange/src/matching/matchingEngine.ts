@@ -1,5 +1,6 @@
 import { OrderType, Side, type Order, type Trade } from "@cex/exchange-types";
 import { OrderBook } from "../book/orderBook.js";
+import { lotsForBudget, quoteNotional } from "../market/units.js";
 import { remaining, updateStatus } from "../order/orderHelpers.js";
 
 /*
@@ -8,7 +9,7 @@ import { remaining, updateStatus } from "../order/orderHelpers.js";
   - Does NOT decide TimeInForce (GTC/IOC/FOK) — that is OrderPlacementService
   - Does NOT rest leftover size on the book — caller does that for GTC
   - Trade price = maker price (resting order's price)
-  - MARKET: ignore limit cross; buy may stop when quoteBudget runs out
+  - MARKET: ignore limit cross; buy may stop when quoteBudget cannot buy another whole lot
 */
 
 export class MatchingEngine {
@@ -38,10 +39,9 @@ export class MatchingEngine {
 
       let qty = Math.min(remaining(taker), remaining(maker));
 
-      // market buy: cannot spend more quote than budget left
+      // market buy: whole lots only — leftover quote that cannot buy 1 lot is unused
       if (isMarket && isBuy) {
-        const maxByBudget = quoteLeft / best.price;
-        qty = Math.min(qty, maxByBudget);
+        qty = Math.min(qty, lotsForBudget(quoteLeft, best.price));
         if (qty <= 0) break;
       }
 
@@ -55,7 +55,7 @@ export class MatchingEngine {
       book.applyFill(maker.orderId, qty);
 
       if (isMarket && isBuy) {
-        quoteLeft -= best.price * qty;
+        quoteLeft -= quoteNotional(best.price, qty);
       }
     }
 

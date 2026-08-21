@@ -1,7 +1,7 @@
 import type { Order } from "@cex/exchange-types";
 import { transitionAfterFill } from "../order/orderStateMachine.js";
 
-// How much of this order is still unfilled.
+// How many integer lots of this order are still unfilled.
 export function remaining(order: Order): number {
   return order.quantity - order.filledQuantity;
 }

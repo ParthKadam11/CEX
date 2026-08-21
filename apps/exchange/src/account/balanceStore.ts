@@ -1,4 +1,5 @@
 import type { AssetId, Balance } from "@cex/exchange-types";
+import { assertPositiveUnit } from "../market/units.js";
 
 /*
   BalanceStore is locked balances per user + asset.
@@ -127,8 +128,6 @@ export class BalanceStore {
   }
 
   private assertPositive(amount: number): void {
-    if (!(amount > 0)) {
-      throw new Error(`amount must be > 0, got ${amount}`);
-    }
+    assertPositiveUnit(amount);
   }
 }

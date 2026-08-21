@@ -82,8 +82,9 @@ describe("BalanceStore", () => {
 
   it("rejects non-positive amounts", () => {
     const store = new BalanceStore();
-    expect(() => store.credit("u1", "USD", 0)).toThrow(/amount must be > 0/);
-    expect(() => store.lock("u1", "USD", -1)).toThrow(/amount must be > 0/);
+    expect(() => store.credit("u1", "USD", 0)).toThrow(/positive safe integer/);
+    expect(() => store.lock("u1", "USD", -1)).toThrow(/positive safe integer/);
+    expect(() => store.credit("u1", "USD", 0.1)).toThrow(/positive safe integer/);
   });
 
   it("lists balances for a user across assets", () => {

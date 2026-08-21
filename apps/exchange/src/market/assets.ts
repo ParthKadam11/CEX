@@ -1,4 +1,5 @@
 import { OrderType, Side, type AssetId, type MarketSymbol, type Order } from "@cex/exchange-types";
+import { quoteNotional } from "./units.js";
 
 // SOL-USD → base SOL, quote USD (extend when more markets land). 
 export function marketAssets(market: MarketSymbol): {
@@ -15,13 +16,13 @@ export function marketAssets(market: MarketSymbol): {
   }
 }
 
-// Quote to lock for a buy limit, or base qty to lock for a sell limit. 
+// Quote to lock for a buy limit, or base qty to lock for a sell limit.
 export function lockAmount(
   side: "BUY" | "SELL",
   price: number,
   quantity: number,
 ): number {
-  return side === "BUY" ? price * quantity : quantity;
+  return side === "BUY" ? quoteNotional(price, quantity) : quantity;
 }
 
 /**

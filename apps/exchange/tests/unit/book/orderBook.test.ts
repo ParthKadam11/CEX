@@ -44,7 +44,7 @@ describe("OrderBook", () => {
 
     book.add(makeOrder({ orderId: "b1", side: Side.BUY, price: 100, quantity: 1 }));
     book.add(makeOrder({ orderId: "b2", side: Side.BUY, price: 100, quantity: 2 }));
-    book.add(makeOrder({ orderId: "b3", side: Side.BUY, price: 99, quantity: 1.5 }));
+    book.add(makeOrder({ orderId: "b3", side: Side.BUY, price: 99, quantity: 3 }));
 
     const removed = book.remove("b1");
     expect(removed?.orderId).toBe("b1");

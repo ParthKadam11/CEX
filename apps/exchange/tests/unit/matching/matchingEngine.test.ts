@@ -127,4 +127,28 @@ describe("MatchingEngine", () => {
     expect(trades[1]?.price).toBe(150);
     expect(updated.status).toBe("FILLED");
   });
+
+  it("MARKET buy only takes whole lots the budget can pay for", () => {
+    const book = new OrderBook("SOL-USD");
+    const engine = new MatchingEngine();
+
+    book.add(makeOrder({ orderId: "s1", side: Side.SELL, price: 100, quantity: 2 }));
+    book.add(makeOrder({ orderId: "s2", side: Side.SELL, price: 120, quantity: 2 }));
+
+    const taker = makeOrder({
+      orderId: "b1",
+      side: Side.BUY,
+      price: 0,
+      quantity: 10,
+      type: OrderType.MARKET,
+      quoteBudget: 250,
+    });
+
+    const { trades, taker: updated } = engine.match(taker, book);
+
+    expect(trades).toHaveLength(1);
+    expect(trades[0]?.quantity).toBe(2);
+    expect(updated.filledQuantity).toBe(2);
+    expect(book.getSnapshot().asks[0]).toMatchObject({ price: 120, quantity: 2 });
+  });
 });

@@ -1,8 +1,15 @@
 # CEX
 
-A centralized crypto exchange built as a monorepo: a custodial Solana web app plus a from-scratch matching engine.
+## About
 
-The engine is a standalone process: in-memory book + balances, durable command WAL, REST for commands/queries, SSE for live events. The web app currently handles auth and custodial wallet flows (deposit / withdraw over Solana devnet); trading is not yet wired to the engine.
+CEX is a centralized crypto exchange built as a TypeScript monorepo.
+
+It has two main pieces:
+
+1. **Web app** (`apps/web`) — custodial Solana wallet flows (auth, deposit, withdraw on Devnet) with Postgres via Prisma.
+2. **Exchange engine** (`apps/exchange`) — a from-scratch matching process: in-memory order book and balances, durable command WAL, REST for commands/queries, and SSE for live order/BBO/credit events.
+
+The engine already places, matches, settles, cancels, and survives restart via WAL. The web app is not yet wired to that HTTP/SSE API for live trading.
 
 ## Stack
 

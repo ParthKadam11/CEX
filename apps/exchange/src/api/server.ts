@@ -10,6 +10,7 @@ import {
 } from "@cex/exchange-types";
 import type { EventBus, ExchangeStreamEvent } from "./eventBus.js";
 import type { MarketRuntime } from "../market/runtime.js";
+import { isPositiveUnit, isUnit } from "../market/units.js";
 
 function isMarket(value: string): value is MarketSymbol {
   return value === "SOL-USD";
@@ -36,6 +37,14 @@ function parseTif(value: unknown): TimeInForce | null {
   return null;
 }
 
+function parsePositiveUnit(value: unknown): number | null {
+  return typeof value === "number" && isPositiveUnit(value) ? value : null;
+}
+
+function parseNonNegativeUnit(value: unknown): number | null {
+  return typeof value === "number" && isUnit(value) ? value : null;
+}
+
 /*
   REST = commands + queries (this is your request/response "RPC").
   SSE  = live ORDER / BBO / CREDIT events for the gateway.
@@ -58,14 +67,18 @@ export function createExchangeApp(runtime: MarketRuntime, bus: EventBus) {
       amount?: number;
     }>();
 
-    if (!body.userId || !body.asset || !(body.amount && body.amount > 0)) {
+    if (!body.userId || !body.asset || body.amount === undefined) {
       return c.json({ error: "INVALID_BODY" }, 400);
+    }
+    const amount = parsePositiveUnit(body.amount);
+    if (amount === null) {
+      return c.json({ error: "INVALID_UNITS" }, 400);
     }
     if (body.asset !== "SOL" && body.asset !== "USD") {
       return c.json({ error: "INVALID_ASSET" }, 400);
     }
 
-    const result = runtime.credit(body.userId, body.asset, body.amount);
+    const result = runtime.credit(body.userId, body.asset, amount);
     return c.json({ balance: result.balance, entry: result.entry });
   });
 
@@ -78,17 +91,36 @@ export function createExchangeApp(runtime: MarketRuntime, bus: EventBus) {
     const body = await c.req.json<Record<string, unknown>>();
     const side = parseSide(body.side);
     const tif = parseTif(body.timeInForce ?? "GTC");
-    const price = Number(body.price);
-    const quantity = Number(body.quantity);
+    const quantity = parsePositiveUnit(body.quantity);
     const userId = typeof body.userId === "string" ? body.userId : "";
 
-    if (!side || !tif || !userId || !(quantity > 0)) {
+    if (!side || !tif || !userId) {
       return c.json({ error: "INVALID_BODY" }, 400);
+    }
+    if (quantity === null) {
+      return c.json(
+        {
+          error:
+            body.quantity === undefined ? "INVALID_BODY" : "INVALID_UNITS",
+        },
+        400,
+      );
     }
 
     const type = parseOrderType(body.type);
-    if (type === OrderType.LIMIT && !(price > 0)) {
-      return c.json({ error: "INVALID_PRICE" }, 400);
+    const price =
+      type === OrderType.MARKET
+        ? parseNonNegativeUnit(body.price ?? 0)
+        : parsePositiveUnit(body.price);
+    if (price === null || (type === OrderType.MARKET && price !== 0)) {
+      return c.json({ error: type === OrderType.LIMIT ? "INVALID_PRICE" : "INVALID_UNITS" }, 400);
+    }
+
+    let quoteBudget: number | undefined;
+    if (body.quoteBudget !== undefined) {
+      const parsed = parsePositiveUnit(body.quoteBudget);
+      if (parsed === null) return c.json({ error: "INVALID_UNITS" }, 400);
+      quoteBudget = parsed;
     }
 
     const order: Order = {
@@ -101,10 +133,9 @@ export function createExchangeApp(runtime: MarketRuntime, bus: EventBus) {
       side,
       type,
       timeInForce: tif,
-      price: type === OrderType.MARKET ? 0 : price,
+      price,
       quantity,
-      quoteBudget:
-        typeof body.quoteBudget === "number" ? body.quoteBudget : undefined,
+      quoteBudget,
       filledQuantity: 0,
       status: "NEW",
       timestamp: Date.now(),

@@ -26,6 +26,7 @@ import {
 } from "../account/balanceService.js";
 import { InsufficientBalanceError } from "../account/balanceStore.js";
 import { lockForOrder, marketAssets } from "../market/assets.js";
+import { lotsForBudget, orderUnitsOk, quoteNotional } from "../market/units.js";
 
 type OrderLock = { asset: AssetId; amount: number };
 
@@ -41,7 +42,7 @@ type OrderLock = { asset: AssetId; amount: number };
   MARKET:
     - buy locks quoteBudget; sell locks base qty
     - never rests (leftover always cancelled + unlocked)
-    - matcher ignores limit price; buy stops when budget is spent
+    - matcher ignores limit price; buy stops when leftover budget cannot buy a whole lot
 
   Call place() one-at-a-time per market (no concurrent book mutation).
 */
@@ -77,6 +78,10 @@ export class OrderPlacementService {
   }
 
   place(order: Order, book: OrderBook): PlacementResult {
+    if (!orderUnitsOk(order)) {
+      return this.reject(order, "INVALID_UNITS");
+    }
+
     if (
       order.timeInForce !== TimeInForce.GTC &&
       order.timeInForce !== TimeInForce.IOC &&
@@ -323,11 +328,14 @@ export class OrderPlacementService {
       let budget = taker.quoteBudget ?? 0;
       if (need <= 0) return true;
       for (const level of book.iterateAsksFromBest()) {
-        const affordable = budget / level.price;
-        const take = Math.min(need, level.getTotalVolume(), affordable);
+        const take = Math.min(
+          need,
+          level.getTotalVolume(),
+          lotsForBudget(budget, level.price),
+        );
         if (take <= 0) break;
         need -= take;
-        budget -= take * level.price;
+        budget -= quoteNotional(level.price, take);
         if (need <= 0) return true;
       }
       return false;

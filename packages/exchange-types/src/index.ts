@@ -35,7 +35,9 @@ export interface Asset {
 export interface Balance {
   userId: string;
   asset: AssetId;
+  /** Integer asset units (available to spend / withdraw). */
   available: number;
+  /** Integer asset units reserved for open orders. */
   locked: number;
 }
 
@@ -67,7 +69,9 @@ export interface Market {
   symbol: MarketSymbol;
   base: "SOL";
   quote: "USD";
+  /** Minimum price increment in integer ticks. */
   tickSize: number;
+  /** Minimum size increment in integer lots. */
   lotSize: number;
   status: "OPEN" | "CLOSED";
 }
@@ -79,9 +83,13 @@ export interface Order {
   side: Side;
   type: OrderType;
   timeInForce: TimeInForce;
+  /** Limit price in integer ticks (MARKET uses 0). */
   price: number;
+  /** Size in integer lots. */
   quantity: number;
+  /** MARKET buy: integer quote units to spend. */
   quoteBudget?: number;
+  /** Filled size in integer lots. */
   filledQuantity: number;
   status: OrderStatus;
   timestamp: number;
@@ -90,7 +98,9 @@ export interface Order {
 export interface Trade {
   tradeId: string;
   market: MarketSymbol;
+  /** Trade price in integer ticks (maker price). */
   price: number;
+  /** Fill size in integer lots. */
   quantity: number;
   buyOrderId: string;
   sellOrderId: string;
@@ -141,7 +151,8 @@ export type RejectReason =
   | "UNSUPPORTED_TIF"
   | "FOK_INSUFFICIENT_LIQUIDITY"
   | "INSUFFICIENT_BALANCE"
-  | "MARKET_MISSING_QUOTE_BUDGET";
+  | "MARKET_MISSING_QUOTE_BUDGET"
+  | "INVALID_UNITS";
 
 export interface OrderEvent {
   seq: number;

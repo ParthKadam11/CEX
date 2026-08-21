@@ -85,4 +85,18 @@ describe("exchange HTTP + SSE", () => {
     expect(seen).toContain("RESTING");
     expect(seen).toContain("BBO");
   });
+
+  it("rejects fractional credit amounts", async () => {
+    const bus = new EventBus();
+    const runtime = MarketRuntime.open("SOL-USD", tempWal(), bus);
+    const app = createExchangeApp(runtime, bus);
+
+    const credit = await app.request("/v1/markets/SOL-USD/credit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: "u1", asset: "USD", amount: 0.1 }),
+    });
+    expect(credit.status).toBe(400);
+    expect(await credit.json()).toEqual({ error: "INVALID_UNITS" });
+  });
 });

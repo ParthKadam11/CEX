@@ -402,13 +402,20 @@ describe("Exchange E2E — feature checklist", () => {
       });
       const placed = await body(res);
       expect(placed.accepted).toBe(true);
-      expect(placed.order).toMatchObject({ status: "CANCELLED" });
-      expect((placed.order as { filledQuantity: number }).filledQuantity).toBeCloseTo(
-        2 + 50 / 120,
-        8,
-      );
+      expect(placed.order).toMatchObject({
+        status: "CANCELLED",
+        filledQuantity: 2,
+      });
       expect(runtime.book.getOrder("b-mkt")).toBeUndefined();
-      expect(runtime.balances.get("buyer", "USD").locked).toBe(0);
+      expect(runtime.balances.get("buyer", "USD")).toMatchObject({
+        available: 300,
+        locked: 0,
+      });
+      expect(runtime.book.getSnapshot().asks[0]).toEqual({
+        price: 120,
+        quantity: 2,
+        count: 1,
+      });
     });
 
     it("MARKET buy without quoteBudget is rejected", async () => {
