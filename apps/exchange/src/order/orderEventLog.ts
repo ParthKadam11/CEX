@@ -6,9 +6,20 @@ type NewEvent = Omit<OrderEvent, "seq" | "timestamp"> & {
   timestamp?: number;
 };
 
+type AppendListener = (event: OrderEvent) => void;
+
 export class OrderEventLog {
   private events: OrderEvent[] = [];
   private seq = 0;
+  private readonly listeners = new Set<AppendListener>();
+
+  // Subscribe to new events (used by SSE fan-out).
+  onAppend(listener: AppendListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
 
   append(event: NewEvent): OrderEvent {
     this.seq += 1;
@@ -18,20 +29,18 @@ export class OrderEventLog {
       timestamp: event.timestamp ?? Date.now(),
     };
     this.events.push(full);
+    for (const listener of this.listeners) listener(full);
     return full;
   }
 
-  // Full history in order.
   all(): readonly OrderEvent[] {
     return this.events;
   }
 
-  // History for one order (place → fills → rest/cancel).
   forOrder(orderId: string): OrderEvent[] {
     return this.events.filter((e) => e.orderId === orderId);
   }
 
-  // Activity feed for one user across all their orders.
   forUser(userId: string): OrderEvent[] {
     return this.events.filter((e) => e.userId === userId);
   }

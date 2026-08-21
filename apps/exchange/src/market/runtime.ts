@@ -11,14 +11,14 @@ import { OrderBook } from "../book/orderBook.js";
 import { OrderPlacementService } from "../placement/orderPlacementService.js";
 import { cloneOrder } from "../journal/cloneOrder.js";
 import { FileWal } from "../journal/fileWal.js";
+import type { EventBus } from "../api/eventBus.js";
 
 /*
   MarketRuntime = one in-memory market + durable command WAL.
 
   Live:  CREDIT / PLACE / CANCEL mutate RAM, then append + fsync.
   Boot:  empty RAM, replay the file, same book / balances / orders.
-  Do not credit via placement.balances during live traffic — use credit()
-  so deposits are journaled.
+  Optional EventBus: live order events + BBO for SSE (not during replay).
 */
 
 export class MarketRuntime {
@@ -29,13 +29,23 @@ export class MarketRuntime {
   constructor(
     readonly market: MarketSymbol,
     private readonly wal: FileWal,
+    private readonly bus?: EventBus,
   ) {
     this.book = new OrderBook(market);
     this.placement = new OrderPlacementService();
+
+    this.placement.eventLog.onAppend((event) => {
+      if (this.replaying || !this.bus) return;
+      this.bus.publish({ kind: "ORDER", market: this.market, event });
+    });
   }
 
-  static open(market: MarketSymbol, walPath: string): MarketRuntime {
-    const runtime = new MarketRuntime(market, new FileWal(walPath));
+  static open(
+    market: MarketSymbol,
+    walPath: string,
+    bus?: EventBus,
+  ): MarketRuntime {
+    const runtime = new MarketRuntime(market, new FileWal(walPath), bus);
     runtime.replay();
     return runtime;
   }
@@ -57,6 +67,15 @@ export class MarketRuntime {
       amount,
       timestamp: Date.now(),
     });
+    if (!this.replaying && this.bus) {
+      this.bus.publish({
+        kind: "CREDIT",
+        market: this.market,
+        userId,
+        asset,
+        amount,
+      });
+    }
     return result;
   }
 
@@ -68,6 +87,7 @@ export class MarketRuntime {
       order: snapshot,
       timestamp: snapshot.timestamp,
     });
+    this.publishBbo();
     return result;
   }
 
@@ -79,8 +99,20 @@ export class MarketRuntime {
         orderId,
         timestamp: Date.now(),
       });
+      this.publishBbo();
     }
     return result;
+  }
+
+  private publishBbo(): void {
+    if (this.replaying || !this.bus) return;
+    const bbo = this.book.getBbo();
+    this.bus.publish({
+      kind: "BBO",
+      market: this.market,
+      bestBid: bbo.bestBid,
+      bestAsk: bbo.bestAsk,
+    });
   }
 
   private persist(command: EngineCommandBody): void {

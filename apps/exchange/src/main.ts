@@ -1,41 +1,30 @@
-import {
-  OrderType,
-  Side,
-  TimeInForce,
-  type Order,
-} from "@cex/exchange-types";
-import { OrderBook } from "./book/orderBook.js";
+import path from "node:path";
+import { serve } from "@hono/node-server";
+import { EventBus } from "./api/eventBus.js";
+import { createExchangeApp } from "./api/server.js";
+import { MarketRuntime } from "./market/runtime.js";
 
-function order(
-  orderId: string,
-  side: Side,
-  price: number,
-  quantity: number,
-): Order {
-  return {
-    orderId,
-    userId: "u1",
-    market: "SOL-USD",
-    side,
-    type: OrderType.LIMIT,
-    timeInForce: TimeInForce.GTC,
-    price,
-    quantity,
-    filledQuantity: 0,
-    status: "OPEN",
-    timestamp: Date.now(),
-  };
-}
+/*
+  Exchange process entrypoint.
 
-const book = new OrderBook("SOL-USD");
+  REST  → place / cancel / credit / queries / book
+  SSE   → /v1/markets/:market/stream  (ORDER, BBO, CREDIT)
 
-book.add(order("b1", Side.BUY, 100, 1));
-book.add(order("b2", Side.BUY, 99, 2));
-book.add(order("s1", Side.SELL, 101, 3));
+  No gRPC — HTTP request/response is the sync API the gateway calls.
+*/
 
-console.log("BBO", book.getBbo());
-console.log("Book", book.getSnapshot());
+const market = "SOL-USD" as const;
+const port = Number(process.env.EXCHANGE_PORT ?? 4010);
+const walPath =
+  process.env.EXCHANGE_WAL_PATH ??
+  path.join(process.cwd(), "data", `${market}.jsonl`);
 
-book.remove("b1");
-console.log("After remove b1", book.getSnapshot());
-console.log("b1 gone?", book.getOrder("b1") === undefined);
+const bus = new EventBus();
+const runtime = MarketRuntime.open(market, walPath, bus);
+const app = createExchangeApp(runtime, bus);
+
+serve({ fetch: app.fetch, port }, (info) => {
+  console.log(
+    `exchange listening on http://localhost:${info.port} market=${market} wal=${walPath}`,
+  );
+});
