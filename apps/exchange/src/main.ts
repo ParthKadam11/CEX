@@ -9,8 +9,6 @@ import { MarketRuntime } from "./market/runtime.js";
 
   REST  → place / cancel / credit / queries / book
   SSE   → /v1/markets/:market/stream  (ORDER, BBO, CREDIT)
-
-  No gRPC — HTTP request/response is the sync API the gateway calls.
 */
 
 const market = "SOL-USD" as const;

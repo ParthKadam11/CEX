@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { Side } from "@cex/exchange-types";
-import { EventBus } from "./eventBus.js";
-import { createExchangeApp } from "./server.js";
-import { MarketRuntime } from "../market/runtime.js";
+import { EventBus } from "../../../src/api/eventBus.js";
+import { createExchangeApp } from "../../../src/api/server.js";
+import { MarketRuntime } from "../../../src/market/runtime.js";
 
 function tempWal(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cex-api-"));

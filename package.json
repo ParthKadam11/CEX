@@ -8,7 +8,10 @@
     "lint": "turbo run lint --filter=@cex/web",
     "db:generate": "turbo run db:generate --filter=@cex/db",
     "db:migrate": "pnpm --filter @cex/db migrate",
-    "test:exchange": "pnpm --filter @cex/exchange test"
+    "test:exchange": "pnpm --filter @cex/exchange test",
+    "test:exchange:unit": "pnpm --filter @cex/exchange test:unit",
+    "test:exchange:integration": "pnpm --filter @cex/exchange test:integration",
+    "test:exchange:e2e": "pnpm --filter @cex/exchange test:e2e"
   },
   "devDependencies": {
     "turbo": "^2.5.4",

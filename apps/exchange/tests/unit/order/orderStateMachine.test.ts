@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Side } from "@cex/exchange-types";
-import { makeOrder } from "../test/helpers.js";
+import { makeOrder } from "../../helpers.js";
 import {
   InvalidOrderTransitionError,
   isTerminal,
@@ -9,7 +9,7 @@ import {
   transitionAfterFill,
   transitionCancel,
   transitionReject,
-} from "./orderStateMachine.js";
+} from "../../../src/order/orderStateMachine.js";
 
 function newOrder(orderId: string) {
   const order = makeOrder({ orderId, side: Side.BUY, price: 100, quantity: 1 });

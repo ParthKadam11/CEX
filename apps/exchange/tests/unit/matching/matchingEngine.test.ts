@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { OrderType, Side } from "@cex/exchange-types";
-import { MatchingEngine } from "./matchingEngine.js";
-import { OrderBook } from "../book/orderBook.js";
-import { makeOrder, remaining } from "../test/helpers.js";
+import { MatchingEngine } from "../../../src/matching/matchingEngine.js";
+import { OrderBook } from "../../../src/book/orderBook.js";
+import { makeOrder, remaining } from "../../helpers.js";
 
 describe("MatchingEngine", () => {
   it("fully fills a buy taker against a resting ask", () => {

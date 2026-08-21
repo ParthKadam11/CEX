@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Ledger } from "./ledger.js";
-import { BalanceService } from "./balanceService.js";
+import { Ledger } from "../../../src/account/ledger.js";
+import { BalanceService } from "../../../src/account/balanceService.js";
 
 describe("Ledger", () => {
   it("appends with growing seq and filters by user / asset / ref", () => {

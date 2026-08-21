@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { OrderType, Side, TimeInForce } from "@cex/exchange-types";
-import { OrderBook } from "../book/orderBook.js";
-import { fund, makeOrder, remaining } from "../test/helpers.js";
-import { OrderPlacementService } from "./orderPlacementService.js";
+import { OrderBook } from "../../../src/book/orderBook.js";
+import { fund, makeOrder, remaining } from "../../helpers.js";
+import { OrderPlacementService } from "../../../src/placement/orderPlacementService.js";
 
 describe("OrderPlacementService", () => {
   it("GTC: partial fill rests remainder on the book", () => {

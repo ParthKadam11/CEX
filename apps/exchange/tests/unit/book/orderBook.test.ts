@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Side } from "@cex/exchange-types";
-import { OrderBook } from "./orderBook.js";
-import { makeOrder } from "../test/helpers.js";
+import { OrderBook } from "../../../src/book/orderBook.js";
+import { makeOrder } from "../../helpers.js";
 
 describe("OrderBook", () => {
   it("adds bids and asks with correct BBO", () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BalanceStore,
   InsufficientBalanceError,
-} from "./balanceStore.js";
+} from "../../../src/account/balanceStore.js";
 
 describe("BalanceStore", () => {
   it("starts at zero and credits into available", () => {

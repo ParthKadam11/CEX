@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Side, TimeInForce } from "@cex/exchange-types";
-import { OrderBook } from "../book/orderBook.js";
-import { fund, makeOrder } from "../test/helpers.js";
-import { OrderEventLog } from "./orderEventLog.js";
-import { OrderStore } from "./orderStore.js";
-import { OrderQueryService } from "./orderQueryService.js";
-import { OrderPlacementService } from "../placement/orderPlacementService.js";
+import { OrderBook } from "../../../src/book/orderBook.js";
+import { fund, makeOrder } from "../../helpers.js";
+import { OrderEventLog } from "../../../src/order/orderEventLog.js";
+import { OrderStore } from "../../../src/order/orderStore.js";
+import { OrderQueryService } from "../../../src/order/orderQueryService.js";
+import { OrderPlacementService } from "../../../src/placement/orderPlacementService.js";
 
 describe("OrderStore", () => {
   it("upserts by id and indexes by user", () => {

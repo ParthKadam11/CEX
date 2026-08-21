@@ -1,6 +1,6 @@
 import { OrderType, Side, TimeInForce, type AssetId, type Order } from "@cex/exchange-types";
-import { remaining } from "../order/orderHelpers.js";
-import type { OrderPlacementService } from "../placement/orderPlacementService.js";
+import { remaining } from "../src/order/orderHelpers.js";
+import type { OrderPlacementService } from "../src/placement/orderPlacementService.js";
 
 export function makeOrder(
   partial: Pick<Order, "orderId" | "side" | "price" | "quantity"> &

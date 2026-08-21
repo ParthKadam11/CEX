@@ -94,9 +94,15 @@ src/
 | `market/assets.ts` | Market base/quote and lock-amount helpers |
 
 ```bash
-pnpm --filter @cex/exchange test         # run once
-pnpm --filter @cex/exchange test:watch   # watch mode
+pnpm --filter @cex/exchange test              # all (unit + integration + e2e)
+pnpm --filter @cex/exchange test:unit
+pnpm --filter @cex/exchange test:integration  # WAL replay
+pnpm --filter @cex/exchange test:e2e          # HTTP + WAL restart
+pnpm --filter @cex/exchange test:watch
+pnpm --filter @cex/exchange dev               # HTTP :4010 + SSE
 ```
+
+Tests: `apps/exchange/tests/{unit,integration,e2e}` — `src/` is production only.
 
 ### Status
 
