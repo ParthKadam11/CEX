@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Side, TimeInForce } from "@cex/exchange-types";
+import { OrderType, Side, TimeInForce } from "@cex/exchange-types";
 import { OrderBook } from "../book/orderBook.js";
 import { fund, makeOrder, remaining } from "../test/helpers.js";
 import { OrderPlacementService } from "./orderPlacementService.js";
@@ -510,6 +510,141 @@ describe("OrderPlacementService", () => {
     expect(result.reason).toBe("NOT_CANCELLABLE");
     expect(result.order?.status).toBe("FILLED");
     expect(service.balances.get("seller", "SOL").locked).toBe(0);
+  });
+
+  it("MARKET sell: walks bids with no price limit and never rests", () => {
+    const book = new OrderBook("SOL-USD");
+    const service = new OrderPlacementService();
+    fund(service, "buyer", { USD: 300 });
+    fund(service, "seller", { SOL: 5 });
+
+    service.place(
+      makeOrder({
+        orderId: "b1",
+        side: Side.BUY,
+        price: 100,
+        quantity: 1,
+        userId: "buyer",
+      }),
+      book,
+    );
+    service.place(
+      makeOrder({
+        orderId: "b2",
+        side: Side.BUY,
+        price: 90,
+        quantity: 2,
+        userId: "buyer",
+      }),
+      book,
+    );
+
+    const result = service.place(
+      makeOrder({
+        orderId: "s1",
+        side: Side.SELL,
+        price: 0,
+        quantity: 5,
+        userId: "seller",
+        type: OrderType.MARKET,
+        timeInForce: TimeInForce.IOC,
+      }),
+      book,
+    );
+
+    expect(result.accepted).toBe(true);
+    expect(result.trades).toHaveLength(2);
+    expect(result.order.filledQuantity).toBe(3);
+    expect(result.order.status).toBe("CANCELLED"); // leftover 2 cancelled
+    expect(book.getOrder("s1")).toBeUndefined();
+    expect(service.balances.get("seller", "SOL")).toEqual({
+      userId: "seller",
+      asset: "SOL",
+      available: 2,
+      locked: 0,
+    });
+    expect(service.balances.get("seller", "USD").available).toBe(100 + 180);
+  });
+
+  it("MARKET buy: locks quoteBudget, fills across asks, unlocks unused budget", () => {
+    const book = new OrderBook("SOL-USD");
+    const service = new OrderPlacementService();
+    fund(service, "s1", { SOL: 2 });
+    fund(service, "s2", { SOL: 2 });
+    fund(service, "buyer", { USD: 500 });
+
+    service.place(
+      makeOrder({
+        orderId: "s1",
+        side: Side.SELL,
+        price: 100,
+        quantity: 2,
+        userId: "s1",
+      }),
+      book,
+    );
+    service.place(
+      makeOrder({
+        orderId: "s2",
+        side: Side.SELL,
+        price: 120,
+        quantity: 2,
+        userId: "s2",
+      }),
+      book,
+    );
+
+    // budget 250 → 2 @ 100 = 200, then only 50 left → 50/120 of next ask
+    const result = service.place(
+      makeOrder({
+        orderId: "b1",
+        side: Side.BUY,
+        price: 0,
+        quantity: 10,
+        userId: "buyer",
+        type: OrderType.MARKET,
+        timeInForce: TimeInForce.IOC,
+        quoteBudget: 250,
+      }),
+      book,
+    );
+
+    expect(result.accepted).toBe(true);
+    expect(result.trades.length).toBeGreaterThanOrEqual(2);
+    expect(result.order.filledQuantity).toBeCloseTo(2 + 50 / 120, 10);
+    expect(result.order.status).toBe("CANCELLED");
+    expect(book.getOrder("b1")).toBeUndefined();
+    expect(service.balances.get("buyer", "USD").locked).toBe(0);
+    expect(service.balances.get("buyer", "USD").available).toBeCloseTo(250, 8);
+    expect(service.balances.get("buyer", "SOL").available).toBeCloseTo(
+      2 + 50 / 120,
+      10,
+    );
+  });
+
+  it("MARKET buy without quoteBudget is rejected", () => {
+    const book = new OrderBook("SOL-USD");
+    const service = new OrderPlacementService();
+    fund(service, "buyer", { USD: 100 });
+
+    const result = service.place(
+      makeOrder({
+        orderId: "b1",
+        side: Side.BUY,
+        price: 0,
+        quantity: 1,
+        userId: "buyer",
+        type: OrderType.MARKET,
+        timeInForce: TimeInForce.IOC,
+      }),
+      book,
+    );
+
+    expect(result.accepted).toBe(false);
+    expect(result.order.status).toBe("REJECTED");
+    expect(service.eventLog.forOrder("b1")[0]?.reason).toBe(
+      "MARKET_MISSING_QUOTE_BUDGET",
+    );
   });
 });
 

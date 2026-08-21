@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Side } from "@cex/exchange-types";
+import { OrderType, Side } from "@cex/exchange-types";
 import { MatchingEngine } from "./matchingEngine.js";
 import { OrderBook } from "../book/orderBook.js";
 import { makeOrder, remaining } from "../test/helpers.js";
@@ -102,5 +102,29 @@ describe("MatchingEngine", () => {
     expect(trades[0]?.sellOrderId).toBe("s1");
     expect(book.getSnapshot().asks[0]?.quantity).toBe(1);
     expect(book.getOrder("s2")?.orderId).toBe("s2");
+  });
+
+  it("MARKET buy crosses any ask price (no limit check)", () => {
+    const book = new OrderBook("SOL-USD");
+    const engine = new MatchingEngine();
+
+    book.add(makeOrder({ orderId: "s1", side: Side.SELL, price: 100, quantity: 1 }));
+    book.add(makeOrder({ orderId: "s2", side: Side.SELL, price: 150, quantity: 1 }));
+
+    const taker = makeOrder({
+      orderId: "b1",
+      side: Side.BUY,
+      price: 0,
+      quantity: 2,
+      type: OrderType.MARKET,
+      quoteBudget: 1000,
+    });
+
+    const { trades, taker: updated } = engine.match(taker, book);
+
+    expect(trades).toHaveLength(2);
+    expect(trades[0]?.price).toBe(100);
+    expect(trades[1]?.price).toBe(150);
+    expect(updated.status).toBe("FILLED");
   });
 });

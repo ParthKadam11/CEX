@@ -1,4 +1,4 @@
-import { Side, type Order, type Trade } from "@cex/exchange-types";
+import { OrderType, Side, type Order, type Trade } from "@cex/exchange-types";
 import { OrderBook } from "../book/orderBook.js";
 import { remaining, updateStatus } from "../order/orderHelpers.js";
 
@@ -8,6 +8,7 @@ import { remaining, updateStatus } from "../order/orderHelpers.js";
   - Does NOT decide TimeInForce (GTC/IOC/FOK) — that is OrderPlacementService
   - Does NOT rest leftover size on the book — caller does that for GTC
   - Trade price = maker price (resting order's price)
+  - MARKET: ignore limit cross; buy may stop when quoteBudget runs out
 */
 
 export class MatchingEngine {
@@ -16,33 +17,46 @@ export class MatchingEngine {
   match(taker: Order, book: OrderBook): { trades: Trade[]; taker: Order } {
     const trades: Trade[] = [];
     const isBuy = taker.side === Side.BUY;
+    const isMarket = taker.type === OrderType.MARKET;
 
-    // keep matching until taker is done or prices no longer cross
+    // market buy spends from quoteBudget; track what's left during this match
+    let quoteLeft =
+      isMarket && isBuy ? (taker.quoteBudget ?? 0) : Number.POSITIVE_INFINITY;
+
     while (remaining(taker) > 0) {
-      // buy hits asks; sell hits bids
       const best = isBuy ? book.getBestAsk() : book.getBestBid();
-      if (!best) break; // nothing on the other side
+      if (!best) break;
 
-      // prices must cross:
-      //   buy  → taker.price >= best ask
-      //   sell → taker.price <= best bid
-      if (isBuy && taker.price < best.price) break;
-      if (!isBuy && taker.price > best.price) break;
+      // LIMIT must cross; MARKET takes any resting price
+      if (!isMarket) {
+        if (isBuy && taker.price < best.price) break;
+        if (!isBuy && taker.price > best.price) break;
+      }
 
-      // FIFO: first order at that price level
       const maker = best.priceLevel.peekFirst();
       if (!maker) break;
 
-      const qty = Math.min(remaining(taker), remaining(maker));
+      let qty = Math.min(remaining(taker), remaining(maker));
+
+      // market buy: cannot spend more quote than budget left
+      if (isMarket && isBuy) {
+        const maxByBudget = quoteLeft / best.price;
+        qty = Math.min(qty, maxByBudget);
+        if (qty <= 0) break;
+      }
+
       trades.push(
         isBuy
-          ? this.trade(taker, maker, best.price, qty) // buy is taker
-          : this.trade(maker, taker, best.price, qty), // sell is taker
+          ? this.trade(taker, maker, best.price, qty)
+          : this.trade(maker, taker, best.price, qty),
       );
 
-      // update both sides; book.applyFill updates maker volume / may remove maker
       taker.filledQuantity += qty;
       book.applyFill(maker.orderId, qty);
+
+      if (isMarket && isBuy) {
+        quoteLeft -= best.price * qty;
+      }
     }
 
     updateStatus(taker);

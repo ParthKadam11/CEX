@@ -3,7 +3,10 @@ export enum Side {
   SELL = "SELL",
 }
 
-export enum OrderType{"LIMIT"}; // MARKET later
+export enum OrderType {
+  LIMIT = "LIMIT",
+  MARKET = "MARKET",
+}
 
 export enum TimeInForce {
   GTC = "GTC", // Good-Till-Cancelled
@@ -137,7 +140,8 @@ export type OrderEventType =
 export type RejectReason =
   | "UNSUPPORTED_TIF"
   | "FOK_INSUFFICIENT_LIQUIDITY"
-  | "INSUFFICIENT_BALANCE";
+  | "INSUFFICIENT_BALANCE"
+  | "MARKET_MISSING_QUOTE_BUDGET";
 
 export interface OrderEvent {
   seq: number;
