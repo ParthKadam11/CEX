@@ -1,15 +1,15 @@
 # CEX
 
-A centralized crypto exchange built as a monorepo: a custodial Solana web app plus a from-scratch order-matching exchange engine.
+A centralized crypto exchange built as a monorepo: a custodial Solana web app plus a from-scratch matching engine.
 
-The engine (order book, matching, time-in-force, order lifecycle) is written and tested in isolation. The web app currently handles auth and custodial wallet flows (deposit / withdraw over Solana devnet); trading is not yet wired end-to-end.
+The engine is a standalone process: in-memory book + balances, durable command WAL, REST for commands/queries, SSE for live events. The web app currently handles auth and custodial wallet flows (deposit / withdraw over Solana devnet); trading is not yet wired to the engine.
 
 ## Stack
 
 - **Monorepo:** pnpm workspaces + Turborepo
 - **Web:** Next.js 16, React 19, Tailwind v4, NextAuth (Google), Solana wallet-adapter
-- **Exchange engine:** TypeScript, tested with Vitest
-- **Data:** Prisma + Postgres
+- **Exchange engine:** TypeScript, Hono (HTTP + SSE), file WAL, Vitest
+- **Data:** Prisma + Postgres (web app)
 - **Chain:** Solana (devnet by default)
 
 ## Layout
@@ -17,13 +17,13 @@ The engine (order book, matching, time-in-force, order lifecycle) is written and
 ```
 CEX/
 ├── apps/
-│   ├── web/          # Next.js app: auth, custodial wallet, deposit/withdraw
-│   └── exchange/     # matching engine, order book, order lifecycle (in-memory)
+│   ├── web/              # Next.js: auth, custodial wallet, deposit/withdraw
+│   └── exchange/         # matching engine process (HTTP :4010 + WAL)
 └── packages/
-    ├── exchange-types/   # shared exchange domain types (@cex/exchange-types)
+    ├── exchange-types/   # shared domain types (@cex/exchange-types)
     ├── db/               # Prisma client + schema (@cex/db)
     ├── solana/           # Solana RPC helpers (@cex/solana)
-    └── typescript-config/ # shared tsconfig bases
+    └── typescript-config/
 ```
 
 ## Prerequisites
@@ -38,7 +38,7 @@ CEX/
 pnpm install
 ```
 
-Create `apps/web/.env` (the running process owns its env; Next only reads `apps/web/.env`):
+Create `apps/web/.env` (Next only reads `apps/web/.env`):
 
 ```env
 # Auth
@@ -54,8 +54,6 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/cex
 NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 ```
 
-Generate the Prisma client and run migrations:
-
 ```bash
 pnpm db:generate
 pnpm db:migrate
@@ -64,49 +62,71 @@ pnpm db:migrate
 ## Running
 
 ```bash
-pnpm dev            # web app at http://localhost:3000
-pnpm build          # build all packages via turbo
-pnpm test:exchange  # run the exchange engine test suite
+pnpm dev                              # web app at http://localhost:3000
+pnpm --filter @cex/exchange dev       # engine at http://localhost:4010
+pnpm build
+pnpm test:exchange                    # unit + integration + e2e
 ```
+
+Engine env (optional): `EXCHANGE_PORT` (default `4010`), `EXCHANGE_WAL_PATH` (default `apps/exchange/data/SOL-USD.jsonl`).
 
 ## Exchange engine
 
-Lives in `apps/exchange`. Runs single-threaded per market (LMAX-style), all in-memory for now.
+Lives in `apps/exchange`. One market (`SOL-USD`), single-threaded, LMAX-style: RAM for matching, WAL for restart.
 
 ```
-src/
-  market/      # base/quote + lock-amount helpers
-  book/        # order book + price levels
-  matching/    # MatchingEngine
-  placement/   # OrderPlacementService (TIF + balances orchestration)
-  order/       # state machine, store, queries, event log, helpers
-  account/     # BalanceStore, Ledger, BalanceService
-  test/        # shared test helpers
+apps/exchange/
+├── src/
+│   ├── main.ts          # process entry: runtime + HTTP + SSE
+│   ├── api/             # Hono REST + EventBus SSE
+│   ├── market/          # MarketRuntime (WAL replay + live commands)
+│   ├── book/            # order book + price levels
+│   ├── matching/        # MatchingEngine
+│   ├── placement/       # place/cancel + TIF + lock/settle/unlock
+│   ├── order/           # state machine, store, queries, event log
+│   ├── account/         # BalanceStore, Ledger, BalanceService
+│   └── journal/         # FileWal (JSONL + fsync)
+└── tests/
+    ├── unit/
+    ├── integration/     # WAL replay (no HTTP)
+    └── e2e/             # HTTP → engine → WAL restart
 ```
 
 | Area | What it does |
 |------|--------------|
-| `book/` | Order book with `Map` price levels + sorted price arrays for O(1) best bid/ask; FIFO queues per price |
-| `matching/matchingEngine.ts` | Price-time priority matching; trades at the maker's price |
-| `placement/orderPlacementService.ts` | Time-in-force (GTC / IOC / FOK), lock/settle/unlock balances, rest/cancel leftover |
-| `order/` | State machine, event log, live order store + queries |
+| `book/` | Price levels + sorted prices; O(1) BBO; FIFO per price |
+| `matching/` | Price-time priority; trades at the maker price |
+| `placement/` | LIMIT/MARKET, GTC/IOC/FOK, lock/settle/unlock |
+| `order/` | Lifecycle, event log, live store + queries |
 | `account/` | Available/locked balances + append-only ledger |
-| `market/assets.ts` | Market base/quote and lock-amount helpers |
+| `journal/` | Append CREDIT/PLACE/CANCEL, fsync, replay on boot |
+| `api/` | REST commands/queries + SSE (`ORDER`, `BBO`, `CREDIT`) |
+
+### HTTP (market = `SOL-USD`)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/health` | Process + live market |
+| `POST` | `/v1/markets/:market/credit` | Deposit into available |
+| `POST` | `/v1/markets/:market/orders` | Place (LIMIT or MARKET) |
+| `DELETE` | `/v1/markets/:market/orders/:orderId` | Cancel + unlock leftover |
+| `GET` | `/v1/markets/:market/orders/:orderId` | Order by id |
+| `GET` | `/v1/markets/:market/orders?userId=&openOnly=` | User orders |
+| `GET` | `/v1/markets/:market/balances/:userId` | Balances |
+| `GET` | `/v1/markets/:market/book` | Snapshot + BBO |
+| `GET` | `/v1/markets/:market/stream?userId=` | SSE live events |
+
+MARKET buy requires `quoteBudget`. Unsupported TIF (`FOK_BUDGET`) is rejected.
 
 ```bash
-pnpm --filter @cex/exchange test              # all (unit + integration + e2e)
-pnpm --filter @cex/exchange test:unit
-pnpm --filter @cex/exchange test:integration  # WAL replay
-pnpm --filter @cex/exchange test:e2e          # HTTP + WAL restart
-pnpm --filter @cex/exchange test:watch
-pnpm --filter @cex/exchange dev               # HTTP :4010 + SSE
+pnpm test:exchange
+pnpm test:exchange:unit
+pnpm test:exchange:integration
+pnpm test:exchange:e2e
 ```
-
-Tests: `apps/exchange/tests/{unit,integration,e2e}` — `src/` is production only.
 
 ### Status
 
-Built: order book, matching, time-in-force, state machine, event log, order queries, balances/ledger, trade settlement on place (all in-memory + tested).
+**Built:** matching, LIMIT + MARKET, GTC/IOC/FOK, balances/ledger/settlement, cancel, WAL restart, HTTP + SSE. Covered by unit, WAL integration, and HTTP e2e tests.
 
-Not yet: fees, cancel/amend API, persistence, and the HTTP/WS bridge from the web app to the engine.
-
+**Not yet:** fees, amend, FOK_BUDGET, multi-market process, and the web-app gateway to this HTTP/SSE API.
