@@ -11,22 +11,23 @@ services:
       timeout: 3s
       retries: 10
 
-  timescale:
-    image: timescale/timescaledb:latest-pg16
-    environment:
-      POSTGRES_USER: cex
-      POSTGRES_PASSWORD: cex
-      POSTGRES_DB: cex_md
-    ports:
-      - "5434:5432"
-    volumes:
-      - cex_timescale:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cex -d cex_md"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+  # TimescaleDB — enable when engine-gateway writes MD history.
+  # timescale:
+  #   image: timescale/timescaledb:latest-pg16
+  #   environment:
+  #     POSTGRES_USER: cex
+  #     POSTGRES_PASSWORD: cex
+  #     POSTGRES_DB: cex_md
+  #   ports:
+  #     - "5434:5432"
+  #   volumes:
+  #     - cex_timescale:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U cex -d cex_md"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 10
 
 volumes:
   cex_redis:
-  cex_timescale:
+  # cex_timescale:

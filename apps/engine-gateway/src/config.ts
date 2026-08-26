@@ -3,6 +3,8 @@ export type GatewayConfig = {
   exchangeUrl: string;
   redisUrl: string;
   market: "SOL-USD";
+  /** Redis Streams consumer name within the gateway group. */
+  consumerName: string;
 };
 
 export function loadConfig(): GatewayConfig {
@@ -11,11 +13,14 @@ export function loadConfig(): GatewayConfig {
     process.env.EXCHANGE_URL ?? "http://127.0.0.1:4010"
   ).replace(/\/$/, "");
   const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
+  const consumerName =
+    process.env.GATEWAY_CONSUMER_NAME ?? `engine-gw-${process.pid}`;
 
   return {
     port,
     exchangeUrl,
     redisUrl,
     market: "SOL-USD",
+    consumerName,
   };
 }

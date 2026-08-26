@@ -22,7 +22,9 @@ REDIS_URL=redis://127.0.0.1:6379
 
 ### TimescaleDB
 
-TimescaleDB stores market-data history. The intended writes are:
+Currently **commented out** in `docker-compose.yml` so `pnpm infra:up` only starts Redis.
+
+When you need market-data history, uncomment the `timescale` service (and `cex_timescale` volume). Intended writes:
 
 - BBO snapshots
 - trade ticks
@@ -55,12 +57,12 @@ pnpm infra:logs
 | Service | Host port | Purpose |
 | --- | --- | --- |
 | Redis | `6379` | Streams and pub/sub |
-| TimescaleDB | `5434` | Market-data history |
+| TimescaleDB | `5434` | Market-data history (disabled until uncommented) |
 
 ## Requirements
 
 - Docker Desktop or a Docker-compatible engine
-- Available ports `6379` and `5434`
+- Available port `6379` (and `5434` if Timescale is enabled)
 
 ## What this stack does not start
 
