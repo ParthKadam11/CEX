@@ -11,6 +11,8 @@
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "infra:logs": "docker compose -f infra/docker-compose.yml logs -f",
+    "dev:exchange": "pnpm --filter @cex/exchange dev",
+    "dev:gateway": "pnpm --filter @cex/engine-gateway dev",
     "test:exchange": "pnpm --filter @cex/exchange test",
     "test:exchange:unit": "pnpm --filter @cex/exchange test:unit",
     "test:exchange:integration": "pnpm --filter @cex/exchange test:integration",

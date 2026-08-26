@@ -5,10 +5,11 @@ import {
   Side,
   TimeInForce,
   type AssetId,
+  type ExchangeStreamEvent,
   type MarketSymbol,
   type Order,
 } from "@cex/exchange-types";
-import type { EventBus, ExchangeStreamEvent } from "./eventBus.js";
+import type { EventBus } from "./eventBus.js";
 import type { MarketRuntime } from "../market/runtime.js";
 import { isPositiveUnit, isUnit } from "../market/units.js";
 

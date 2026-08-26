@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./apps/web" },
+    { "path": "./apps/engine-gateway" },
     { "path": "./packages/db" },
     { "path": "./packages/solana" },
     { "path": "./packages/app-contracts" },

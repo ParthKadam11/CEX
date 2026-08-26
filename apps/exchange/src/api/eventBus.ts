@@ -1,25 +1,10 @@
-import type { AssetId, MarketSymbol, OrderEvent } from "@cex/exchange-types";
+import type { ExchangeStreamEvent } from "@cex/exchange-types";
 
-// Events pushed over SSE to the gateway
-export type ExchangeStreamEvent =
-  | { kind: "ORDER"; market: MarketSymbol; event: OrderEvent }
-  | {
-      kind: "BBO";
-      market: MarketSymbol;
-      bestBid: number | null;
-      bestAsk: number | null;
-    }
-  | {
-      kind: "CREDIT";
-      market: MarketSymbol;
-      userId: string;
-      asset: AssetId;
-      amount: number;
-    };
+export type { ExchangeStreamEvent };
 
 type Listener = (event: ExchangeStreamEvent) => void;
 
-//In-process pub/sub. HTTP SSE handlers subscribe; MarketRuntime publishes after live commands (not during WAL replay).
+// In-process pub/sub. HTTP SSE handlers subscribe; MarketRuntime publishes after live commands (not during WAL replay).
 
 export class EventBus {
   private readonly listeners = new Set<Listener>();

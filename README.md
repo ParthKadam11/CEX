@@ -34,7 +34,8 @@ apps/web
 apps/exchange
   └─ matching engine + balances + WAL + snapshots + HTTP/SSE
 
-application layer (in progress)
+application layer (build yourself)
+  └─ exchange-gateway (XPG) + OMS later
   └─ Redis Streams + Redis pub/sub + TimescaleDB
 ```
 
@@ -127,7 +128,7 @@ Runs the Next.js app at `http://localhost:3000`.
 ### Exchange engine
 
 ```bash
-pnpm --filter @cex/exchange dev
+pnpm dev:exchange
 ```
 
 Runs the exchange service at `http://localhost:4010`.
@@ -148,6 +149,17 @@ pnpm infra:logs
 ```
 
 See `infra/README.md` for service details.
+
+### Exchange gateway (XPG)
+
+Not shipped — implement `apps/exchange-gateway` yourself. Contracts and local infra are ready:
+
+- Message shapes: `packages/app-contracts`
+- Engine domain types: `packages/exchange-types`
+- Redis + Timescale: `pnpm infra:up` (see `infra/README.md`)
+- Engine API: below (`pnpm dev:exchange` on `:4010`)
+
+Suggested responsibilities: consume Redis Stream commands → call exchange HTTP → subscribe to exchange SSE → publish order events + live MD (+ optional Timescale history).
 
 ## Exchange API
 
@@ -197,13 +209,14 @@ pnpm test:exchange:e2e
 - SSE for live order, credit, and BBO events
 - Web app authentication, custodial wallet setup, deposit, withdraw, and dashboard UX
 - Application-layer infra bootstrap and shared message contracts
+- Exchange Processor Gateway (Redis Streams ↔ exchange HTTP/SSE ↔ pub/sub + Timescale)
 
 ### In progress
 
-- Exchange gateway service
 - OMS and product-side order history
 - Price service and chart history
 - Authenticated application gateway for trading flows
+- Trade UI wired through the application layer
 
 ## Deployment notes
 

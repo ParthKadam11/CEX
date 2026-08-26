@@ -197,3 +197,26 @@ export type EngineCommandBody =
     };
 
 export type EngineCommand = EngineCommandBody & { seq: number };
+
+/** Live SSE payloads from the exchange process (ORDER / BBO / CREDIT). */
+export type ExchangeStreamEvent =
+  | { kind: "ORDER"; market: MarketSymbol; event: OrderEvent }
+  | {
+      kind: "BBO";
+      market: MarketSymbol;
+      bestBid: number | null;
+      bestAsk: number | null;
+    }
+  | {
+      kind: "CREDIT";
+      market: MarketSymbol;
+      userId: string;
+      asset: AssetId;
+      amount: number;
+    };
+
+/** HTTP response for POST .../credit */
+export type CreditResult = {
+  balance: Balance;
+  entry: LedgerEntry;
+};
