@@ -1,0 +1,20 @@
+{
+  "name": "@cex/app-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cex/exchange-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@cex/typescript-config": "workspace:*",
+    "typescript": "^5"
+  }
+}

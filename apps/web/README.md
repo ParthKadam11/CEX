@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# `@cex/web`
 
-## Getting Started
+`@cex/web` is the user-facing application for the repository. It currently focuses on authentication and custodial wallet flows.
 
-First, run the development server:
+## What it does today
+
+- Google sign-in with NextAuth
+- user creation in PostgreSQL through `@cex/db`
+- custodial Solana wallet creation on first sign-in
+- simulated USD wallet creation on first sign-in
+- dashboard showing wallet state
+- deposit flow from a connected wallet into the custodial address
+- withdraw flow from the custodial wallet to a destination address
+- recent Solana account activity view
+
+## Main routes
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Landing page |
+| `/dashboard` | Wallet dashboard for signed-in users |
+| `/dashboard/apps` | Placeholder page for future product surfaces |
+| `/api/auth/[...nextauth]` | NextAuth handlers |
+| `/api/withdraw` | Custodial SOL withdrawal |
+| `/api/activity` | Recent account activity lookup |
+
+## Key implementation details
+
+- Authentication uses Google through NextAuth.
+- On first sign-in, the app creates:
+  - a `User`
+  - a custodial `SolWallet`
+  - a simulated `UsdWallet` seeded with `STARTING_USD_BALANCE`
+- The authenticated Prisma user id is copied to `session.user.uid`.
+- Solana RPC helpers are imported from `@cex/solana`.
+
+## Running locally
+
+From the repository root:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Or from this package:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The app runs at `http://localhost:3000`.
 
-## Learn More
+## Required environment
 
-To learn more about Next.js, take a look at the following resources:
+Create `apps/web/.env`:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```env
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+NEXTAUTH_SECRET=...
+NEXTAUTH_URL=http://localhost:3000
+DATABASE_URL=postgresql://user:pass@localhost:5432/cex
+NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Then generate the Prisma client and run migrations:
 
-## Deploy on Vercel
+```bash
+pnpm db:generate
+pnpm db:migrate
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Current scope
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This package is not yet the trading application. It does not currently place exchange orders or consume the exchange SSE feed. Those responsibilities will be added through the application layer and connected later.

@@ -3,6 +3,8 @@
   "references": [
     { "path": "./apps/web" },
     { "path": "./packages/db" },
-    { "path": "./packages/solana" }
+    { "path": "./packages/solana" },
+    { "path": "./packages/app-contracts" },
+    { "path": "./packages/exchange-types" }
   ]
 }

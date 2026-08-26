@@ -1,129 +1,179 @@
 # CEX
 
-## About
+CEX is a TypeScript monorepo for a centralized exchange prototype. The repository currently contains a working exchange engine and a custodial Solana web application, with the application layer being built around them.
 
-CEX is a centralized crypto exchange built as a TypeScript monorepo.
+## Repository Overview
 
-It has two main pieces:
+- `apps/exchange`  
+  A single-market exchange process for `SOL-USD`. It maintains the order book, validates units, matches orders, locks and settles balances, writes a durable command WAL, checkpoints snapshots, and exposes an HTTP + SSE API.
 
-1. **Web app** (`apps/web`) — custodial Solana wallet flows (auth, deposit, withdraw on Devnet) with Postgres via Prisma.
-2. **Exchange engine** (`apps/exchange`) — a from-scratch matching process: in-memory order book and balances, durable command WAL, REST for commands/queries, and SSE for live order/BBO/credit events.
+- `apps/web`  
+  A Next.js application with Google sign-in, custodial Solana wallets, simulated USD balances, deposit and withdraw flows, and a dashboard for wallet state and recent activity.
 
-The engine already places, matches, settles, cancels, and survives restart via WAL. The web app is not yet wired to that HTTP/SSE API for live trading.
+- `packages/exchange-types`  
+  Shared engine domain types such as orders, trades, balances, events, and engine commands.
 
-## Stack
+- `packages/db`  
+  Prisma client and schema for user accounts and wallet data.
 
-- **Monorepo:** pnpm workspaces + Turborepo
-- **Web:** Next.js 16, React 19, Tailwind v4, NextAuth (Google), Solana wallet-adapter
-- **Exchange engine:** TypeScript, Hono (HTTP + SSE), file WAL, Vitest
-- **Data:** Prisma + Postgres (web app)
-- **Chain:** Solana (devnet by default)
+- `packages/solana`  
+  Shared Solana RPC helpers used by the web app.
 
-## Layout
+- `packages/app-contracts`  
+  Application-layer message contracts for Redis Streams, Redis pub/sub, and market-data payloads.
 
+- `infra`  
+  Local infrastructure for the application layer, currently Redis and TimescaleDB.
+
+## Current Architecture
+
+```text
+apps/web
+  └─ user auth + custodial wallet UX
+
+apps/exchange
+  └─ matching engine + balances + WAL + snapshots + HTTP/SSE
+
+application layer (in progress)
+  └─ Redis Streams + Redis pub/sub + TimescaleDB
 ```
+
+### Exchange engine
+
+The exchange engine is intentionally single-writer per market. It keeps matching logic in memory and uses disk only for crash recovery.
+
+- `MarketRuntime` coordinates live commands, WAL persistence, replay, and checkpoints.
+- `CommandQueue` serializes concurrent commands and batches WAL flushes.
+- `FileWal` appends `CREDIT`, `PLACE`, and `CANCEL` commands.
+- Snapshots shorten restart time by restoring state and replaying only the WAL tail.
+- `EventBus` publishes live `ORDER`, `BBO`, and `CREDIT` events for SSE consumers.
+
+### Application layer direction
+
+The next layer does not reimplement matching. It wraps the engine with service boundaries:
+
+- Redis Streams for command/event delivery between OMS and the exchange gateway
+- Redis pub/sub for live best bid/ask and trade fan-out
+- TimescaleDB for market-data history and candles
+- The existing Postgres database for users now, and product-facing order tables later
+
+## Monorepo Layout
+
+```text
 CEX/
 ├── apps/
-│   ├── web/              # Next.js: auth, custodial wallet, deposit/withdraw
-│   └── exchange/         # matching engine process (HTTP :4010 + WAL)
+│   ├── exchange/
+│   └── web/
+├── infra/
 └── packages/
-    ├── exchange-types/   # shared domain types (@cex/exchange-types)
-    ├── db/               # Prisma client + schema (@cex/db)
-    ├── solana/           # Solana RPC helpers (@cex/solana)
+    ├── app-contracts/
+    ├── db/
+    ├── exchange-types/
+    ├── solana/
     └── typescript-config/
 ```
 
 ## Prerequisites
 
-- Node `>=20`
-- pnpm `10.14.0` (`corepack enable`)
-- Postgres (for the web app / Prisma)
+- Node.js `>=20`
+- pnpm `10.14.0`
+- PostgreSQL for the Prisma-backed app database
+- Docker Desktop or another Docker-compatible runtime for local infra
 
-## Setup
+Enable Corepack if needed:
+
+```bash
+corepack enable
+```
+
+## Installation
 
 ```bash
 pnpm install
 ```
 
-Create `apps/web/.env` (Next only reads `apps/web/.env`):
+## Environment
+
+The web app expects its environment in `apps/web/.env`.
 
 ```env
-# Auth
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 NEXTAUTH_SECRET=...
 NEXTAUTH_URL=http://localhost:3000
 
-# Database
 DATABASE_URL=postgresql://user:pass@localhost:5432/cex
 
-# Solana (devnet for local testing)
 NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 ```
+
+Generate the Prisma client and run migrations:
 
 ```bash
 pnpm db:generate
 pnpm db:migrate
 ```
 
-## Running
+## Running the project
+
+### Web app
 
 ```bash
-pnpm dev                              # web app at http://localhost:3000
-pnpm --filter @cex/exchange dev       # engine at http://localhost:4010
-pnpm build
-pnpm test:exchange                    # unit + integration + e2e
+pnpm dev
 ```
 
-Engine env (optional): `EXCHANGE_PORT` (default `4010`), `EXCHANGE_WAL_PATH` (default `apps/exchange/data/SOL-USD.jsonl`).
+Runs the Next.js app at `http://localhost:3000`.
 
-## Exchange engine
+### Exchange engine
 
-Lives in `apps/exchange`. One market (`SOL-USD`), single-threaded, LMAX-style: RAM for matching, WAL for restart.
-
-```
-apps/exchange/
-├── src/
-│   ├── main.ts          # process entry: runtime + HTTP + SSE
-│   ├── api/             # Hono REST + EventBus SSE
-│   ├── market/          # MarketRuntime (WAL replay + live commands)
-│   ├── book/            # order book + price levels
-│   ├── matching/        # MatchingEngine
-│   ├── placement/       # place/cancel + TIF + lock/settle/unlock
-│   ├── order/           # state machine, store, queries, event log
-│   ├── account/         # BalanceStore, Ledger, BalanceService
-│   └── journal/         # FileWal (JSONL + fsync)
-└── tests/
-    ├── unit/
-    ├── integration/     # WAL replay (no HTTP)
-    └── e2e/             # HTTP → engine → WAL restart
+```bash
+pnpm --filter @cex/exchange dev
 ```
 
-| Area | What it does |
-|------|--------------|
-| `book/` | Price levels + sorted prices; O(1) BBO; FIFO per price |
-| `matching/` | Price-time priority; trades at the maker price |
-| `placement/` | LIMIT/MARKET, GTC/IOC/FOK, lock/settle/unlock |
-| `order/` | Lifecycle, event log, live store + queries |
-| `account/` | Available/locked balances + append-only ledger |
-| `journal/` | Append CREDIT/PLACE/CANCEL, fsync, replay on boot |
-| `api/` | REST commands/queries + SSE (`ORDER`, `BBO`, `CREDIT`) |
+Runs the exchange service at `http://localhost:4010`.
 
-### HTTP (market = `SOL-USD`)
+Supported engine environment variables:
+
+- `EXCHANGE_PORT`  
+  Port for the HTTP/SSE server. Defaults to `4010`.
+- `EXCHANGE_WAL_PATH`  
+  Path to the market WAL file. Defaults to `apps/exchange/data/SOL-USD.jsonl` relative to the package working directory.
+
+### Application-layer infra
+
+```bash
+pnpm infra:up
+pnpm infra:down
+pnpm infra:logs
+```
+
+See `infra/README.md` for service details.
+
+## Exchange API
+
+The exchange currently exposes one market, `SOL-USD`.
 
 | Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/health` | Process + live market |
-| `POST` | `/v1/markets/:market/credit` | Deposit into available |
-| `POST` | `/v1/markets/:market/orders` | Place (LIMIT or MARKET) |
-| `DELETE` | `/v1/markets/:market/orders/:orderId` | Cancel + unlock leftover |
-| `GET` | `/v1/markets/:market/orders/:orderId` | Order by id |
-| `GET` | `/v1/markets/:market/orders?userId=&openOnly=` | User orders |
-| `GET` | `/v1/markets/:market/balances/:userId` | Balances |
-| `GET` | `/v1/markets/:market/book` | Snapshot + BBO |
-| `GET` | `/v1/markets/:market/stream?userId=` | SSE live events |
+| --- | --- | --- |
+| `GET` | `/health` | Process health and active market |
+| `POST` | `/v1/markets/:market/credit` | Credit available balance |
+| `POST` | `/v1/markets/:market/orders` | Place a limit or market order |
+| `DELETE` | `/v1/markets/:market/orders/:orderId` | Cancel an order |
+| `GET` | `/v1/markets/:market/orders/:orderId` | Fetch one order |
+| `GET` | `/v1/markets/:market/orders?userId=&openOnly=` | Fetch user orders |
+| `GET` | `/v1/markets/:market/balances/:userId` | Fetch engine balances |
+| `GET` | `/v1/markets/:market/book` | Fetch order book snapshot |
+| `GET` | `/v1/markets/:market/stream?userId=` | Subscribe to live SSE |
 
-MARKET buy requires `quoteBudget`. Unsupported TIF (`FOK_BUDGET`) is rejected.
+Notable engine rules:
+
+- Units are integer-only.
+- Market buys require `quoteBudget`.
+- `FOK_BUDGET` is defined in types but not implemented by the engine.
+
+## Testing
+
+### Exchange test suite
 
 ```bash
 pnpm test:exchange
@@ -132,8 +182,31 @@ pnpm test:exchange:integration
 pnpm test:exchange:e2e
 ```
 
-### Status
+- Unit tests cover core engine modules.
+- Integration tests cover replay and durability behavior.
+- End-to-end tests cover the HTTP surface and restart behavior.
 
-**Built:** matching, LIMIT + MARKET, GTC/IOC/FOK, balances/ledger/settlement, cancel, WAL restart, HTTP + SSE. Covered by unit, WAL integration, and HTTP e2e tests.
+## Project status
 
-**Not yet:** fees, amend, FOK_BUDGET, multi-market process, and the web-app gateway to this HTTP/SSE API.
+### Implemented
+
+- Single-market exchange engine for `SOL-USD`
+- Balance locking, settlement, and append-only ledger
+- WAL persistence with checkpoints and replay
+- HTTP commands and queries
+- SSE for live order, credit, and BBO events
+- Web app authentication, custodial wallet setup, deposit, withdraw, and dashboard UX
+- Application-layer infra bootstrap and shared message contracts
+
+### In progress
+
+- Exchange gateway service
+- OMS and product-side order history
+- Price service and chart history
+- Authenticated application gateway for trading flows
+
+## Deployment notes
+
+- `apps/web` is suitable for Vercel.
+- `apps/exchange` should run as a single long-lived service with persistent disk for WAL and snapshots.
+- Redis and TimescaleDB should be managed separately from the exchange process.
