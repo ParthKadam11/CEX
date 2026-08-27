@@ -217,9 +217,3 @@ pnpm test:exchange:e2e
 - Price service and chart history
 - Authenticated application gateway for trading flows
 - Trade UI wired through the application layer
-
-## Deployment notes
-
-- `apps/web` is suitable for Vercel.
-- `apps/exchange` should run as a single long-lived service with persistent disk for WAL and snapshots.
-- Redis and TimescaleDB should be managed separately from the exchange process.
