@@ -14,12 +14,11 @@ import {
 } from "@cex/exchange-types";
 import type { EngineClient } from "../engine/client.js";
 import type { CommandDedupe } from "../dedupe.js";
+import { publishTrade } from "../redis/pubsub.js";
 import { publishOrderEvent } from "../redis/streams.js";
 
-/**
-  One Redis command → engine HTTP → orders:events.
-  HTTP response decides success; SSE is a separate live path.
-*/
+// One Redis command → engine HTTP → orders:events. HTTP response decides success; SSE is a separate live path.
+
 export class CommandHandler {
   constructor(
     private readonly engine: EngineClient,
@@ -92,6 +91,7 @@ export class CommandHandler {
     const order = toEngineOrder(command);
     const result = await this.engine.place(order);
     await this.emitPlaceEvents(command, result);
+    await this.publishTrades(result);
   }
 
   private async handleCancel(command: CancelCommand): Promise<void> {
@@ -201,6 +201,27 @@ export class CommandHandler {
   private async emit(event: AppOrderEvent): Promise<void> {
     await publishOrderEvent(this.redis, event);
     console.log("[cmd] event", event.type, event.commandId ?? event.orderId);
+  }
+
+  private async publishTrades(result: PlacementResult): Promise<void> {
+    for (const trade of result.trades) {
+      try {
+        await publishTrade(this.redis, {
+          market: trade.market,
+          tradeId: trade.tradeId,
+          price: trade.price,
+          quantity: trade.quantity,
+          buyOrderId: trade.buyOrderId,
+          sellOrderId: trade.sellOrderId,
+          timestamp: trade.timestamp,
+        });
+      } catch (error) {
+        console.error(
+          "[pubsub] trade publish failed:",
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
   }
 }
 

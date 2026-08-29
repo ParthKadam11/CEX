@@ -5,6 +5,7 @@ import { CommandHandler } from "./commands/handler.js";
 import { EngineClient } from "./engine/client.js";
 import { EngineSseClient } from "./engine/sse.js";
 import { createGatewayApp } from "./http/server.js";
+import { publishBbo } from "./redis/pubsub.js";
 import {
   ackCommand,
   createRedis,
@@ -32,7 +33,18 @@ async function main(): Promise<void> {
     );
   }
 
-  const sse = new EngineSseClient(engine.streamUrl(), (event) => {
+  const sse = new EngineSseClient(engine.streamUrl(), async (event) => {
+    if (event.kind === "BBO") {
+      await publishBbo(redis, {
+        market: event.market,
+        bestBid: event.bestBid,
+        bestAsk: event.bestAsk,
+        timestamp: Date.now(),
+      });
+      console.log("[pubsub] BBO published", event.market);
+      return;
+    }
+
     console.log("[sse] event", event.kind);
   });
   sse.start();
