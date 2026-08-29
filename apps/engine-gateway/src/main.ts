@@ -3,6 +3,7 @@ import { loadConfig } from "./config.js";
 import { CommandDedupe } from "./dedupe.js";
 import { CommandHandler } from "./commands/handler.js";
 import { EngineClient } from "./engine/client.js";
+import { EngineSseClient } from "./engine/sse.js";
 import { createGatewayApp } from "./http/server.js";
 import {
   ackCommand,
@@ -30,6 +31,11 @@ async function main(): Promise<void> {
       err instanceof Error ? err.message : err,
     );
   }
+
+  const sse = new EngineSseClient(engine.streamUrl(), (event) => {
+    console.log("[sse] event", event.kind);
+  });
+  sse.start();
 
   let commandsRunning = true;
   const commandLoop = (async () => {
@@ -61,6 +67,7 @@ async function main(): Promise<void> {
   const shutdown = async () => {
     console.log("[boot] shutting down");
     commandsRunning = false;
+    sse.stop();
     server.close();
     await commandLoop.catch(() => undefined);
     redis.disconnect();
