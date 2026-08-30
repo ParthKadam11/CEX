@@ -109,3 +109,14 @@ model OrderFill {
 
   @@index([orderId, createdAt])
 }
+
+model OmsProcessedEvent {
+  id          String   @id @default(uuid())
+  eventId     String   @unique
+  commandId   String?
+  orderId     String?
+  eventType   String
+  processedAt DateTime @default(now())
+
+  @@index([orderId, processedAt])
+}

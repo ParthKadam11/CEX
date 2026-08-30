@@ -17,7 +17,7 @@ import type {
   Timescale      = durable ticks / history (written by XPG)
 */
 
-/** Redis Stream: OMS → XPG (place / cancel / credit). */
+// Redis Stream: OMS → XPG (place / cancel / credit).
 export const ORDERS_COMMANDS_STREAM = "orders:commands" as const;
 
 // Redis Stream: malformed commands removed from orders:commands. 
@@ -25,6 +25,9 @@ export const ORDERS_COMMANDS_DLQ_STREAM = "orders:commands:dlq" as const;
 
 // Redis Stream: XPG → OMS (fills, status, rejects). 
 export const ORDERS_EVENTS_STREAM = "orders:events" as const;
+
+// Redis Stream: malformed events removed from orders:events.
+export const ORDERS_EVENTS_DLQ_STREAM = "orders:events:dlq" as const;
 
 // Consumer group on orders:commands (Exchange Processor Gateway). 
 export const XPG_COMMANDS_GROUP = "xpg" as const;
