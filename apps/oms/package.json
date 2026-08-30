@@ -1,0 +1,22 @@
+{
+  "name": "@cex/oms",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.3"
+  },
+  "devDependencies": {
+    "@cex/typescript-config": "workspace:*",
+    "@types/node": "^20.19.43",
+    "tsx": "^4.20.0",
+    "typescript": "^5"
+  }
+}
