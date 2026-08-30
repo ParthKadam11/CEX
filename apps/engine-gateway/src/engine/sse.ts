@@ -4,6 +4,7 @@ import type {
   MarketSymbol,
   OrderEvent,
 } from "@cex/exchange-types";
+import { log } from "../logger.js";
 
 export type EngineSseReady = {
   kind: "ready";
@@ -13,6 +14,10 @@ export type EngineSseReady = {
 
 export type EngineSseEvent = ExchangeStreamEvent | EngineSseReady;
 type EventHandler = (event: EngineSseEvent) => void | Promise<void>;
+type SseOptions = {
+  onConnectionChange?: (connected: boolean) => void;
+  onReconnect?: () => void;
+};
 
 //Reads the exchange SSE stream and reconnects after disconnects. This class only transports and validates engine events. Consumers decide what to do with them, such as publishing BBO/trades to Redis.
 
@@ -24,6 +29,7 @@ export class EngineSseClient {
   constructor(
     private readonly url: string,
     private readonly onEvent: EventHandler,
+    private readonly options: SseOptions = {},
   ) {}
 
   start(): void {
@@ -50,10 +56,10 @@ export class EngineSseClient {
       } catch (error) {
         if (this.stopped) return;
 
-        console.error(
-          "[sse] disconnected:",
-          error instanceof Error ? error.message : error,
-        );
+        log("warn", "SSE disconnected", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        this.options.onReconnect?.();
         await sleep(delayMs);
         delayMs = Math.min(delayMs * 2, 10_000);
       }
@@ -74,7 +80,8 @@ export class EngineSseClient {
         throw new Error(`SSE connect failed: ${response.status}`);
       }
 
-      console.log("[sse] connected", this.url);
+      this.options.onConnectionChange?.(true);
+      log("info", "SSE connected", { url: this.url });
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -125,6 +132,7 @@ export class EngineSseClient {
       if (this.abortController === controller) {
         this.abortController = null;
       }
+      this.options.onConnectionChange?.(false);
     }
   }
 
@@ -140,21 +148,20 @@ export class EngineSseClient {
 
       const event = parseExchangeEvent(data);
       if (!event) {
-        console.error("[sse] ignored invalid event", eventName);
+        log("warn", "ignored invalid SSE event", { eventName });
         return;
       }
 
       if (eventName !== "message" && eventName !== event.kind) {
-        console.error("[sse] event name does not match payload", eventName);
+        log("warn", "SSE event name does not match payload", { eventName });
         return;
       }
 
       await this.onEvent(event);
     } catch (error) {
-      console.error(
-        "[sse] invalid event data:",
-        error instanceof Error ? error.message : error,
-      );
+      log("warn", "invalid SSE event data", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 }

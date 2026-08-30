@@ -1,32 +1,30 @@
 
-// In-memory commandId dedupe so Redis retries do not double-hit the engine. 
+import type Redis from "ioredis";
+
+// Redis-backed commandId dedupe so restarts do not double-hit the engine.
 export class CommandDedupe {
-  private readonly seen = new Map<string, number>();
-  private readonly ttlMs: number;
-  private readonly maxSize: number;
+  private readonly ttlSeconds: number;
 
-  constructor(opts?: { ttlMs?: number; maxSize?: number }) {
-    this.ttlMs = opts?.ttlMs ?? 24 * 60 * 60 * 1000;
-    this.maxSize = opts?.maxSize ?? 50_000;
+  constructor(
+    private readonly redis: Redis,
+    opts?: { ttlMs?: number; keyPrefix?: string },
+  ) {
+    const ttlMs = opts?.ttlMs ?? 24 * 60 * 60 * 1000;
+    this.ttlSeconds = Math.max(1, Math.ceil(ttlMs / 1000));
+    this.keyPrefix = opts?.keyPrefix ?? "engine-gateway:dedupe:";
   }
 
-  // Returns true if this commandId was already processed. 
-  checkAndMark(commandId: string): boolean {
-    this.prune();
-    if (this.seen.has(commandId)) return true;
-    this.seen.set(commandId, Date.now());
-    if (this.seen.size > this.maxSize) {
-      const oldest = this.seen.keys().next().value;
-      if (oldest !== undefined) this.seen.delete(oldest);
-    }
-    return false;
-  }
+  private readonly keyPrefix: string;
 
-  private prune(): void {
-    const cutoff = Date.now() - this.ttlMs;
-    for (const [id, at] of this.seen) {
-      if (at < cutoff) this.seen.delete(id);
-      else break;
-    }
+  // Returns true if this commandId was already processed.
+  async checkAndMark(commandId: string): Promise<boolean> {
+    const result = await this.redis.set(
+      `${this.keyPrefix}${commandId}`,
+      "1",
+      "EX",
+      this.ttlSeconds,
+      "NX",
+    );
+    return result === null;
   }
 }

@@ -20,13 +20,16 @@ import type {
 /** Redis Stream: OMS → XPG (place / cancel / credit). */
 export const ORDERS_COMMANDS_STREAM = "orders:commands" as const;
 
-/** Redis Stream: XPG → OMS (fills, status, rejects). */
+// Redis Stream: malformed commands removed from orders:commands. 
+export const ORDERS_COMMANDS_DLQ_STREAM = "orders:commands:dlq" as const;
+
+// Redis Stream: XPG → OMS (fills, status, rejects). 
 export const ORDERS_EVENTS_STREAM = "orders:events" as const;
 
-/** Consumer group on orders:commands (Exchange Processor Gateway). */
+// Consumer group on orders:commands (Exchange Processor Gateway). 
 export const XPG_COMMANDS_GROUP = "xpg" as const;
 
-/** Consumer group on orders:events (Order Management Service). */
+// Consumer group on orders:events (Order Management Service). 
 export const OMS_EVENTS_GROUP = "oms" as const;
 
 export function mdBboChannel(market: MarketSymbol = "SOL-USD"): string {
@@ -48,12 +51,12 @@ export type PlaceCommand = {
   side: Side;
   orderType: OrderType;
   timeInForce: TimeInForce;
-  /** Integer ticks; 0 for MARKET. */
+  // Integer ticks; 0 for MARKET. 
   price: number;
-  /** Integer lots. */
+  // Integer lots. 
   quantity: number;
   quoteBudget?: number;
-  /** Optional engine order id; otherwise XPG/engine may assign. */
+  // Optional engine order id; otherwise XPG/engine may assign. 
   orderId?: string;
   timestamp: number;
 };
@@ -73,12 +76,69 @@ export type CreditCommand = {
   type: "CREDIT";
   userId: string;
   asset: AssetId;
-  /** Integer asset units. */
+  // Integer asset units. 
   amount: number;
   timestamp: number;
 };
 
 export type AppCommand = PlaceCommand | CancelCommand | CreditCommand;
+
+export function isAppCommand(value: unknown): value is AppCommand {
+  if (!isRecord(value)) return false;
+  if (
+    typeof value.commandId !== "string" ||
+    value.commandId.length === 0 ||
+    typeof value.userId !== "string" ||
+    value.userId.length === 0
+  ) {
+    return false;
+  }
+
+  if (value.type === "CREDIT") {
+    return (
+      (value.asset === "SOL" || value.asset === "USD") &&
+      typeof value.amount === "number" &&
+      Number.isFinite(value.amount) &&
+      typeof value.timestamp === "number"
+    );
+  }
+
+  if (value.type === "CANCEL") {
+    return (
+      typeof value.orderId === "string" &&
+      value.orderId.length > 0 &&
+      value.market === "SOL-USD" &&
+      (value.clientOrderId === undefined ||
+        typeof value.clientOrderId === "string") &&
+      typeof value.timestamp === "number"
+    );
+  }
+
+  if (value.type === "PLACE") {
+    return (
+      typeof value.clientOrderId === "string" &&
+      value.clientOrderId.length > 0 &&
+      value.market === "SOL-USD" &&
+      (value.side === "BUY" || value.side === "SELL") &&
+      (value.orderType === "LIMIT" || value.orderType === "MARKET") &&
+      (value.timeInForce === "GTC" ||
+        value.timeInForce === "IOC" ||
+        value.timeInForce === "FOK" ||
+        value.timeInForce === "FOK_BUDGET") &&
+      typeof value.price === "number" &&
+      Number.isFinite(value.price) &&
+      typeof value.quantity === "number" &&
+      Number.isFinite(value.quantity) &&
+      (value.quoteBudget === undefined ||
+        (typeof value.quoteBudget === "number" &&
+          Number.isFinite(value.quoteBudget))) &&
+      (value.orderId === undefined || typeof value.orderId === "string") &&
+      typeof value.timestamp === "number"
+    );
+  }
+
+  return false;
+}
 
 export type AppOrderEventType =
   | "ACCEPTED"
@@ -99,9 +159,9 @@ export type AppOrderEvent = {
   orderId?: string;
   clientOrderId?: string;
   status?: OrderStatus;
-  /** Engine order event when applicable. */
+  // Engine order event when applicable. 
   engineEvent?: OrderEvent;
-  /** Engine order snapshot after place/cancel when available. */
+  // Engine order snapshot after place/cancel when available.
   order?: Order;
   reason?: string;
   fills?: Array<{
@@ -129,7 +189,11 @@ export type TradeTickMessage = {
   timestamp: number;
 };
 
-/** Redis Stream entries store JSON in a `payload` field. */
+// Redis Stream entries store JSON in a `payload` field.
 export type StreamEnvelope<T> = {
   payload: T;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}

@@ -5,11 +5,15 @@ import { CommandHandler } from "./commands/handler.js";
 import { EngineClient } from "./engine/client.js";
 import { EngineSseClient } from "./engine/sse.js";
 import { createGatewayApp } from "./http/server.js";
+import { log } from "./logger.js";
+import { GatewayMetrics } from "./metrics.js";
 import { publishBbo } from "./redis/pubsub.js";
 import {
   ackCommand,
   createRedis,
+  deadLetterCommand,
   ensureCommandGroup,
+  recoverPendingCommands,
   readCommands,
 } from "./redis/streams.js";
 
@@ -17,35 +21,45 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const redis = createRedis(config.redisUrl);
   const engine = new EngineClient(config.exchangeUrl, config.market);
-  const dedupe = new CommandDedupe();
-  const handler = new CommandHandler(engine, redis, dedupe);
+  const metrics = new GatewayMetrics();
+  const dedupe = new CommandDedupe(redis);
+  const handler = new CommandHandler(engine, redis, dedupe, metrics);
 
   await ensureCommandGroup(redis);
-  console.log("[boot] redis command group ready");
+  log("info", "redis command group ready");
 
   try {
     const health = await engine.health();
-    console.log("[boot] exchange ok", health);
+    log("info", "exchange reachable", health);
   } catch (err) {
-    console.warn(
-      "[boot] exchange not reachable yet:",
-      err instanceof Error ? err.message : err,
-    );
+    log("warn", "exchange not reachable yet", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   const sse = new EngineSseClient(engine.streamUrl(), async (event) => {
     if (event.kind === "BBO") {
-      await publishBbo(redis, {
-        market: event.market,
-        bestBid: event.bestBid,
-        bestAsk: event.bestAsk,
-        timestamp: Date.now(),
-      });
-      console.log("[pubsub] BBO published", event.market);
+      try {
+        await publishBbo(redis, {
+          market: event.market,
+          bestBid: event.bestBid,
+          bestAsk: event.bestAsk,
+          timestamp: Date.now(),
+        });
+        metrics.increment("bboPublished");
+        log("info", "BBO published", { market: event.market });
+      } catch (err) {
+        log("error", "BBO publish failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       return;
     }
 
-    console.log("[sse] event", event.kind);
+    log("info", "SSE event received", { kind: event.kind });
+  }, {
+    onConnectionChange: (connected) => metrics.setSseConnected(connected),
+    onReconnect: () => metrics.increment("sseReconnects"),
   });
   sse.start();
 
@@ -53,31 +67,55 @@ async function main(): Promise<void> {
   const commandLoop = (async () => {
     while (commandsRunning) {
       try {
-        const batch = await readCommands(redis, config.consumerName);
+        const pending = await recoverPendingCommands(
+          redis,
+          config.consumerName,
+        );
+        const batch = [
+          ...pending,
+          ...(await readCommands(redis, config.consumerName)),
+        ];
+
         for (const msg of batch) {
-          await handler.handle(msg.command);
+          if ("command" in msg) {
+            metrics.increment("commandsReceived");
+            await handler.handle(msg.command);
+          } else {
+            await deadLetterCommand(redis, msg);
+            metrics.increment("commandsDeadLettered");
+            log("warn", "command moved to dead-letter stream", {
+              messageId: msg.id,
+              reason: msg.reason,
+            });
+          }
           await ackCommand(redis, msg.id);
         }
       } catch (err) {
         if (!commandsRunning) return;
-        console.error(
-          "[commands] loop error:",
-          err instanceof Error ? err.message : err,
-        );
+        log("error", "command loop error", {
+          error: err instanceof Error ? err.message : String(err),
+        });
         await sleep(1000);
       }
     }
   })();
 
-  const app = createGatewayApp();
+  const app = createGatewayApp({
+    redis,
+    engine,
+    market: config.market,
+    metrics,
+    isSseConnected: () => metrics.snapshot().sseConnected === true,
+  });
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
-    console.log(
-      `engine-gateway listening on http://localhost:${info.port} exchange=${config.exchangeUrl}`,
-    );
+    log("info", "HTTP server listening", {
+      port: info.port,
+      exchangeUrl: config.exchangeUrl,
+    });
   });
 
   const shutdown = async () => {
-    console.log("[boot] shutting down");
+    log("info", "shutting down");
     commandsRunning = false;
     sse.stop();
     server.close();
@@ -94,6 +132,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(err);
+  log("error", "fatal startup error", {
+    error: err instanceof Error ? err.message : String(err),
+  });
   process.exit(1);
 });

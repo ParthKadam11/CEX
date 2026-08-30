@@ -14,6 +14,8 @@ import {
 } from "@cex/exchange-types";
 import type { EngineClient } from "../engine/client.js";
 import type { CommandDedupe } from "../dedupe.js";
+import { log } from "../logger.js";
+import type { GatewayMetrics } from "../metrics.js";
 import { publishTrade } from "../redis/pubsub.js";
 import { publishOrderEvent } from "../redis/streams.js";
 
@@ -24,11 +26,15 @@ export class CommandHandler {
     private readonly engine: EngineClient,
     private readonly redis: Redis,
     private readonly dedupe: CommandDedupe,
+    private readonly metrics: GatewayMetrics,
   ) {}
 
   async handle(command: AppCommand): Promise<void> {
-    if (this.dedupe.checkAndMark(command.commandId)) {
-      console.log("[cmd] skip duplicate", command.commandId);
+    if (await this.dedupe.checkAndMark(command.commandId)) {
+      this.metrics.increment("commandsDuplicate");
+      log("info", "duplicate command skipped", {
+        commandId: command.commandId,
+      });
       return;
     }
 
@@ -45,7 +51,13 @@ export class CommandHandler {
           return;
       }
     } catch (err) {
+      this.metrics.increment("commandsFailed");
       const reason = err instanceof Error ? err.message : String(err);
+      log("error", "command failed", {
+        commandId: command.commandId,
+        type: command.type,
+        error: reason,
+      });
       await this.emit({
         eventId: crypto.randomUUID(),
         commandId: command.commandId,
@@ -75,6 +87,7 @@ export class CommandHandler {
         timestamp: Date.now(),
       });
     } catch (err) {
+      this.metrics.increment("commandsFailed");
       await this.emit({
         eventId: crypto.randomUUID(),
         commandId: command.commandId,
@@ -200,7 +213,12 @@ export class CommandHandler {
 
   private async emit(event: AppOrderEvent): Promise<void> {
     await publishOrderEvent(this.redis, event);
-    console.log("[cmd] event", event.type, event.commandId ?? event.orderId);
+    this.metrics.increment("eventsPublished");
+    log("info", "command event published", {
+      type: event.type,
+      commandId: event.commandId,
+      orderId: event.orderId,
+    });
   }
 
   private async publishTrades(result: PlacementResult): Promise<void> {
@@ -216,11 +234,13 @@ export class CommandHandler {
           timestamp: trade.timestamp,
         });
       } catch (error) {
-        console.error(
-          "[pubsub] trade publish failed:",
-          error instanceof Error ? error.message : error,
-        );
+        log("error", "trade publish failed", {
+          tradeId: trade.tradeId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        continue;
       }
+      this.metrics.increment("tradesPublished");
     }
   }
 }

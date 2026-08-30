@@ -1,10 +1,12 @@
 import Redis from "ioredis";
 import {
   ORDERS_COMMANDS_STREAM,
+  ORDERS_COMMANDS_DLQ_STREAM,
   ORDERS_EVENTS_STREAM,
   XPG_COMMANDS_GROUP,
   type AppCommand,
   type AppOrderEvent,
+  isAppCommand,
 } from "@cex/app-contracts";
 
 export function createRedis(url: string): Redis {
@@ -35,13 +37,21 @@ export type CommandMessage = {
   command: AppCommand;
 };
 
+export type DeadLetterMessage = {
+  id: string;
+  rawPayload: string | null;
+  reason: string;
+};
+
+export type CommandReadResult = CommandMessage | DeadLetterMessage;
+
 // Blocking read of new commands for this consumer. 
 export async function readCommands(
   redis: Redis,
   consumerName: string,
   count = 8,
   blockMs = 5_000,
-): Promise<CommandMessage[]> {
+): Promise<CommandReadResult[]> {
   const result = await redis.xreadgroup(
     "GROUP",
     XPG_COMMANDS_GROUP,
@@ -57,31 +67,63 @@ export async function readCommands(
 
   if (!result) return [];
 
-  const out: CommandMessage[] = [];
   const streams = result as Array<[string, Array<[string, string[]]>]>;
-  for (const [, messages] of streams) {
-    for (const [id, fields] of messages) {
-      const payload = fieldValue(fields, "payload");
-      if (!payload) {
-        console.error("[streams] missing payload", id);
-        continue;
-      }
-      try {
-        out.push({ id, command: JSON.parse(payload) as AppCommand });
-      } catch (err) {
-        console.error(
-          "[streams] bad payload",
-          id,
-          err instanceof Error ? err.message : err,
-        );
-      }
-    }
-  }
-  return out;
+  return parseMessages(streams[0]?.[1] ?? []);
+}
+
+// Reclaim commands left pending by a crashed gateway consumer. A message must be idle for minIdleMs before another consumer takes it.
+ 
+export async function recoverPendingCommands(
+  redis: Redis,
+  consumerName: string,
+  minIdleMs = 30_000,
+  count = 8,
+): Promise<CommandReadResult[]> {
+  const result = await redis.xpending(
+    ORDERS_COMMANDS_STREAM,
+    XPG_COMMANDS_GROUP,
+    "-",
+    "+",
+    count,
+  );
+  const pending = result as Array<[string, string, number, number]>;
+  const ids = pending
+    .filter(([, , idleMs]) => idleMs >= minIdleMs)
+    .map(([id]) => id);
+
+  if (ids.length === 0) return [];
+
+  const claimed = await redis.xclaim(
+    ORDERS_COMMANDS_STREAM,
+    XPG_COMMANDS_GROUP,
+    consumerName,
+    minIdleMs,
+    ...ids,
+  );
+  return parseMessages(claimed as Array<[string, string[]]>);
 }
 
 export async function ackCommand(redis: Redis, id: string): Promise<void> {
   await redis.xack(ORDERS_COMMANDS_STREAM, XPG_COMMANDS_GROUP, id);
+}
+
+export async function deadLetterCommand(
+  redis: Redis,
+  message: DeadLetterMessage,
+): Promise<string> {
+  const id = await redis.xadd(
+    ORDERS_COMMANDS_DLQ_STREAM,
+    "*",
+    "payload",
+    JSON.stringify({
+      originalMessageId: message.id,
+      rawPayload: message.rawPayload,
+      reason: message.reason,
+      timestamp: Date.now(),
+    }),
+  );
+  if (!id) throw new Error("xadd orders:commands:dlq returned null");
+  return id;
 }
 
 // Publish an app-layer order event for OMS (and tooling) to consume. 
@@ -119,4 +161,37 @@ function fieldValue(fields: string[], key: string): string | null {
     if (fields[i] === key) return fields[i + 1] ?? null;
   }
   return null;
+}
+
+function parseMessages(
+  messages: Array<[string, string[]]>,
+): CommandReadResult[] {
+  return messages.map(([id, fields]) => {
+    const rawPayload = fieldValue(fields, "payload");
+    if (!rawPayload) {
+      return {
+        id,
+        rawPayload,
+        reason: "MISSING_PAYLOAD",
+      };
+    }
+
+    try {
+      const value: unknown = JSON.parse(rawPayload);
+      if (!isAppCommand(value)) {
+        return {
+          id,
+          rawPayload,
+          reason: "INVALID_COMMAND",
+        };
+      }
+      return { id, command: value };
+    } catch {
+      return {
+        id,
+        rawPayload,
+        reason: "INVALID_JSON",
+      };
+    }
+  });
 }
