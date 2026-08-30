@@ -79,12 +79,21 @@ importers:
 
   apps/oms:
     dependencies:
+      '@cex/app-contracts':
+        specifier: workspace:*
+        version: link:../../packages/app-contracts
+      '@cex/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.3)
       hono:
         specifier: ^4.13.3
         version: 4.13.3
+      ioredis:
+        specifier: ^5.8.2
+        version: 5.11.1
     devDependencies:
       '@cex/typescript-config':
         specifier: workspace:*
