@@ -11,6 +11,35 @@ enum Provider {
   Google
 }
 
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  LIMIT
+  MARKET
+}
+
+enum OrderTimeInForce {
+  GTC
+  IOC
+  FOK
+  FOK_BUDGET
+}
+
+enum OmsOrderStatus {
+  PENDING
+  ACCEPTED
+  OPEN
+  PARTIALLY_FILLED
+  FILLED
+  CANCEL_REQUESTED
+  CANCELLED
+  REJECTED
+  FAILED
+}
+
 model User {
   id            String      @id @default(uuid())
   username      String      @unique
@@ -23,6 +52,7 @@ model User {
   usdWalletId   String?
   usdWallet     UsdWallet?
   provider      Provider
+  orders        Order[]
 }
 
 /// Simulated USD quote currency — DB only (not on-chain).
@@ -39,4 +69,43 @@ model SolWallet {
   privateKey  String
   userId      String  @unique
   user        User    @relation(fields: [userId], references: [id])
+}
+
+model Order {
+  id              String           @id @default(uuid())
+  engineOrderId   String           @unique
+  placeCommandId  String           @unique
+  cancelCommandId String?          @unique
+  clientOrderId   String
+  userId          String
+  market          String
+  side            OrderSide
+  type            OrderType
+  timeInForce     OrderTimeInForce
+  price           Int
+  quantity        Int
+  quoteBudget     Int?
+  filledQuantity  Int              @default(0)
+  status          OmsOrderStatus   @default(PENDING)
+  failureReason   String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  user            User             @relation(fields: [userId], references: [id])
+  fills           OrderFill[]
+
+  @@unique([userId, clientOrderId])
+  @@index([userId, createdAt])
+  @@index([userId, status])
+}
+
+model OrderFill {
+  id        String   @id @default(uuid())
+  orderId   String
+  tradeId   String   @unique
+  price     Int
+  quantity  Int
+  createdAt DateTime @default(now())
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
 }
