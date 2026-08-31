@@ -1,5 +1,6 @@
 import type Redis from "ioredis";
 import {
+  DLQ_STREAM_MAXLEN,
   OMS_EVENTS_GROUP,
   ORDERS_EVENTS_DLQ_STREAM,
   ORDERS_EVENTS_STREAM,
@@ -98,6 +99,9 @@ export async function deadLetterEvent(
 ): Promise<string> {
   const id = await redis.xadd(
     ORDERS_EVENTS_DLQ_STREAM,
+    "MAXLEN",
+    "~",
+    DLQ_STREAM_MAXLEN,
     "*",
     "payload",
     JSON.stringify({

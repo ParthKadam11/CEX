@@ -28,6 +28,7 @@ export class FileWal {
     if (!fs.existsSync(this.filePath)) {
       fs.writeFileSync(this.filePath, "");
     }
+    recoverWal(this.filePath);
     this.seq = lastSeqInFile(this.filePath);
     this.fd = fs.openSync(this.filePath, "a");
   }
@@ -105,20 +106,55 @@ function parseCommands(filePath: string): EngineCommand[] {
   for (const line of raw.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    out.push(JSON.parse(trimmed) as EngineCommand);
+    out.push(parseCommand(trimmed));
   }
   return out;
 }
 
 function lastSeqInFile(filePath: string): number {
-  const raw = fs.readFileSync(filePath, "utf8");
-  if (!raw.trim()) return 0;
+  return parseCommands(filePath).at(-1)?.seq ?? 0;
+}
 
-  const lines = raw.split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const trimmed = lines[i]?.trim();
+// Keep the valid prefix and preserve the original file for manual recovery.
+export function recoverWal(filePath: string): string | null {
+  const raw = fs.readFileSync(filePath, "utf8");
+  if (!raw.trim()) return null;
+
+  const valid: string[] = [];
+  let previousSeq = 0;
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
     if (!trimmed) continue;
-    return (JSON.parse(trimmed) as EngineCommand).seq;
+
+    try {
+      const command = parseCommand(trimmed);
+      if (command.seq <= previousSeq) throw new Error("non-monotonic seq");
+      previousSeq = command.seq;
+      valid.push(trimmed);
+    } catch {
+      const backupPath = `${filePath}.corrupt-${Date.now()}-${process.pid}`;
+      fs.writeFileSync(backupPath, raw, "utf8");
+      atomicWriteFile(
+        filePath,
+        valid.length > 0 ? `${valid.join("\n")}\n` : "",
+      );
+      return backupPath;
+    }
   }
-  return 0;
+  return null;
+}
+
+function parseCommand(line: string): EngineCommand {
+  const value: unknown = JSON.parse(line);
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("seq" in value) ||
+    typeof value.seq !== "number" ||
+    !Number.isSafeInteger(value.seq) ||
+    value.seq <= 0
+  ) {
+    throw new Error("invalid WAL command");
+  }
+  return value as EngineCommand;
 }

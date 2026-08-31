@@ -99,4 +99,24 @@ describe("FileWal", () => {
     expect(wal.readAll()).toHaveLength(20);
     wal.close();
   });
+
+  it("recovers a truncated tail and keeps a quarantine backup", () => {
+    const file = tempWalPath();
+    fs.writeFileSync(
+      file,
+      `${JSON.stringify({ type: "CREDIT", seq: 1 })}\n{"type":"PLACE","seq":`,
+      "utf8",
+    );
+
+    const wal = new FileWal(file);
+
+    expect(wal.readAll().map((command) => command.seq)).toEqual([1]);
+    expect(
+      fs
+        .readdirSync(path.dirname(file))
+        .some((name) => name.startsWith("SOL-USD.jsonl.corrupt-")),
+    ).toBe(true);
+    expect(wal.currentSeq).toBe(1);
+    wal.close();
+  });
 });

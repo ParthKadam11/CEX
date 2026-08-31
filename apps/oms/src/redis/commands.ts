@@ -1,5 +1,6 @@
 import type Redis from "ioredis";
 import {
+  COMMAND_STREAM_MAXLEN,
   ORDERS_COMMANDS_STREAM,
   type AppCommand,
   type CancelCommand,
@@ -34,6 +35,9 @@ async function publishCommand(
 ): Promise<string> {
   const id = await redis.xadd(
     ORDERS_COMMANDS_STREAM,
+    "MAXLEN",
+    "~",
+    COMMAND_STREAM_MAXLEN,
     "*",
     "payload",
     JSON.stringify(command),

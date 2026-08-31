@@ -1,5 +1,8 @@
 import Redis from "ioredis";
 import {
+  COMMAND_STREAM_MAXLEN,
+  DLQ_STREAM_MAXLEN,
+  EVENT_STREAM_MAXLEN,
   ORDERS_COMMANDS_STREAM,
   ORDERS_COMMANDS_DLQ_STREAM,
   ORDERS_EVENTS_STREAM,
@@ -11,8 +14,10 @@ import {
 
 export function createRedis(url: string): Redis {
   return new Redis(url, {
-    maxRetriesPerRequest: null,
+    maxRetriesPerRequest: 3,
     enableReadyCheck: true,
+    retryStrategy: (attempt) =>
+      attempt > 5 ? null : Math.min(attempt * 200, 2_000),
   });
 }
 
@@ -113,6 +118,9 @@ export async function deadLetterCommand(
 ): Promise<string> {
   const id = await redis.xadd(
     ORDERS_COMMANDS_DLQ_STREAM,
+    "MAXLEN",
+    "~",
+    DLQ_STREAM_MAXLEN,
     "*",
     "payload",
     JSON.stringify({
@@ -133,6 +141,9 @@ export async function publishOrderEvent(
 ): Promise<string> {
   const id = await redis.xadd(
     ORDERS_EVENTS_STREAM,
+    "MAXLEN",
+    "~",
+    EVENT_STREAM_MAXLEN,
     "*",
     "payload",
     JSON.stringify(event),
@@ -148,6 +159,9 @@ export async function injectCommand(
 ): Promise<string> {
   const id = await redis.xadd(
     ORDERS_COMMANDS_STREAM,
+    "MAXLEN",
+    "~",
+    COMMAND_STREAM_MAXLEN,
     "*",
     "payload",
     JSON.stringify(command),

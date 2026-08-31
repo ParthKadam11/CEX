@@ -55,3 +55,20 @@ HTTP status codes remain meaningful: `400` for invalid input, `401` for
 missing service or user authentication, `403` for ownership failures, `404`
 for missing resources, `409` for an idempotency conflict, and `502` when a
 gateway dependency is unavailable.
+
+## Redis stream retention
+
+The command and event streams use approximate `MAXLEN` retention of 100,000
+entries. Each dead-letter stream retains approximately 25,000 entries. DLQ
+entries must be replayed or exported before they age out.
+
+Replay DLQ entries after correcting the underlying issue:
+
+```bash
+pnpm --filter @cex/engine-gateway dlq:replay -- --stream commands --limit 100 --dry-run
+pnpm --filter @cex/engine-gateway dlq:replay -- --stream commands --limit 100
+```
+
+The exchange quarantines a corrupted WAL and restores the valid prefix during
+startup. The original file is retained as
+`<wal>.corrupt-<timestamp>-<pid>` for manual inspection.

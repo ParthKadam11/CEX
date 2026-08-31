@@ -9,7 +9,8 @@
     "build": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "test:integration": "vitest run tests/integration --reporter=verbose"
+    "test:integration": "vitest run tests/integration --reporter=verbose",
+    "dlq:replay": "tsx src/replay-dlq.ts"
   },
   "dependencies": {
     "@cex/app-contracts": "workspace:*",

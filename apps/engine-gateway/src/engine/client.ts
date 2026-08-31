@@ -9,18 +9,53 @@ import type {
   PlacementResult,
 } from "@cex/exchange-types";
 
+export type EngineClientOptions = {
+  timeoutMs?: number;
+  maxRetries?: number;
+  failureThreshold?: number;
+  cooldownMs?: number;
+};
+
+class EngineCircuitOpenError extends Error {
+  constructor() {
+    super("ENGINE_CIRCUIT_OPEN");
+  }
+}
+
+class EngineTimeoutError extends Error {
+  constructor() {
+    super("ENGINE_REQUEST_TIMEOUT");
+  }
+}
+
 // Thin HTTP client for apps/exchange. Only process that should use this. 
 export class EngineClient {
+  private readonly timeoutMs: number;
+  private readonly maxRetries: number;
+  private readonly failureThreshold: number;
+  private readonly cooldownMs: number;
+  private consecutiveFailures = 0;
+  private circuitOpenedAt = 0;
+
   constructor(
     private readonly baseUrl: string,
     private readonly market: MarketSymbol,
     private readonly gatewayToken = "local-dev-exchange-token",
-  ) {}
+    options: EngineClientOptions = {},
+  ) {
+    this.timeoutMs = options.timeoutMs ?? 3_000;
+    this.maxRetries = options.maxRetries ?? 2;
+    this.failureThreshold = options.failureThreshold ?? 3;
+    this.cooldownMs = options.cooldownMs ?? 5_000;
+  }
 
-  async health(): Promise<{ ok: boolean; market: string }> {
-    const res = await fetch(`${this.baseUrl}/health`, {
-      headers: this.headers(),
-    });
+  async health(signal?: AbortSignal): Promise<{ ok: boolean; market: string }> {
+    const res = await this.request(
+      "/health",
+      { headers: this.headers() },
+      true,
+      signal,
+    );
     if (!res.ok) throw new Error(`engine health failed: ${res.status}`);
     return (await res.json()) as { ok: boolean; market: string };
   }
@@ -29,27 +64,32 @@ export class EngineClient {
     userId: string,
     asset: AssetId,
     amount: number,
+    signal?: AbortSignal,
   ): Promise<CreditResult> {
-    const res = await fetch(
-      `${this.baseUrl}/v1/markets/${this.market}/credit`,
+    const res = await this.request(
+      `/v1/markets/${this.market}/credit`,
       {
         method: "POST",
         headers: { ...this.headers(), "content-type": "application/json" },
         body: JSON.stringify({ userId, asset, amount }),
       },
+      false,
+      signal,
     );
     const body = (await res.json()) as CreditResult & {
       error?: string | { code?: string; message?: string };
     };
     if (!res.ok) {
-      throw new Error(errorMessage(body.error) ?? `credit failed: ${res.status}`);
+      throw new Error(
+        errorMessage(body.error) ?? `credit failed: ${res.status}`,
+      );
     }
     return body;
   }
 
-  async place(order: Order): Promise<PlacementResult> {
-    const res = await fetch(
-      `${this.baseUrl}/v1/markets/${this.market}/orders`,
+  async place(order: Order, signal?: AbortSignal): Promise<PlacementResult> {
+    const res = await this.request(
+      `/v1/markets/${this.market}/orders`,
       {
         method: "POST",
         headers: { ...this.headers(), "content-type": "application/json" },
@@ -64,12 +104,16 @@ export class EngineClient {
           quoteBudget: order.quoteBudget,
         }),
       },
+      false,
+      signal,
     );
     const body = (await res.json()) as PlacementResult & {
       error?: string | { code?: string; message?: string };
     };
     if (!res.ok && body.order === undefined) {
-      throw new Error(errorMessage(body.error) ?? `place failed: ${res.status}`);
+      throw new Error(
+        errorMessage(body.error) ?? `place failed: ${res.status}`,
+      );
     }
     if (!res.ok) {
       return {
@@ -82,33 +126,41 @@ export class EngineClient {
     return body;
   }
 
-  async cancel(orderId: string): Promise<CancelResult> {
-    const res = await fetch(
-      `${this.baseUrl}/v1/markets/${this.market}/orders/${orderId}`,
+  async cancel(orderId: string, signal?: AbortSignal): Promise<CancelResult> {
+    const res = await this.request(
+      `/v1/markets/${this.market}/orders/${orderId}`,
       { method: "DELETE", headers: this.headers() },
+      false,
+      signal,
     );
     const body = (await res.json()) as CancelResult & {
       error?: string | { code?: string; message?: string };
     };
     if (!res.ok && body.cancelled === undefined) {
-      throw new Error(errorMessage(body.error) ?? `cancel failed: ${res.status}`);
+      throw new Error(
+        errorMessage(body.error) ?? `cancel failed: ${res.status}`,
+      );
     }
     return body;
   }
 
-  async book(): Promise<OrderBookSnapshot> {
-    const res = await fetch(
-      `${this.baseUrl}/v1/markets/${this.market}/book`,
+  async book(signal?: AbortSignal): Promise<OrderBookSnapshot> {
+    const res = await this.request(
+      `/v1/markets/${this.market}/book`,
       { headers: this.headers() },
+      true,
+      signal,
     );
     if (!res.ok) throw new Error(`book failed: ${res.status}`);
     return (await res.json()) as OrderBookSnapshot;
   }
 
-  async balances(userId: string): Promise<Balance[]> {
-    const res = await fetch(
-      `${this.baseUrl}/v1/markets/${this.market}/balances/${encodeURIComponent(userId)}`,
+  async balances(userId: string, signal?: AbortSignal): Promise<Balance[]> {
+    const res = await this.request(
+      `/v1/markets/${this.market}/balances/${encodeURIComponent(userId)}`,
       { headers: this.headers() },
+      true,
+      signal,
     );
     if (!res.ok) throw new Error(`balances failed: ${res.status}`);
     const body = (await res.json()) as { balances: Balance[] };
@@ -127,6 +179,92 @@ export class EngineClient {
   private headers(): Record<string, string> {
     return { "x-gateway-token": this.gatewayToken };
   }
+
+  private async request(
+    path: string,
+    init: RequestInit,
+    retryable: boolean,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const openedAt = this.circuitOpenedAt;
+    if (
+      openedAt > 0 &&
+      Date.now() - openedAt < this.cooldownMs
+    ) {
+      throw new EngineCircuitOpenError();
+    }
+    if (openedAt > 0) this.circuitOpenedAt = 0;
+
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const response = await this.fetchWithTimeout(path, init, signal);
+        if (response.status >= 500) {
+          this.recordFailure();
+          if (retryable && attempt < this.maxRetries) {
+            await delay(100 * 2 ** attempt);
+            continue;
+          }
+        } else {
+          this.recordSuccess();
+        }
+        return response;
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        this.recordFailure();
+        if (!retryable || attempt >= this.maxRetries) throw error;
+        await delay(100 * 2 ** attempt);
+      }
+    }
+  }
+
+  private async fetchWithTimeout(
+    path: string,
+    init: RequestInit,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.timeoutMs);
+    const abortExternal = () => controller.abort();
+
+    if (signal?.aborted) {
+      clearTimeout(timeout);
+      throw new DOMException("The operation was aborted", "AbortError");
+    }
+    signal?.addEventListener("abort", abortExternal, { once: true });
+
+    try {
+      return await fetch(`${this.baseUrl}${path}`, {
+        ...init,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (timedOut) throw new EngineTimeoutError();
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortExternal);
+    }
+  }
+
+  private recordFailure(): void {
+    this.consecutiveFailures += 1;
+    if (this.consecutiveFailures >= this.failureThreshold) {
+      this.circuitOpenedAt = Date.now();
+    }
+  }
+
+  private recordSuccess(): void {
+    this.consecutiveFailures = 0;
+    this.circuitOpenedAt = 0;
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function errorMessage(

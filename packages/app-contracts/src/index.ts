@@ -34,6 +34,9 @@ export const ORDERS_EVENTS_STREAM = "orders:events" as const;
 
 // Redis Stream: malformed events removed from orders:events.
 export const ORDERS_EVENTS_DLQ_STREAM = "orders:events:dlq" as const;
+export const COMMAND_STREAM_MAXLEN = 100_000;
+export const EVENT_STREAM_MAXLEN = 100_000;
+export const DLQ_STREAM_MAXLEN = 25_000;
 
 // Consumer group on orders:commands (Exchange Processor Gateway). 
 export const XPG_COMMANDS_GROUP = "xpg" as const;
