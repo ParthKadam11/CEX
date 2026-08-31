@@ -10,6 +10,10 @@ import {
 export class OrderRepository {
   constructor(private readonly db: PrismaClient = prisma) {}
 
+  async health(): Promise<void> {
+    await this.db.$queryRaw`SELECT 1`;
+  }
+
   async createPending(
     command: PlaceCommand,
     engineOrderId: string,

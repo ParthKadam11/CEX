@@ -40,7 +40,7 @@ TIMESCALE_URL=postgresql://cex:cex@127.0.0.1:5434/cex_md
 
 This stack does **not** start another PostgreSQL container for user data. The repository already uses Prisma and `DATABASE_URL` for user and wallet records through `@cex/db`.
 
-When the OMS is added, product order tables should be added to that same database unless the project later chooses to split them for operational reasons.
+The OMS uses that same database for product order state. Set `DATABASE_URL` in `packages/db/.env` before starting it; the OMS loads that file automatically when the variable is not already present.
 
 ## Commands
 

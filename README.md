@@ -34,9 +34,9 @@ apps/web
 apps/exchange
   └─ matching engine + balances + WAL + snapshots + HTTP/SSE
 
-application layer (build yourself)
-  └─ exchange-gateway (XPG) + OMS later
-  └─ Redis Streams + Redis pub/sub + TimescaleDB
+application layer
+  └─ OMS → engine-gateway → exchange
+  └─ Redis Streams + Redis pub/sub
 ```
 
 ### Exchange engine
@@ -53,10 +53,9 @@ The exchange engine is intentionally single-writer per market. It keeps matching
 
 The next layer does not reimplement matching. It wraps the engine with service boundaries:
 
-- Redis Streams for command/event delivery between OMS and the exchange gateway
+- Redis Streams for command/event delivery between OMS and the engine gateway
 - Redis pub/sub for live best bid/ask and trade fan-out
-- TimescaleDB for market-data history and candles
-- The existing Postgres database for users now, and product-facing order tables later
+- The existing Postgres database for users, wallets, and OMS order state
 
 ## Monorepo Layout
 
@@ -64,6 +63,8 @@ The next layer does not reimplement matching. It wraps the engine with service b
 CEX/
 ├── apps/
 │   ├── exchange/
+│   ├── engine-gateway/
+│   ├── oms/
 │   └── web/
 ├── infra/
 └── packages/
@@ -150,16 +151,25 @@ pnpm infra:logs
 
 See `infra/README.md` for service details.
 
-### Exchange gateway (XPG)
+### Engine gateway
 
-Not shipped — implement `apps/exchange-gateway` yourself. Contracts and local infra are ready:
+The engine gateway is the only application-layer service that talks to the exchange:
 
-- Message shapes: `packages/app-contracts`
-- Engine domain types: `packages/exchange-types`
-- Redis + Timescale: `pnpm infra:up` (see `infra/README.md`)
-- Engine API: below (`pnpm dev:exchange` on `:4010`)
+```bash
+pnpm dev:gateway
+```
 
-Suggested responsibilities: consume Redis Stream commands → call exchange HTTP → subscribe to exchange SSE → publish order events + live MD (+ optional Timescale history).
+It consumes commands from `orders:commands`, calls the exchange HTTP API, consumes exchange SSE events, and publishes order events to `orders:events`. It also publishes live BBO and trade data through Redis pub/sub.
+
+### Order Management Service
+
+OMS owns product-facing order state in Postgres:
+
+```bash
+pnpm dev:oms
+```
+
+It exposes order APIs at `http://localhost:4030`, publishes place/cancel commands to Redis Streams, and consumes gateway events to update the order database. OMS loads `DATABASE_URL` from `packages/db/.env` when the variable is not already set.
 
 ## Exchange API
 
@@ -198,6 +208,15 @@ pnpm test:exchange:e2e
 - Integration tests cover replay and durability behavior.
 - End-to-end tests cover the HTTP surface and restart behavior.
 
+### OMS test suite
+
+```bash
+pnpm test:oms
+pnpm test:oms:integration
+```
+
+The integration test requires PostgreSQL, Redis, the exchange, the engine gateway, and OMS to be running.
+
 ## Project status
 
 ### Implemented
@@ -209,11 +228,11 @@ pnpm test:exchange:e2e
 - SSE for live order, credit, and BBO events
 - Web app authentication, custodial wallet setup, deposit, withdraw, and dashboard UX
 - Application-layer infra bootstrap and shared message contracts
-- Exchange Processor Gateway (Redis Streams ↔ exchange HTTP/SSE ↔ pub/sub + Timescale)
+- Engine gateway (Redis Streams ↔ exchange HTTP/SSE ↔ Redis pub/sub)
+- OMS order APIs, Postgres order state, and event-driven status updates
 
 ### In progress
 
-- OMS and product-side order history
 - Price service and chart history
 - Authenticated application gateway for trading flows
 - Trade UI wired through the application layer

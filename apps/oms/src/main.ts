@@ -1,8 +1,8 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { serve } from "@hono/node-server";
+import { config as loadDotenv } from "dotenv";
 import { loadConfig } from "./config.js";
-import { createOmsApp } from "./http/server.js";
-import { OrderRepository } from "./orders/repository.js";
-import { OrderService } from "./orders/service.js";
 import { createRedis } from "./redis/client.js";
 import {
   ackEvent,
@@ -13,10 +13,29 @@ import {
 } from "./redis/events.js";
 
 async function main(): Promise<void> {
+  loadEnvironment();
   const config = loadConfig();
+  if (!config.databaseUrl) {
+    throw new Error("DATABASE_URL is required to start OMS");
+  }
+
+  const { createOmsApp } = await import("./http/server.js");
+  const { OrderRepository } = await import("./orders/repository.js");
+  const { OrderService } = await import("./orders/service.js");
   const redis = createRedis(config.redisUrl);
   const repository = new OrderRepository();
   const orderService = new OrderService(repository, redis);
+
+  try {
+    await repository.health();
+  } catch (error) {
+    redis.disconnect();
+    throw new Error(
+      `OMS database is not reachable: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 
   await ensureEventGroup(redis);
   console.log("[oms] event consumer group ready");
@@ -78,3 +97,14 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
+function loadEnvironment(): void {
+  const paths = [
+    path.resolve(process.cwd(), ".env"),
+    path.resolve(process.cwd(), "../../packages/db/.env"),
+    path.resolve(process.cwd(), "packages/db/.env"),
+  ];
+  for (const envPath of paths) {
+    if (existsSync(envPath)) loadDotenv({ path: envPath });
+  }
+}
