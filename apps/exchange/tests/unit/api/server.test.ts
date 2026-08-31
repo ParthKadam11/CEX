@@ -127,4 +127,36 @@ describe("exchange HTTP + SSE", () => {
     expect(restarted.balances.get("u19", "USD").available).toBe(1);
     await restarted.close();
   });
+
+  it("protects engine APIs with the gateway token", async () => {
+    const bus = new EventBus();
+    const runtime = MarketRuntime.open("SOL-USD", tempWal(), bus);
+    const app = createExchangeApp(runtime, bus, {
+      gatewayToken: "secret",
+    });
+    const request = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: "u1", asset: "USD", amount: 1 }),
+    };
+
+    const unauthorized = await app.request(
+      "/v1/markets/SOL-USD/credit",
+      request,
+    );
+    const authorized = await app.request(
+      "/v1/markets/SOL-USD/credit",
+      {
+        ...request,
+        headers: {
+          ...request.headers,
+          "x-gateway-token": "secret",
+        },
+      },
+    );
+
+    expect(unauthorized.status).toBe(401);
+    expect(authorized.status).toBe(200);
+    await runtime.close();
+  });
 });

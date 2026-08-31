@@ -64,14 +64,6 @@ export class OrderRepository {
     });
   }
 
-  async findUsdBalance(userId: string): Promise<number | null> {
-    const wallet = await this.db.usdWallet.findUnique({
-      where: { userId },
-      select: { balance: true },
-    });
-    return wallet?.balance ?? null;
-  }
-
   async listForUser(userId: string, limit = 50) {
     const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
 

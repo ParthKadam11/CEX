@@ -29,7 +29,11 @@ async function main(): Promise<void> {
   const redis = createRedis(config.redisUrl);
   const marketDataRedis = createRedisSubscriber(config.redisUrl);
   const marketData = new MarketDataHub(marketDataRedis, config.market);
-  const engine = new EngineClient(config.exchangeUrl, config.market);
+  const engine = new EngineClient(
+    config.exchangeUrl,
+    config.market,
+    config.exchangeToken,
+  );
   const metrics = new GatewayMetrics();
   const dedupe = new CommandDedupe(redis);
   const handler = new CommandHandler(engine, redis, dedupe, metrics);
@@ -87,6 +91,7 @@ async function main(): Promise<void> {
   }, {
     onConnectionChange: (connected) => metrics.setSseConnected(connected),
     onReconnect: () => metrics.increment("sseReconnects"),
+    headers: engine.streamHeaders(),
   });
   sse.start();
 

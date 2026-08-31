@@ -23,11 +23,9 @@ const assetTabs = ["Wallet", "Activity"] as const;
 
 type WalletCardProps = {
   publicKey: string | null;
-  /** Simulated USD (DB only — not depositable/withdrawable). */
-  usdBalance: number;
 };
 
-export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
+export function WalletCard({ publicKey }: WalletCardProps) {
   const { data: session } = useSession();
   const { loading, balance, error, refetch } = useSolBalance(publicKey ?? "");
   const [assetTab, setAssetTab] = useState<string>("Wallet");
@@ -135,10 +133,7 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
             <div className="mt-1 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="text-5xl font-bold tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
-                  ${usdBalance.toLocaleString()}
-                  <span className="ml-2 text-2xl font-semibold text-white/60">
-                    USD
-                  </span>
+                  Wallet
                 </p>
                 <p className="mt-2 text-lg text-white/70">
                   {loading ? (
@@ -244,14 +239,12 @@ export function WalletCard({ publicKey, usdBalance }: WalletCardProps) {
                       <div>
                         <p className="font-semibold text-white">USD</p>
                         <p className="text-sm text-white/50">
-                          Simulated · quote currency
+                          Trading balance available on Trade
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-white">
-                          {usdBalance.toLocaleString()}
-                        </p>
-                        <p className="text-sm text-white/50">Available</p>
+                        <p className="font-semibold text-white/70">—</p>
+                        <p className="text-sm text-white/50">View on Trade</p>
                       </div>
                     </li>
                   </ul>

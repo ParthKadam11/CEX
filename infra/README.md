@@ -40,7 +40,7 @@ TIMESCALE_URL=postgresql://cex:cex@127.0.0.1:5434/cex_md
 
 This stack does **not** start another PostgreSQL container for user data. The repository already uses Prisma and `DATABASE_URL` for user and wallet records through `@cex/db`.
 
-The OMS uses that same database for product order state. Set `DATABASE_URL` in `packages/db/.env` before starting it; the OMS loads that file automatically when the variable is not already present.
+The OMS uses that same database for product order state. Set `DATABASE_URL` in `packages/db/.env` before starting it; the OMS loads that file automatically when the variable is not already present. The exchange engine's WAL-backed balance ledger is authoritative for trading balances; Postgres `UsdWallet` is not used for order execution.
 
 ## Commands
 

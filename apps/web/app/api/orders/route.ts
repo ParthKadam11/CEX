@@ -13,13 +13,13 @@ export async function GET(request: NextRequest) {
   }
 
   const limit = request.nextUrl.searchParams.get("limit");
-  const query = new URLSearchParams({ userId });
+  const query = new URLSearchParams();
   if (limit) query.set("limit", limit);
 
   try {
     const response = await fetch(`${omsUrl}/orders?${query}`, {
       cache: "no-store",
-      headers: omsHeaders(),
+      headers: omsHeaders(userId),
     });
     return relayResponse(response);
   } catch {
@@ -46,12 +46,18 @@ export async function POST(request: NextRequest) {
   if (!isRecord(body)) {
     return NextResponse.json({ error: "Invalid order" }, { status: 400 });
   }
+  const orderBody = Object.fromEntries(
+    Object.entries(body).filter(([key]) => key !== "userId"),
+  );
 
   try {
     const response = await fetch(`${omsUrl}/orders`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...omsHeaders() },
-      body: JSON.stringify({ ...body, userId }),
+      headers: {
+        "content-type": "application/json",
+        ...omsHeaders(userId),
+      },
+      body: JSON.stringify(orderBody),
     });
     return relayResponse(response);
   } catch {

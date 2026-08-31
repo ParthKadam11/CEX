@@ -6,6 +6,7 @@ export type GatewayConfig = {
   /** Redis Streams consumer name within the gateway group. */
   consumerName: string;
   internalToken: string | null;
+  exchangeToken: string;
 };
 
 export function loadConfig(): GatewayConfig {
@@ -23,6 +24,21 @@ export function loadConfig(): GatewayConfig {
     redisUrl,
     market: "SOL-USD",
     consumerName,
-    internalToken: process.env.GATEWAY_INTERNAL_TOKEN ?? null,
+    internalToken: serviceToken(
+      "GATEWAY_INTERNAL_TOKEN",
+      "local-dev-gateway-token",
+    ),
+    exchangeToken: serviceToken(
+      "EXCHANGE_GATEWAY_TOKEN",
+      "local-dev-exchange-token",
+    ),
   };
+}
+
+function serviceToken(name: string, fallback: string): string {
+  const token = process.env[name];
+  if (process.env.NODE_ENV === "production" && !token) {
+    throw new Error(`${name} is required in production`);
+  }
+  return token ?? fallback;
 }

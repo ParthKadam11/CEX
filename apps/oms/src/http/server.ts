@@ -4,7 +4,6 @@ import {
   type PlaceCommand,
 } from "@cex/app-contracts";
 import {
-  FundingNotFoundError,
   OrderNotFoundError,
   OrderOwnershipError,
   OrderService,
@@ -35,27 +34,10 @@ export function createOmsApp(
     }),
   );
 
-  app.post("/funding/sync", async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: "INVALID_JSON" }, 400);
-    }
-
-    if (!isRecord(body) || typeof body.userId !== "string") {
-      return c.json({ error: "INVALID_FUNDING_REQUEST" }, 400);
-    }
-
-    try {
-      const result = await orderService.syncUsdFunding(body.userId);
-      return c.json(result, result.existing ? 200 : 202);
-    } catch (error) {
-      return errorResponse(c, error);
-    }
-  });
-
   app.post("/orders", async (c) => {
+    const userId = authenticatedUserId(c);
+    if (!userId) return c.json({ error: "UNAUTHORIZED" }, 401);
+
     let body: unknown;
     try {
       body = await c.req.json();
@@ -63,7 +45,7 @@ export function createOmsApp(
       return c.json({ error: "INVALID_JSON" }, 400);
     }
 
-    const command = parsePlaceCommand(body);
+    const command = parsePlaceCommand(body, userId);
     if (!command) return c.json({ error: "INVALID_ORDER" }, 400);
 
     try {
@@ -82,20 +64,23 @@ export function createOmsApp(
   });
 
   app.delete("/orders/:orderId", async (c) => {
+    const userId = authenticatedUserId(c);
+    if (!userId) return c.json({ error: "UNAUTHORIZED" }, 401);
+
     let body: unknown;
     try {
       body = await c.req.json();
     } catch {
-      return c.json({ error: "INVALID_JSON" }, 400);
+      body = {};
     }
 
-    if (!isRecord(body) || typeof body.userId !== "string") {
+    if (!isRecord(body)) {
       return c.json({ error: "INVALID_CANCEL" }, 400);
     }
 
     try {
       const result = await orderService.cancel(
-        body.userId,
+        userId,
         c.req.param("orderId"),
         typeof body.clientOrderId === "string"
           ? body.clientOrderId
@@ -114,8 +99,8 @@ export function createOmsApp(
   });
 
   app.get("/orders", async (c) => {
-    const userId = c.req.query("userId");
-    if (!userId) return c.json({ error: "MISSING_USER_ID" }, 400);
+    const userId = authenticatedUserId(c);
+    if (!userId) return c.json({ error: "UNAUTHORIZED" }, 401);
 
     const limitValue = c.req.query("limit");
     const limit = limitValue === undefined ? undefined : Number(limitValue);
@@ -131,8 +116,8 @@ export function createOmsApp(
   });
 
   app.get("/orders/:orderId", async (c) => {
-    const userId = c.req.query("userId");
-    if (!userId) return c.json({ error: "MISSING_USER_ID" }, 400);
+    const userId = authenticatedUserId(c);
+    if (!userId) return c.json({ error: "UNAUTHORIZED" }, 401);
 
     try {
       return c.json(
@@ -146,11 +131,15 @@ export function createOmsApp(
   return app;
 }
 
-function parsePlaceCommand(value: unknown): PlaceCommand | null {
+function parsePlaceCommand(
+  value: unknown,
+  userId: string,
+): PlaceCommand | null {
   if (!isRecord(value)) return null;
 
   const candidate: Record<string, unknown> = {
     ...value,
+    userId,
     commandId: crypto.randomUUID(),
     type: "PLACE",
     timestamp: Date.now(),
@@ -172,9 +161,6 @@ function errorResponse(
   if (error instanceof OrderOwnershipError) {
     return context.json({ error: error.message }, 403);
   }
-  if (error instanceof FundingNotFoundError) {
-    return context.json({ error: error.message }, 404);
-  }
   return context.json(
     {
       error: error instanceof Error ? error.message : "OMS_ERROR",
@@ -185,4 +171,9 @@ function errorResponse(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function authenticatedUserId(context: Context): string | null {
+  const userId = context.req.header("x-authenticated-user-id");
+  return userId && userId.length > 0 ? userId : null;
 }

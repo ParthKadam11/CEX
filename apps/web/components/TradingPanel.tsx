@@ -39,7 +39,6 @@ export function TradingPanel() {
   const [price, setPrice] = useState("100");
   const [quantity, setQuantity] = useState("1");
   const [submitting, setSubmitting] = useState(false);
-  const [funding, setFunding] = useState("Not initialized");
   const [message, setMessage] = useState("");
   const [streamConnected, setStreamConnected] = useState(false);
 
@@ -101,26 +100,6 @@ export function TradingPanel() {
 
   function available(asset: Balance["asset"]): number {
     return balances.find((balance) => balance.asset === asset)?.available ?? 0;
-  }
-
-  async function initializeFunding() {
-    setFunding("Initializing...");
-    const response = await fetch("/api/funding/sync", { method: "POST" });
-    const body = (await response.json()) as {
-      amount?: number;
-      existing?: boolean;
-      error?: string;
-    };
-    if (!response.ok) {
-      setFunding(body.error ?? "Funding failed");
-      return;
-    }
-    setFunding(
-      body.existing
-        ? `Trading balance already initialized: ${body.amount} USD`
-        : `Trading balance initialized: ${body.amount} USD`,
-    );
-    await loadBalances();
   }
 
   async function placeOrder(event: React.FormEvent<HTMLFormElement>) {
@@ -257,14 +236,6 @@ export function TradingPanel() {
               {submitting ? "Submitting..." : `${side} SOL`}
             </button>
           </form>
-          <button
-            type="button"
-            onClick={initializeFunding}
-            className="mt-3 w-full rounded-xl border border-white/15 bg-white/10 py-2 text-xs text-white/75 hover:bg-white/15"
-          >
-            Initialize USD trading balance
-          </button>
-          <p className="mt-2 text-center text-xs text-white/45">{funding}</p>
           {message && <p className="mt-3 text-center text-xs text-white/70">{message}</p>}
         </section>
       </div>

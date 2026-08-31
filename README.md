@@ -110,6 +110,8 @@ ENGINE_GATEWAY_URL=http://127.0.0.1:4020
 # Optional shared-service tokens for non-local deployments.
 OMS_INTERNAL_TOKEN=...
 ENGINE_GATEWAY_INTERNAL_TOKEN=...
+GATEWAY_INTERNAL_TOKEN=...
+EXCHANGE_GATEWAY_TOKEN=...
 
 NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 ```
@@ -180,12 +182,12 @@ For non-local deployments, set the same value as `OMS_INTERNAL_TOKEN` on OMS and
 
 ## Exchange API
 
-The exchange currently exposes one market, `SOL-USD`.
+The exchange currently exposes one market, `SOL-USD`. Its command, balance, book, and stream APIs are internal gateway APIs and require `x-gateway-token`. Only `/health` is public.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Process health and active market |
-| `POST` | `/v1/markets/:market/credit` | Credit available balance |
+| `POST` | `/v1/markets/:market/credit` | Internal gateway credit operation |
 | `POST` | `/v1/markets/:market/orders` | Place a limit or market order |
 | `DELETE` | `/v1/markets/:market/orders/:orderId` | Cancel an order |
 | `GET` | `/v1/markets/:market/orders/:orderId` | Fetch one order |
@@ -199,6 +201,8 @@ Notable engine rules:
 - Units are integer-only.
 - Market buys require `quoteBudget`.
 - `FOK_BUDGET` is defined in types but not implemented by the engine.
+- The exchange `BalanceStore` and its WAL are authoritative for trading balances.
+- Postgres `UsdWallet` is legacy onboarding data, not an execution balance.
 
 ## Testing
 

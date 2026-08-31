@@ -14,10 +14,13 @@ export class EngineClient {
   constructor(
     private readonly baseUrl: string,
     private readonly market: MarketSymbol,
+    private readonly gatewayToken = "local-dev-exchange-token",
   ) {}
 
   async health(): Promise<{ ok: boolean; market: string }> {
-    const res = await fetch(`${this.baseUrl}/health`);
+    const res = await fetch(`${this.baseUrl}/health`, {
+      headers: this.headers(),
+    });
     if (!res.ok) throw new Error(`engine health failed: ${res.status}`);
     return (await res.json()) as { ok: boolean; market: string };
   }
@@ -31,7 +34,7 @@ export class EngineClient {
       `${this.baseUrl}/v1/markets/${this.market}/credit`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { ...this.headers(), "content-type": "application/json" },
         body: JSON.stringify({ userId, asset, amount }),
       },
     );
@@ -47,7 +50,7 @@ export class EngineClient {
       `${this.baseUrl}/v1/markets/${this.market}/orders`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { ...this.headers(), "content-type": "application/json" },
         body: JSON.stringify({
           orderId: order.orderId,
           userId: order.userId,
@@ -70,7 +73,7 @@ export class EngineClient {
   async cancel(orderId: string): Promise<CancelResult> {
     const res = await fetch(
       `${this.baseUrl}/v1/markets/${this.market}/orders/${orderId}`,
-      { method: "DELETE" },
+      { method: "DELETE", headers: this.headers() },
     );
     const body = (await res.json()) as CancelResult & { error?: string };
     if (!res.ok && body.cancelled === undefined) {
@@ -82,6 +85,7 @@ export class EngineClient {
   async book(): Promise<OrderBookSnapshot> {
     const res = await fetch(
       `${this.baseUrl}/v1/markets/${this.market}/book`,
+      { headers: this.headers() },
     );
     if (!res.ok) throw new Error(`book failed: ${res.status}`);
     return (await res.json()) as OrderBookSnapshot;
@@ -90,6 +94,7 @@ export class EngineClient {
   async balances(userId: string): Promise<Balance[]> {
     const res = await fetch(
       `${this.baseUrl}/v1/markets/${this.market}/balances/${encodeURIComponent(userId)}`,
+      { headers: this.headers() },
     );
     if (!res.ok) throw new Error(`balances failed: ${res.status}`);
     const body = (await res.json()) as { balances: Balance[] };
@@ -99,5 +104,13 @@ export class EngineClient {
   // SSE endpoint URL for the live engine feed.
   streamUrl(): string {
     return `${this.baseUrl}/v1/markets/${this.market}/stream`;
+  }
+
+  streamHeaders(): Record<string, string> {
+    return this.headers();
+  }
+
+  private headers(): Record<string, string> {
+    return { "x-gateway-token": this.gatewayToken };
   }
 }

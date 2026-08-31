@@ -12,6 +12,14 @@ export function loadConfig(): OmsConfig {
     redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
     databaseUrl: process.env.DATABASE_URL ?? null,
     consumerName: process.env.OMS_CONSUMER_NAME ?? `oms-${process.pid}`,
-    internalToken: process.env.OMS_INTERNAL_TOKEN ?? null,
+    internalToken: serviceToken("OMS_INTERNAL_TOKEN", "local-dev-oms-token"),
   };
+}
+
+function serviceToken(name: string, fallback: string): string {
+  const token = process.env[name];
+  if (process.env.NODE_ENV === "production" && !token) {
+    throw new Error(`${name} is required in production`);
+  }
+  return token ?? fallback;
 }

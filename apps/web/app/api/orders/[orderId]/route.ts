@@ -20,12 +20,11 @@ export async function GET(
   }
 
   const { orderId } = await context.params;
-  const query = new URLSearchParams({ userId });
 
   try {
     const response = await fetch(
-      `${omsUrl}/orders/${encodeURIComponent(orderId)}?${query}`,
-      { cache: "no-store", headers: omsHeaders() },
+      `${omsUrl}/orders/${encodeURIComponent(orderId)}`,
+      { cache: "no-store", headers: omsHeaders(userId) },
     );
     return relayResponse(response);
   } catch {
@@ -63,8 +62,11 @@ export async function DELETE(
       `${omsUrl}/orders/${encodeURIComponent(orderId)}`,
       {
         method: "DELETE",
-        headers: { "content-type": "application/json", ...omsHeaders() },
-        body: JSON.stringify({ userId, clientOrderId }),
+        headers: {
+          "content-type": "application/json",
+          ...omsHeaders(userId),
+        },
+        body: JSON.stringify({ clientOrderId }),
       },
     );
     return relayResponse(response);

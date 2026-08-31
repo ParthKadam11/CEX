@@ -11,6 +11,11 @@ import { afterAll, describe, expect, it } from "vitest";
 loadTestEnvironment();
 
 const omsUrl = process.env.OMS_URL ?? "http://127.0.0.1:4030";
+const omsToken = process.env.OMS_INTERNAL_TOKEN ?? "local-dev-oms-token";
+const gatewayUrl =
+  process.env.ENGINE_GATEWAY_URL ?? "http://127.0.0.1:4020";
+const gatewayToken =
+  process.env.ENGINE_GATEWAY_INTERNAL_TOKEN ?? "local-dev-gateway-token";
 const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
 const prefix = `oms-integration-${Date.now()}-${process.pid}`;
 const redis = new Redis(redisUrl, {
@@ -32,9 +37,12 @@ describe("OMS end-to-end flow", () => {
 
       const response = await fetch(`${omsUrl}/orders`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-internal-token": omsToken,
+          "x-authenticated-user-id": userId,
+        },
         body: JSON.stringify({
-          userId,
           clientOrderId: `${prefix}-client`,
           market: "SOL-USD",
           side: "BUY",
@@ -60,8 +68,12 @@ describe("OMS end-to-end flow", () => {
 
       const cancelResponse = await fetch(`${omsUrl}/orders/${orderId}`, {
         method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId }),
+        headers: {
+          "content-type": "application/json",
+          "x-internal-token": omsToken,
+          "x-authenticated-user-id": userId,
+        },
+        body: JSON.stringify({}),
       });
       expect(cancelResponse.status).toBe(202);
 
@@ -107,18 +119,27 @@ async function createTestUser(
 }
 
 async function sendCredit(userId: string): Promise<void> {
-  const response = await fetch(`${omsUrl}/funding/sync`, {
+  const commandId = `${prefix}-credit`;
+  const response = await fetch(`${gatewayUrl}/dev/inject-command`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId }),
+    headers: {
+      "content-type": "application/json",
+      "x-internal-token": gatewayToken,
+    },
+    body: JSON.stringify({
+      commandId,
+      type: "CREDIT",
+      userId,
+      asset: "USD",
+      amount: 100_000,
+      timestamp: Date.now(),
+    }),
   });
   if (!response.ok) {
-    throw new Error(`Funding sync failed with status ${response.status}`);
+    throw new Error(`Credit injection failed with status ${response.status}`);
   }
 
-  const body = (await response.json()) as { commandId?: string | null };
-  if (!body.commandId) return;
-  await waitForEvent(body.commandId, (event) => event.type === "CREDIT_OK");
+  await waitForEvent(commandId, (event) => event.type === "CREDIT_OK");
 }
 
 async function waitForDependencies(): Promise<void> {
@@ -147,7 +168,13 @@ async function waitForOrder(
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     const response = await fetch(
-      `${omsUrl}/orders/${orderId}?userId=${encodeURIComponent(userId)}`,
+      `${omsUrl}/orders/${orderId}`,
+      {
+        headers: {
+          "x-internal-token": omsToken,
+          "x-authenticated-user-id": userId,
+        },
+      },
     );
     if (response.ok) {
       const order = (await response.json()) as { status: string };

@@ -69,14 +69,17 @@ export function createGatewayApp(options: GatewayAppOptions) {
     }
   });
 
-  app.get("/markets/:market/balances/:userId", async (c) => {
+  app.get("/markets/:market/balances", async (c) => {
     if (c.req.param("market") !== options.market) {
       return c.json({ error: "UNKNOWN_MARKET" }, 404);
     }
 
+    const userId = c.req.header("x-authenticated-user-id");
+    if (!userId) return c.json({ error: "UNAUTHORIZED" }, 401);
+
     try {
       return c.json({
-        balances: await options.engine.balances(c.req.param("userId")),
+        balances: await options.engine.balances(userId),
       });
     } catch (error) {
       return c.json(

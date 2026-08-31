@@ -1,12 +1,10 @@
 import type {
   CancelCommand,
-  CreditCommand,
   PlaceCommand,
 } from "@cex/app-contracts";
 import type Redis from "ioredis";
 import {
   publishCancelCommand,
-  publishCreditCommand,
   publishPlaceCommand,
 } from "../redis/commands.js";
 import { OrderRepository } from "./repository.js";
@@ -29,12 +27,6 @@ export class OrderNotFoundError extends Error {
 export class OrderOwnershipError extends Error {
   constructor() {
     super("ORDER_ACCESS_DENIED");
-  }
-}
-
-export class FundingNotFoundError extends Error {
-  constructor() {
-    super("USD_FUNDING_NOT_FOUND");
   }
 }
 
@@ -76,37 +68,6 @@ export class OrderService {
     }
 
     return { order, command, existing: false };
-  }
-
-  async syncUsdFunding(userId: string) {
-    const amount = await this.repository.findUsdBalance(userId);
-    if (amount === null || amount <= 0) {
-      throw new FundingNotFoundError();
-    }
-
-    const command: CreditCommand = {
-      commandId: crypto.randomUUID(),
-      type: "CREDIT",
-      userId,
-      asset: "USD",
-      amount,
-      timestamp: Date.now(),
-    };
-    const key = `oms:funding:initialized:${userId}:USD`;
-    const claimed = await this.redis.set(key, command.commandId, "NX");
-
-    if (claimed === null) {
-      return { amount, commandId: null, existing: true };
-    }
-
-    try {
-      await publishCreditCommand(this.redis, command);
-    } catch (error) {
-      await this.redis.del(key).catch(() => undefined);
-      throw error;
-    }
-
-    return { amount, commandId: command.commandId, existing: false };
   }
 
   async cancel(

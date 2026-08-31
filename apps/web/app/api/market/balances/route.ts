@@ -14,8 +14,8 @@ export async function GET() {
 
   try {
     const response = await fetch(
-      `${engineGatewayUrl}/markets/SOL-USD/balances/${encodeURIComponent(userId)}`,
-      { cache: "no-store", headers: engineGatewayHeaders() },
+      `${engineGatewayUrl}/markets/SOL-USD/balances`,
+      { cache: "no-store", headers: engineGatewayHeaders(userId) },
     );
     return relayResponse(response);
   } catch {

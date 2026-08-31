@@ -17,14 +17,8 @@ async function getWallet() {
     select: { publicKey: true },
   });
 
-  const usdWallet = await db.usdWallet.findUnique({
-    where: { userId },
-    select: { balance: true },
-  });
-
   return {
     publicKey: wallet?.publicKey ?? null,
-    usdBalance: usdWallet?.balance ?? 0,
   };
 }
 
@@ -38,7 +32,6 @@ export default async function Dashboard() {
   return (
     <WalletCard
       publicKey={wallet.publicKey}
-      usdBalance={wallet.usdBalance}
     />
   );
 }

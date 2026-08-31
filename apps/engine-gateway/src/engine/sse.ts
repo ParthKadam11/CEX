@@ -17,6 +17,7 @@ type EventHandler = (event: EngineSseEvent) => void | Promise<void>;
 type SseOptions = {
   onConnectionChange?: (connected: boolean) => void;
   onReconnect?: () => void;
+  headers?: Record<string, string>;
 };
 
 //Reads the exchange SSE stream and reconnects after disconnects. This class only transports and validates engine events. Consumers decide what to do with them, such as publishing BBO/trades to Redis.
@@ -72,7 +73,10 @@ export class EngineSseClient {
 
     try {
       const response = await fetch(this.url, {
-        headers: { accept: "text/event-stream" },
+        headers: {
+          accept: "text/event-stream",
+          ...this.options.headers,
+        },
         signal: controller.signal,
       });
 

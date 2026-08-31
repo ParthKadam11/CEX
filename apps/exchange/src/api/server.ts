@@ -51,8 +51,24 @@ function parseNonNegativeUnit(value: unknown): number | null {
   SSE  = live ORDER / BBO / CREDIT events for the gateway.
 */
 
-export function createExchangeApp(runtime: MarketRuntime, bus: EventBus) {
+export function createExchangeApp(
+  runtime: MarketRuntime,
+  bus: EventBus,
+  options: { gatewayToken?: string } = {},
+) {
   const app = new Hono();
+
+  app.use("*", async (c, next) => {
+    if (c.req.path === "/health" || !options.gatewayToken) {
+      await next();
+      return;
+    }
+
+    if (c.req.header("x-gateway-token") !== options.gatewayToken) {
+      return c.json({ error: "UNAUTHORIZED" }, 401);
+    }
+    await next();
+  });
 
   app.get("/health", (c) => c.json({ ok: true, market: runtime.market }));
 

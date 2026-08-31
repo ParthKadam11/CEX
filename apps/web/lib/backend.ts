@@ -9,16 +9,21 @@ export const engineGatewayUrl = (
   process.env.ENGINE_GATEWAY_URL ?? "http://127.0.0.1:4020"
 ).replace(/\/$/, "");
 
-export function omsHeaders(): HeadersInit {
-  return process.env.OMS_INTERNAL_TOKEN
-    ? { "x-internal-token": process.env.OMS_INTERNAL_TOKEN }
-    : {};
+export function omsHeaders(userId?: string): HeadersInit {
+  return {
+    "x-internal-token":
+      process.env.OMS_INTERNAL_TOKEN ?? "local-dev-oms-token",
+    ...(userId ? { "x-authenticated-user-id": userId } : {}),
+  };
 }
 
-export function engineGatewayHeaders(): HeadersInit {
-  return process.env.ENGINE_GATEWAY_INTERNAL_TOKEN
-    ? { "x-internal-token": process.env.ENGINE_GATEWAY_INTERNAL_TOKEN }
-    : {};
+export function engineGatewayHeaders(userId?: string): HeadersInit {
+  return {
+    "x-internal-token":
+      process.env.ENGINE_GATEWAY_INTERNAL_TOKEN ??
+      "local-dev-gateway-token",
+    ...(userId ? { "x-authenticated-user-id": userId } : {}),
+  };
 }
 
 export async function getAuthenticatedUserId(): Promise<string | null> {
