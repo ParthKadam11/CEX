@@ -5,6 +5,7 @@ export type GatewayConfig = {
   market: "SOL-USD";
   /** Redis Streams consumer name within the gateway group. */
   consumerName: string;
+  internalToken: string | null;
 };
 
 export function loadConfig(): GatewayConfig {
@@ -22,5 +23,6 @@ export function loadConfig(): GatewayConfig {
     redisUrl,
     market: "SOL-USD",
     consumerName,
+    internalToken: process.env.GATEWAY_INTERNAL_TOKEN ?? null,
   };
 }

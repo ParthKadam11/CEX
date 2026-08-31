@@ -64,6 +64,14 @@ export class OrderRepository {
     });
   }
 
+  async findUsdBalance(userId: string): Promise<number | null> {
+    const wallet = await this.db.usdWallet.findUnique({
+      where: { userId },
+      select: { balance: true },
+    });
+    return wallet?.balance ?? null;
+  }
+
   async listForUser(userId: string, limit = 50) {
     const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
 
@@ -120,18 +128,23 @@ export class OrderRepository {
       });
       if (!order) return true;
 
+      let newFillQuantity = 0;
       if (event.type === "FILL" && event.fills) {
         for (const fill of event.fills) {
-          await tx.orderFill.upsert({
+          const existingFill = await tx.orderFill.findUnique({
             where: { tradeId: fill.tradeId },
-            create: {
+          });
+          if (existingFill) continue;
+
+          await tx.orderFill.create({
+            data: {
               orderId: order.id,
               tradeId: fill.tradeId,
               price: fill.price,
               quantity: fill.quantity,
             },
-            update: {},
           });
+          newFillQuantity += fill.quantity;
         }
       }
 
@@ -140,7 +153,7 @@ export class OrderRepository {
         event.order?.filledQuantity ??
         (event.fills
           ? order.filledQuantity +
-            event.fills.reduce((total, fill) => total + fill.quantity, 0)
+            newFillQuantity
           : order.filledQuantity);
 
       await tx.order.update({

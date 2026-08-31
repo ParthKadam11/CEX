@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { LayoutGrid, Wallet } from "lucide-react";
+import { LayoutGrid, TrendingUp, Wallet } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -15,6 +15,7 @@ const marketingLinks = [
 
 const dashboardLinks = [
   { label: "Wallet", href: "/dashboard", icon: Wallet },
+  { label: "Trade", href: "/dashboard/trade", icon: TrendingUp },
   { label: "Apps", href: "/dashboard/apps", icon: LayoutGrid },
 ];
 

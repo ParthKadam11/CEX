@@ -2,6 +2,7 @@ import type {
   AssetId,
   CancelResult,
   CreditResult,
+  Balance,
   MarketSymbol,
   Order,
   OrderBookSnapshot,
@@ -84,6 +85,15 @@ export class EngineClient {
     );
     if (!res.ok) throw new Error(`book failed: ${res.status}`);
     return (await res.json()) as OrderBookSnapshot;
+  }
+
+  async balances(userId: string): Promise<Balance[]> {
+    const res = await fetch(
+      `${this.baseUrl}/v1/markets/${this.market}/balances/${encodeURIComponent(userId)}`,
+    );
+    if (!res.ok) throw new Error(`balances failed: ${res.status}`);
+    const body = (await res.json()) as { balances: Balance[] };
+    return body.balances;
   }
 
   // SSE endpoint URL for the live engine feed.

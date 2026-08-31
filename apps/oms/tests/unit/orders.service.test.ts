@@ -79,4 +79,21 @@ describe("OrderService", () => {
     );
     expect(redis.xadd).not.toHaveBeenCalled();
   });
+
+  it("publishes initial USD funding only once", async () => {
+    const repository = {
+      findUsdBalance: vi.fn().mockResolvedValue(10_000),
+    } as unknown as OrderRepository;
+    const redis = {
+      set: vi.fn().mockResolvedValue("OK"),
+      xadd: vi.fn().mockResolvedValue("1-0"),
+    } as unknown as Redis;
+    const service = new OrderService(repository, redis);
+
+    const result = await service.syncUsdFunding("user-1");
+
+    expect(result).toMatchObject({ amount: 10_000, existing: false });
+    expect(redis.set).toHaveBeenCalledOnce();
+    expect(redis.xadd).toHaveBeenCalledOnce();
+  });
 });

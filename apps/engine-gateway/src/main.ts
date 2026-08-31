@@ -1,4 +1,6 @@
 import { serve } from "@hono/node-server";
+import type { AppOrderEvent } from "@cex/app-contracts";
+import type { OrderEvent } from "@cex/exchange-types";
 import { loadConfig } from "./config.js";
 import { CommandDedupe } from "./dedupe.js";
 import { CommandHandler } from "./commands/handler.js";
@@ -9,23 +11,31 @@ import { log } from "./logger.js";
 import { GatewayMetrics } from "./metrics.js";
 import { publishBbo } from "./redis/pubsub.js";
 import {
+  createRedisSubscriber,
+  MarketDataHub,
+} from "./redis/market-data.js";
+import {
   ackCommand,
   createRedis,
   deadLetterCommand,
   ensureCommandGroup,
   recoverPendingCommands,
   readCommands,
+  publishOrderEvent,
 } from "./redis/streams.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
   const redis = createRedis(config.redisUrl);
+  const marketDataRedis = createRedisSubscriber(config.redisUrl);
+  const marketData = new MarketDataHub(marketDataRedis, config.market);
   const engine = new EngineClient(config.exchangeUrl, config.market);
   const metrics = new GatewayMetrics();
   const dedupe = new CommandDedupe(redis);
   const handler = new CommandHandler(engine, redis, dedupe, metrics);
 
   await ensureCommandGroup(redis);
+  await marketData.start();
   log("info", "redis command group ready");
 
   try {
@@ -52,6 +62,23 @@ async function main(): Promise<void> {
         log("error", "BBO publish failed", {
           error: err instanceof Error ? err.message : String(err),
         });
+      }
+      return;
+    }
+
+    if (event.kind === "ORDER") {
+      const appEvent = toAppOrderEvent(event.event);
+      if (appEvent) {
+        try {
+          await publishOrderEvent(redis, appEvent);
+          metrics.increment("eventsPublished");
+        } catch (err) {
+          log("error", "exchange order event publish failed", {
+            orderId: event.event.orderId,
+            sequence: event.event.seq,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
       return;
     }
@@ -106,6 +133,8 @@ async function main(): Promise<void> {
     market: config.market,
     metrics,
     isSseConnected: () => metrics.snapshot().sseConnected === true,
+    marketData,
+    internalToken: config.internalToken,
   });
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     log("info", "HTTP server listening", {
@@ -121,6 +150,7 @@ async function main(): Promise<void> {
     server.close();
     await commandLoop.catch(() => undefined);
     redis.disconnect();
+    await marketData.close();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown());
@@ -137,3 +167,28 @@ main().catch((err) => {
   });
   process.exit(1);
 });
+
+function toAppOrderEvent(event: OrderEvent): AppOrderEvent | null {
+  if (event.type === "STATUS") return null;
+
+  return {
+    eventId: `exchange-${event.seq}-${event.orderId}-${event.type}`,
+    type: event.type,
+    userId: event.userId,
+    market: event.market,
+    orderId: event.orderId,
+    status: event.status,
+    reason: event.reason,
+    fills:
+      event.type === "FILL" && event.tradeId && event.price && event.quantity
+        ? [
+            {
+              tradeId: event.tradeId,
+              price: event.price,
+              quantity: event.quantity,
+            },
+          ]
+        : undefined,
+    timestamp: event.timestamp,
+  };
+}

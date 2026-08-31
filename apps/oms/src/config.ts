@@ -3,6 +3,7 @@ export type OmsConfig = {
   redisUrl: string;
   databaseUrl: string | null;
   consumerName: string;
+  internalToken: string | null;
 };
 
 export function loadConfig(): OmsConfig {
@@ -11,5 +12,6 @@ export function loadConfig(): OmsConfig {
     redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
     databaseUrl: process.env.DATABASE_URL ?? null,
     consumerName: process.env.OMS_CONSUMER_NAME ?? `oms-${process.pid}`,
+    internalToken: process.env.OMS_INTERNAL_TOKEN ?? null,
   };
 }

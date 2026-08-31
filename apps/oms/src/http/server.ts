@@ -4,13 +4,29 @@ import {
   type PlaceCommand,
 } from "@cex/app-contracts";
 import {
+  FundingNotFoundError,
   OrderNotFoundError,
   OrderOwnershipError,
   OrderService,
 } from "../orders/service.js";
 
-export function createOmsApp(orderService: OrderService) {
+export function createOmsApp(
+  orderService: OrderService,
+  options: { internalToken?: string | null } = {},
+) {
   const app = new Hono();
+
+  app.use("*", async (c, next) => {
+    if (!options.internalToken || c.req.path === "/health") {
+      await next();
+      return;
+    }
+
+    if (c.req.header("x-internal-token") !== options.internalToken) {
+      return c.json({ error: "UNAUTHORIZED" }, 401);
+    }
+    await next();
+  });
 
   app.get("/health", (c) =>
     c.json({
@@ -18,6 +34,26 @@ export function createOmsApp(orderService: OrderService) {
       service: "oms",
     }),
   );
+
+  app.post("/funding/sync", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "INVALID_JSON" }, 400);
+    }
+
+    if (!isRecord(body) || typeof body.userId !== "string") {
+      return c.json({ error: "INVALID_FUNDING_REQUEST" }, 400);
+    }
+
+    try {
+      const result = await orderService.syncUsdFunding(body.userId);
+      return c.json(result, result.existing ? 200 : 202);
+    } catch (error) {
+      return errorResponse(c, error);
+    }
+  });
 
   app.post("/orders", async (c) => {
     let body: unknown;
@@ -135,6 +171,9 @@ function errorResponse(
   }
   if (error instanceof OrderOwnershipError) {
     return context.json({ error: error.message }, 403);
+  }
+  if (error instanceof FundingNotFoundError) {
+    return context.json({ error: error.message }, 404);
   }
   return context.json(
     {

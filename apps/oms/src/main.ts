@@ -72,7 +72,9 @@ async function main(): Promise<void> {
     }
   })();
 
-  const app = createOmsApp(orderService);
+  const app = createOmsApp(orderService, {
+    internalToken: config.internalToken,
+  });
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`oms listening on http://localhost:${info.port}`);
   });

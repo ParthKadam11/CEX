@@ -3,9 +3,6 @@ import path from "node:path";
 import Redis from "ioredis";
 import { config as loadDotenv } from "dotenv";
 import {
-  publishCreditCommand,
-} from "../../src/redis/commands.js";
-import {
   ORDERS_EVENTS_STREAM,
   type AppOrderEvent,
 } from "@cex/app-contracts";
@@ -110,17 +107,18 @@ async function createTestUser(
 }
 
 async function sendCredit(userId: string): Promise<void> {
-  const commandId = `${prefix}-credit`;
-  await publishCreditCommand(redis, {
-    commandId,
-    type: "CREDIT",
-    userId,
-    asset: "USD",
-    amount: 100_000,
-    timestamp: Date.now(),
+  const response = await fetch(`${omsUrl}/funding/sync`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userId }),
   });
+  if (!response.ok) {
+    throw new Error(`Funding sync failed with status ${response.status}`);
+  }
 
-  await waitForEvent(commandId, (event) => event.type === "CREDIT_OK");
+  const body = (await response.json()) as { commandId?: string | null };
+  if (!body.commandId) return;
+  await waitForEvent(body.commandId, (event) => event.type === "CREDIT_OK");
 }
 
 async function waitForDependencies(): Promise<void> {

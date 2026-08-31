@@ -105,6 +105,11 @@ NEXTAUTH_SECRET=...
 NEXTAUTH_URL=http://localhost:3000
 
 DATABASE_URL=postgresql://user:pass@localhost:5432/cex
+OMS_URL=http://127.0.0.1:4030
+ENGINE_GATEWAY_URL=http://127.0.0.1:4020
+# Optional shared-service tokens for non-local deployments.
+OMS_INTERNAL_TOKEN=...
+ENGINE_GATEWAY_INTERNAL_TOKEN=...
 
 NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 ```
@@ -170,6 +175,8 @@ pnpm dev:oms
 ```
 
 It exposes order APIs at `http://localhost:4030`, publishes place/cancel commands to Redis Streams, and consumes gateway events to update the order database. OMS loads `DATABASE_URL` from `packages/db/.env` when the variable is not already set.
+
+For non-local deployments, set the same value as `OMS_INTERNAL_TOKEN` on OMS and the web app. Set `GATEWAY_INTERNAL_TOKEN` on the engine gateway and the same value as `ENGINE_GATEWAY_INTERNAL_TOKEN` on the web app.
 
 ## Exchange API
 
