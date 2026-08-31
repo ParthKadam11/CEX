@@ -10,6 +10,10 @@ export const engineGatewayUrl = (
   process.env.ENGINE_GATEWAY_URL ?? "http://127.0.0.1:4020"
 ).replace(/\/$/, "");
 
+export const marketDataUrl = (
+  process.env.MARKET_DATA_URL ?? "http://127.0.0.1:4040"
+).replace(/\/$/, "");
+
 export function omsHeaders(userId?: string, requestId?: string | null): HeadersInit {
   return {
     "x-internal-token":
@@ -28,6 +32,15 @@ export function engineGatewayHeaders(
       process.env.ENGINE_GATEWAY_INTERNAL_TOKEN ??
       "local-dev-gateway-token",
     ...(userId ? { "x-authenticated-user-id": userId } : {}),
+    "x-request-id": requestId ?? crypto.randomUUID(),
+  };
+}
+
+export function marketDataHeaders(requestId?: string | null): HeadersInit {
+  return {
+    "x-internal-token":
+      process.env.MARKET_DATA_INTERNAL_TOKEN ??
+      "local-dev-market-data-token",
     "x-request-id": requestId ?? crypto.randomUUID(),
   };
 }

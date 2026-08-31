@@ -4,6 +4,10 @@ import type {
   MarketSymbol,
   OrderEvent,
 } from "@cex/exchange-types";
+import {
+  isSafePositiveInteger,
+  isTimestamp,
+} from "@cex/exchange-types";
 import { log } from "../logger.js";
 
 export type EngineSseReady = {
@@ -192,12 +196,19 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
         ? { kind: "ORDER", market: value.market, event: value.event }
         : null;
     case "BBO":
-      return isNullableNumber(value.bestBid) && isNullableNumber(value.bestAsk)
+      return (
+        isNullableNumber(value.bestBid) &&
+        isNullableNumber(value.bestAsk) &&
+        isSafePositiveInteger(value.engineSequence) &&
+        isTimestamp(value.timestamp)
+      )
         ? {
             kind: "BBO",
             market: value.market,
             bestBid: value.bestBid,
             bestAsk: value.bestAsk,
+            engineSequence: value.engineSequence,
+            timestamp: value.timestamp,
           }
         : null;
     case "CREDIT":

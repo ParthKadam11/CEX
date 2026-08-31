@@ -37,6 +37,19 @@ orders. `limit` is an integer from 1 through 100. The response contains
 
 `GET /api/orders/:orderId` returns one order owned by the authenticated user.
 
+## Market history
+
+The authenticated BFF proxies historical data from the separate market-data
+writer:
+
+- `GET /api/market/history/trades?limit=50`
+- `GET /api/market/history/bbo?limit=50`
+- `GET /api/market/history/candles?limit=50`
+
+The writer service listens on port `4040` by default and requires
+`MARKET_DATA_INTERNAL_TOKEN` for history queries. Live market data continues
+to use Redis Pub/Sub and does not depend on TimescaleDB availability.
+
 ## Error envelope
 
 Errors use the same shape across exchange, gateway, OMS, and BFF responses:
@@ -59,8 +72,11 @@ gateway dependency is unavailable.
 ## Redis stream retention
 
 The command and event streams use approximate `MAXLEN` retention of 100,000
-entries. Each dead-letter stream retains approximately 25,000 entries. DLQ
-entries must be replayed or exported before they age out.
+entries. The durable `md:events` stream retains approximately 1,000,000
+entries, and each dead-letter stream retains approximately 25,000 entries.
+Market-data delivery is at-least-once; the writer deduplicates trades using
+`(market, tradeId)`. DLQ entries must be replayed or exported before they age
+out.
 
 Replay DLQ entries after correcting the underlying issue:
 

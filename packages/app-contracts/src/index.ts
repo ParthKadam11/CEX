@@ -37,6 +37,11 @@ export const ORDERS_EVENTS_DLQ_STREAM = "orders:events:dlq" as const;
 export const COMMAND_STREAM_MAXLEN = 100_000;
 export const EVENT_STREAM_MAXLEN = 100_000;
 export const DLQ_STREAM_MAXLEN = 25_000;
+export const MARKET_DATA_STREAM = "md:events" as const;
+export const MARKET_DATA_CONSUMER_GROUP = "timescale-writer" as const;
+export const MARKET_DATA_STREAM_MAXLEN = 1_000_000;
+export const MARKET_DATA_DLQ_STREAM = "md:events:dlq" as const;
+export const MARKET_DATA_DLQ_MAXLEN = 25_000;
 
 // Consumer group on orders:commands (Exchange Processor Gateway). 
 export const XPG_COMMANDS_GROUP = "xpg" as const;
@@ -192,18 +197,66 @@ export type BboMessage = {
   market: MarketSymbol;
   bestBid: number | null;
   bestAsk: number | null;
+  engineSequence: number;
   timestamp: number;
 };
 
 export type TradeTickMessage = {
   market: MarketSymbol;
   tradeId: string;
+  engineSequence: number;
   price: number;
   quantity: number;
   buyOrderId: string;
   sellOrderId: string;
   timestamp: number;
 };
+
+export type MarketDataEvent =
+  | {
+      eventId: string;
+      kind: "BBO";
+      payload: BboMessage;
+    }
+  | {
+      eventId: string;
+      kind: "TRADE";
+      payload: TradeTickMessage;
+    };
+
+export function isMarketDataEvent(value: unknown): value is MarketDataEvent {
+  if (!isRecord(value) || !isIdentifier(value.eventId)) return false;
+  if (value.kind === "BBO") {
+    const payload = value.payload;
+    return (
+      isRecord(payload) &&
+      payload.market === "SOL-USD" &&
+      isTimestamp(payload.timestamp) &&
+      isSafePositiveInteger(payload.engineSequence) &&
+      isNullableUnit(payload.bestBid) &&
+      isNullableUnit(payload.bestAsk)
+    );
+  }
+  if (value.kind === "TRADE") {
+    const payload = value.payload;
+    return (
+      isRecord(payload) &&
+      payload.market === "SOL-USD" &&
+      isIdentifier(payload.tradeId) &&
+      isIdentifier(payload.buyOrderId) &&
+      isIdentifier(payload.sellOrderId) &&
+      isSafePositiveInteger(payload.engineSequence) &&
+      isSafePositiveInteger(payload.price) &&
+      isSafePositiveInteger(payload.quantity) &&
+      isTimestamp(payload.timestamp)
+    );
+  }
+  return false;
+}
+
+function isNullableUnit(value: unknown): value is number | null {
+  return value === null || isSafePositiveInteger(value);
+}
 
 // Redis Stream entries store JSON in a `payload` field.
 export type StreamEnvelope<T> = {

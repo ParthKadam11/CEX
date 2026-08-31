@@ -22,9 +22,9 @@ REDIS_URL=redis://127.0.0.1:6379
 
 ### TimescaleDB
 
-Currently **commented out** in `docker-compose.yml` so `pnpm infra:up` only starts Redis.
+Enabled in `docker-compose.yml`; `pnpm infra:up` starts Redis and TimescaleDB.
 
-When you need market-data history, uncomment the `timescale` service (and `cex_timescale` volume). Intended writes:
+The market-data writer uses this database for:
 
 - BBO snapshots
 - trade ticks
@@ -35,6 +35,15 @@ Default connection string:
 ```env
 TIMESCALE_URL=postgresql://cex:cex@127.0.0.1:5434/cex_md
 ```
+
+Start the separate writer after infrastructure is running:
+
+```bash
+pnpm dev:market-data
+```
+
+It owns the TimescaleDB schema and consumes the durable `md:events` Redis
+stream. Its history API listens on port `4040` by default.
 
 ### PostgreSQL for users and orders
 
@@ -57,12 +66,12 @@ pnpm infra:logs
 | Service | Host port | Purpose |
 | --- | --- | --- |
 | Redis | `6379` | Streams and pub/sub |
-| TimescaleDB | `5434` | Market-data history (disabled until uncommented) |
+| TimescaleDB | `5434` | Market-data history |
 
 ## Requirements
 
 - Docker Desktop or a Docker-compatible engine
-- Available port `6379` (and `5434` if Timescale is enabled)
+- Available ports `6379` and `5434`
 
 ## What this stack does not start
 

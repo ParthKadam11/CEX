@@ -97,6 +97,8 @@ export interface Order {
 
 export interface Trade {
   tradeId: string;
+  /** Monotonic trade sequence assigned by the matching engine. */
+  engineSequence: number;
   market: MarketSymbol;
   /** Trade price in integer ticks (maker price). */
   price: number;
@@ -243,6 +245,8 @@ export type ExchangeStreamEvent =
       market: MarketSymbol;
       bestBid: number | null;
       bestAsk: number | null;
+      engineSequence: number;
+      timestamp: number;
     }
   | {
       kind: "CREDIT";

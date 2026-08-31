@@ -6,6 +6,7 @@ import {
   type TradeTickMessage,
 } from "@cex/app-contracts";
 import type { MarketSymbol } from "@cex/exchange-types";
+import { isIdentifier, isSafePositiveInteger, isTimestamp } from "@cex/exchange-types";
 import { log } from "../logger.js";
 
 export type MarketDataMessage = BboMessage | TradeTickMessage;
@@ -82,7 +83,8 @@ function isBboMessage(value: unknown): value is BboMessage {
     value.market === "SOL-USD" &&
     isNullableNumber(value.bestBid) &&
     isNullableNumber(value.bestAsk) &&
-    typeof value.timestamp === "number"
+    isSafePositiveInteger(value.engineSequence) &&
+    isTimestamp(value.timestamp)
   );
 }
 
@@ -90,12 +92,13 @@ function isTradeTickMessage(value: unknown): value is TradeTickMessage {
   if (!isRecord(value)) return false;
   return (
     value.market === "SOL-USD" &&
-    typeof value.tradeId === "string" &&
-    typeof value.price === "number" &&
-    typeof value.quantity === "number" &&
-    typeof value.buyOrderId === "string" &&
-    typeof value.sellOrderId === "string" &&
-    typeof value.timestamp === "number"
+    isIdentifier(value.tradeId) &&
+    isSafePositiveInteger(value.engineSequence) &&
+    isSafePositiveInteger(value.price) &&
+    isSafePositiveInteger(value.quantity) &&
+    isIdentifier(value.buyOrderId) &&
+    isIdentifier(value.sellOrderId) &&
+    isTimestamp(value.timestamp)
   );
 }
 

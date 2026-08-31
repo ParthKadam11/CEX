@@ -9,7 +9,7 @@ import { EngineSseClient } from "./engine/sse.js";
 import { createGatewayApp } from "./http/server.js";
 import { log } from "./logger.js";
 import { GatewayMetrics } from "./metrics.js";
-import { publishBbo } from "./redis/pubsub.js";
+import { publishBbo, publishMarketDataEvent } from "./redis/pubsub.js";
 import {
   createRedisSubscriber,
   MarketDataHub,
@@ -54,12 +54,19 @@ async function main(): Promise<void> {
   const sse = new EngineSseClient(engine.streamUrl(), async (event) => {
     if (event.kind === "BBO") {
       try {
-        await publishBbo(redis, {
+        const message = {
           market: event.market,
           bestBid: event.bestBid,
           bestAsk: event.bestAsk,
-          timestamp: Date.now(),
+          engineSequence: event.engineSequence,
+          timestamp: event.timestamp,
+        };
+        await publishMarketDataEvent(redis, {
+          eventId: `bbo-${message.market}-${message.engineSequence}`,
+          kind: "BBO",
+          payload: message,
         });
+        await publishBbo(redis, message);
         metrics.increment("bboPublished");
         log("info", "BBO published", { market: event.market });
       } catch (err) {

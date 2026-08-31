@@ -75,6 +75,7 @@ export class MatchingEngine {
     this.tradeSeq += 1;
     return {
       tradeId: `t-${this.tradeSeq}`,
+      engineSequence: this.tradeSeq,
       market: buy.market,
       price,
       quantity,

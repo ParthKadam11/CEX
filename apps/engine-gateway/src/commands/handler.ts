@@ -16,7 +16,7 @@ import type { EngineClient } from "../engine/client.js";
 import type { CommandDedupe } from "../dedupe.js";
 import { log } from "../logger.js";
 import type { GatewayMetrics } from "../metrics.js";
-import { publishTrade } from "../redis/pubsub.js";
+import { publishMarketDataEvent, publishTrade } from "../redis/pubsub.js";
 import { publishOrderEvent } from "../redis/streams.js";
 
 // One Redis command → engine HTTP → orders:events. HTTP response decides success; SSE is a separate live path.
@@ -224,9 +224,32 @@ export class CommandHandler {
   private async publishTrades(result: PlacementResult): Promise<void> {
     for (const trade of result.trades) {
       try {
+        await publishMarketDataEvent(this.redis, {
+          eventId: `trade-${trade.market}-${trade.tradeId}`,
+          kind: "TRADE",
+          payload: {
+            market: trade.market,
+            tradeId: trade.tradeId,
+            engineSequence: trade.engineSequence,
+            price: trade.price,
+            quantity: trade.quantity,
+            buyOrderId: trade.buyOrderId,
+            sellOrderId: trade.sellOrderId,
+            timestamp: trade.timestamp,
+          },
+        });
+      } catch (error) {
+        log("error", "durable trade publish failed", {
+          tradeId: trade.tradeId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        continue;
+      }
+      try {
         await publishTrade(this.redis, {
           market: trade.market,
           tradeId: trade.tradeId,
+          engineSequence: trade.engineSequence,
           price: trade.price,
           quantity: trade.quantity,
           buyOrderId: trade.buyOrderId,

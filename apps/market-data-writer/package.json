@@ -1,0 +1,30 @@
+{
+  "name": "@cex/market-data-writer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "tsx src/migrate.ts"
+  },
+  "dependencies": {
+    "@cex/app-contracts": "workspace:*",
+    "@cex/exchange-types": "workspace:*",
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.3",
+    "ioredis": "^5.8.2",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@cex/typescript-config": "workspace:*",
+    "@types/node": "^20.19.43",
+    "@types/pg": "^8.20.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
+  }
+}

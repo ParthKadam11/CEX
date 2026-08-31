@@ -10,6 +10,9 @@ CEX is a TypeScript monorepo for a centralized exchange prototype. The repositor
 - `apps/web`  
   A Next.js application with Google sign-in, custodial Solana wallets, simulated USD balances, deposit and withdraw flows, and a dashboard for wallet state and recent activity.
 
+- `apps/market-data-writer`  
+  A separate Redis consumer that persists durable BBO and trade events into TimescaleDB and serves historical market-data queries.
+
 - `packages/exchange-types`  
   Shared engine domain types such as orders, trades, balances, events, and engine commands.
 
@@ -37,6 +40,7 @@ apps/exchange
 application layer
   └─ OMS → engine-gateway → exchange
   └─ Redis Streams + Redis pub/sub
+  └─ Redis market-data stream → market-data-writer → TimescaleDB
 ```
 
 ### Exchange engine
@@ -177,6 +181,17 @@ pnpm dev:oms
 ```
 
 It exposes order APIs at `http://localhost:4030`, publishes place/cancel commands to Redis Streams, and consumes gateway events to update the order database. OMS loads `DATABASE_URL` from `packages/db/.env` when the variable is not already set.
+
+### Market-data writer
+
+The market-data writer persists the durable `md:events` stream into TimescaleDB:
+
+```bash
+pnpm dev:market-data
+```
+
+It serves historical trades, BBO snapshots, and one-minute candles at
+`http://localhost:4040`.
 
 For non-local deployments, set the same value as `OMS_INTERNAL_TOKEN` on OMS and the web app. Set `GATEWAY_INTERNAL_TOKEN` on the engine gateway and the same value as `ENGINE_GATEWAY_INTERNAL_TOKEN` on the web app.
 

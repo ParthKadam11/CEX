@@ -196,6 +196,8 @@ export class MarketRuntime {
       market: this.market,
       bestBid: bbo.bestBid,
       bestAsk: bbo.bestAsk,
+      engineSequence: this.wal.currentSeq,
+      timestamp: Date.now(),
     });
   }
 
