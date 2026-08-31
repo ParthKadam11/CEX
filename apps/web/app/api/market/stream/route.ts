@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
+  bffError,
   engineGatewayHeaders,
   engineGatewayUrl,
   getAuthenticatedUserId,
@@ -7,10 +8,10 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const userId = await getAuthenticatedUserId();
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return bffError(request, 401, "UNAUTHORIZED");
   }
 
   try {
@@ -18,15 +19,15 @@ export async function GET() {
       `${engineGatewayUrl}/markets/SOL-USD/stream`,
       {
         cache: "no-store",
-        headers: engineGatewayHeaders(),
+        headers: engineGatewayHeaders(
+          undefined,
+          request.headers.get("x-request-id"),
+        ),
       },
     );
 
     if (!response.ok || !response.body) {
-      return NextResponse.json(
-        { error: "MARKET_STREAM_UNAVAILABLE" },
-        { status: 502 },
-      );
+      return bffError(request, 502, "MARKET_STREAM_UNAVAILABLE");
     }
 
     return new Response(response.body, {
@@ -36,12 +37,12 @@ export async function GET() {
         connection: "keep-alive",
         "content-type": "text/event-stream",
         "x-accel-buffering": "no",
+        ...(response.headers.get("x-request-id")
+          ? { "x-request-id": response.headers.get("x-request-id")! }
+          : {}),
       },
     });
   } catch {
-    return NextResponse.json(
-      { error: "ENGINE_GATEWAY_UNAVAILABLE" },
-      { status: 502 },
-    );
+    return bffError(request, 502, "ENGINE_GATEWAY_UNAVAILABLE");
   }
 }

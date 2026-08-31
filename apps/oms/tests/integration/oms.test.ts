@@ -35,7 +35,7 @@ describe("OMS end-to-end flow", () => {
       userId = await createTestUser(prisma);
       await sendCredit(userId);
 
-      const response = await fetch(`${omsUrl}/orders`, {
+      const request = {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -52,14 +52,25 @@ describe("OMS end-to-end flow", () => {
           quantity: 1,
           orderId,
         }),
-      });
-
-      expect(response.status).toBe(202);
-      const created = (await response.json()) as {
-        order: { engineOrderId: string; status: string };
       };
+      const responses = await Promise.all([
+        fetch(`${omsUrl}/orders`, request),
+        fetch(`${omsUrl}/orders`, request),
+      ]);
+      expect(responses.map((response) => response.status).sort()).toEqual([
+        200,
+        202,
+      ]);
+      const createdBodies = (await Promise.all(
+        responses.map((response) => response.json()),
+      )) as Array<{
+        order: { engineOrderId: string; status: string };
+        commandId: string;
+      }>;
+      const created = createdBodies[0]!;
       expect(created.order.engineOrderId).toBe(orderId);
       expect(created.order.status).toBe("PENDING");
+      expect(createdBodies[1]!.commandId).toBe(created.commandId);
 
       const open = await waitForOrder(userId, orderId, (order) =>
         order.status === "OPEN",

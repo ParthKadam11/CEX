@@ -146,16 +146,29 @@ export class OrderPlacementService {
   }
 
   place(order: Order, book: OrderBook): PlacementResult {
-    if (!orderUnitsOk(order)) {
-      return this.reject(order, "INVALID_UNITS");
+    const existing = this.store.get(order.orderId);
+    if (existing) {
+      this.log.append({
+        type: "REJECTED",
+        orderId: existing.orderId,
+        userId: existing.userId,
+        market: existing.market,
+        status: existing.status,
+        reason: "DUPLICATE_ORDER_ID",
+      });
+      return {
+        order: existing,
+        trades: [],
+        accepted: false,
+        reason: "DUPLICATE_ORDER_ID",
+      };
     }
 
     if (
-      order.timeInForce !== TimeInForce.GTC &&
-      order.timeInForce !== TimeInForce.IOC &&
-      order.timeInForce !== TimeInForce.FOK
+      order.timeInForce === TimeInForce.FOK_BUDGET &&
+      (order.type !== OrderType.MARKET || order.side !== Side.BUY)
     ) {
-      return this.reject(order, "UNSUPPORTED_TIF");
+      return this.reject(order, "FOK_BUDGET_REQUIRES_MARKET_BUY");
     }
 
     if (
@@ -164,6 +177,26 @@ export class OrderPlacementService {
       !(order.quoteBudget && order.quoteBudget > 0)
     ) {
       return this.reject(order, "MARKET_MISSING_QUOTE_BUDGET");
+    }
+
+    if (!orderUnitsOk(order)) {
+      return this.reject(order, "INVALID_UNITS");
+    }
+
+    if (
+      order.timeInForce !== TimeInForce.GTC &&
+      order.timeInForce !== TimeInForce.IOC &&
+      order.timeInForce !== TimeInForce.FOK &&
+      order.timeInForce !== TimeInForce.FOK_BUDGET
+    ) {
+      return this.reject(order, "UNSUPPORTED_TIF");
+    }
+
+    if (
+      order.timeInForce === TimeInForce.FOK_BUDGET &&
+      !this.canFullyFill(order, book)
+    ) {
+      return this.reject(order, "FOK_INSUFFICIENT_LIQUIDITY");
     }
 
     try {
@@ -175,7 +208,10 @@ export class OrderPlacementService {
       throw err;
     }
 
-    if (order.timeInForce === TimeInForce.FOK && !this.canFullyFill(order, book)) {
+    if (
+      order.timeInForce === TimeInForce.FOK &&
+      !this.canFullyFill(order, book)
+    ) {
       this.unlockOrder(order);
       return this.reject(order, "FOK_INSUFFICIENT_LIQUIDITY");
     }
@@ -263,7 +299,7 @@ export class OrderPlacementService {
       reason,
     });
     this.store.upsert(order);
-    return { order, trades: [], accepted: false };
+    return { order, trades: [], accepted: false, reason };
   }
 
   private lockOrder(order: Order): void {

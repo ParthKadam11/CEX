@@ -153,7 +153,7 @@ export class CommandHandler {
         clientOrderId: command.clientOrderId,
         order: result.order,
         status: result.order.status,
-        reason: "REJECTED",
+        reason: result.reason ?? "REJECTED",
         timestamp: Date.now(),
       });
       return;
@@ -255,6 +255,8 @@ function toEngineOrder(command: PlaceCommand): Order {
       ? TimeInForce.IOC
       : command.timeInForce === TimeInForce.FOK
         ? TimeInForce.FOK
+        : command.timeInForce === TimeInForce.FOK_BUDGET
+          ? TimeInForce.FOK_BUDGET
         : TimeInForce.GTC;
 
   return {

@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import {
   getAuthenticatedUserId,
+  bffError,
   omsHeaders,
   omsUrl,
   relayResponse,
@@ -9,7 +10,7 @@ import {
 export async function GET(request: NextRequest) {
   const userId = await getAuthenticatedUserId();
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return bffError(request, 401, "UNAUTHORIZED");
   }
 
   const limit = request.nextUrl.searchParams.get("limit");
@@ -19,32 +20,29 @@ export async function GET(request: NextRequest) {
   try {
     const response = await fetch(`${omsUrl}/orders?${query}`, {
       cache: "no-store",
-      headers: omsHeaders(userId),
+      headers: omsHeaders(userId, request.headers.get("x-request-id")),
     });
     return relayResponse(response);
   } catch {
-    return NextResponse.json(
-      { error: "OMS_UNAVAILABLE" },
-      { status: 502 },
-    );
+    return bffError(request, 502, "OMS_UNAVAILABLE");
   }
 }
 
 export async function POST(request: NextRequest) {
   const userId = await getAuthenticatedUserId();
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return bffError(request, 401, "UNAUTHORIZED");
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return bffError(request, 400, "INVALID_JSON");
   }
 
   if (!isRecord(body)) {
-    return NextResponse.json({ error: "Invalid order" }, { status: 400 });
+    return bffError(request, 400, "INVALID_ORDER");
   }
   const orderBody = Object.fromEntries(
     Object.entries(body).filter(([key]) => key !== "userId"),
@@ -55,16 +53,13 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        ...omsHeaders(userId),
+        ...omsHeaders(userId, request.headers.get("x-request-id")),
       },
       body: JSON.stringify(orderBody),
     });
     return relayResponse(response);
   } catch {
-    return NextResponse.json(
-      { error: "OMS_UNAVAILABLE" },
-      { status: 502 },
-    );
+    return bffError(request, 502, "OMS_UNAVAILABLE");
   }
 }
 

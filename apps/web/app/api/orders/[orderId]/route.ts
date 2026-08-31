@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import {
+  bffError,
   getAuthenticatedUserId,
   omsHeaders,
   omsUrl,
@@ -16,7 +17,7 @@ export async function GET(
 ) {
   const userId = await getAuthenticatedUserId();
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return bffError(_request, 401, "UNAUTHORIZED");
   }
 
   const { orderId } = await context.params;
@@ -24,14 +25,14 @@ export async function GET(
   try {
     const response = await fetch(
       `${omsUrl}/orders/${encodeURIComponent(orderId)}`,
-      { cache: "no-store", headers: omsHeaders(userId) },
+      {
+        cache: "no-store",
+        headers: omsHeaders(userId, _request.headers.get("x-request-id")),
+      },
     );
     return relayResponse(response);
   } catch {
-    return NextResponse.json(
-      { error: "OMS_UNAVAILABLE" },
-      { status: 502 },
-    );
+    return bffError(_request, 502, "OMS_UNAVAILABLE");
   }
 }
 
@@ -41,14 +42,14 @@ export async function DELETE(
 ) {
   const userId = await getAuthenticatedUserId();
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return bffError(request, 401, "UNAUTHORIZED");
   }
 
   let body: unknown = {};
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return bffError(request, 400, "INVALID_JSON");
   }
 
   const { orderId } = await context.params;
@@ -64,17 +65,14 @@ export async function DELETE(
         method: "DELETE",
         headers: {
           "content-type": "application/json",
-          ...omsHeaders(userId),
+          ...omsHeaders(userId, request.headers.get("x-request-id")),
         },
         body: JSON.stringify({ clientOrderId }),
       },
     );
     return relayResponse(response);
   } catch {
-    return NextResponse.json(
-      { error: "OMS_UNAVAILABLE" },
-      { status: 502 },
-    );
+    return bffError(request, 502, "OMS_UNAVAILABLE");
   }
 }
 

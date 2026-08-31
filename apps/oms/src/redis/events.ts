@@ -5,6 +5,7 @@ import {
   ORDERS_EVENTS_STREAM,
   type AppOrderEvent,
 } from "@cex/app-contracts";
+import { isIdentifier, isTimestamp } from "@cex/exchange-types";
 
 export type EventMessage = {
   id: string;
@@ -146,13 +147,15 @@ function isAppOrderEvent(value: unknown): value is AppOrderEvent {
   ];
 
   return (
-    typeof value.eventId === "string" &&
-    value.eventId.length > 0 &&
+    isIdentifier(value.eventId) &&
     typeof value.type === "string" &&
     eventTypes.includes(value.type) &&
-    typeof value.userId === "string" &&
+    isIdentifier(value.userId) &&
     value.market === "SOL-USD" &&
-    typeof value.timestamp === "number"
+    isTimestamp(value.timestamp) &&
+    (value.commandId === undefined || isIdentifier(value.commandId)) &&
+    (value.orderId === undefined || isIdentifier(value.orderId)) &&
+    (value.clientOrderId === undefined || isIdentifier(value.clientOrderId))
   );
 }
 

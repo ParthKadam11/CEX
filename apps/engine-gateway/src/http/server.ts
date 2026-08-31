@@ -1,8 +1,8 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import type Redis from "ioredis";
 import { isAppCommand } from "@cex/app-contracts";
-import type { MarketSymbol } from "@cex/exchange-types";
+import { isIdentifier, type MarketSymbol } from "@cex/exchange-types";
 import type { EngineClient } from "../engine/client.js";
 import type { GatewayMetrics } from "../metrics.js";
 import type { MarketDataHub } from "../redis/market-data.js";
@@ -22,6 +22,12 @@ export function createGatewayApp(options: GatewayAppOptions) {
   const app = new Hono();
 
   app.use("*", async (c, next) => {
+    const requestId = c.req.header("x-request-id");
+    c.header(
+      "x-request-id",
+      isIdentifier(requestId) ? requestId : crypto.randomUUID(),
+    );
+
     if (
       !options.internalToken ||
       c.req.path === "/health" ||
@@ -32,14 +38,23 @@ export function createGatewayApp(options: GatewayAppOptions) {
     }
 
     if (c.req.header("x-internal-token") !== options.internalToken) {
-      return c.json({ error: "UNAUTHORIZED" }, 401);
+      return errorResponse(c, 401, "UNAUTHORIZED");
     }
     await next();
   });
 
+  app.onError((error, c) =>
+    errorResponse(
+      c,
+      500,
+      "INTERNAL_ERROR",
+      error instanceof Error ? error.message : "INTERNAL_ERROR",
+    ),
+  );
+
   app.get("/markets/:market", (c) => {
     if (c.req.param("market") !== options.market) {
-      return c.json({ error: "UNKNOWN_MARKET" }, 404);
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
 
     return c.json({
@@ -54,49 +69,48 @@ export function createGatewayApp(options: GatewayAppOptions) {
 
   app.get("/markets/:market/book", async (c) => {
     if (c.req.param("market") !== options.market) {
-      return c.json({ error: "UNKNOWN_MARKET" }, 404);
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
 
     try {
       return c.json(await options.engine.book());
     } catch (error) {
-      return c.json(
-        {
-          error: error instanceof Error ? error.message : "BOOK_UNAVAILABLE",
-        },
+      return errorResponse(
+        c,
         502,
+        "BOOK_UNAVAILABLE",
+        error instanceof Error ? error.message : "BOOK_UNAVAILABLE",
       );
     }
   });
 
   app.get("/markets/:market/balances", async (c) => {
     if (c.req.param("market") !== options.market) {
-      return c.json({ error: "UNKNOWN_MARKET" }, 404);
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
 
     const userId = c.req.header("x-authenticated-user-id");
-    if (!userId) return c.json({ error: "UNAUTHORIZED" }, 401);
+    if (!isIdentifier(userId)) {
+      return errorResponse(c, 401, "UNAUTHORIZED");
+    }
 
     try {
       return c.json({
         balances: await options.engine.balances(userId),
       });
     } catch (error) {
-      return c.json(
-        {
-          error:
-            error instanceof Error
-              ? error.message
-              : "BALANCES_UNAVAILABLE",
-        },
+      return errorResponse(
+        c,
         502,
+        "BALANCES_UNAVAILABLE",
+        error instanceof Error ? error.message : "BALANCES_UNAVAILABLE",
       );
     }
   });
 
   app.get("/markets/:market/stream", (c) => {
     if (c.req.param("market") !== options.market) {
-      return c.json({ error: "UNKNOWN_MARKET" }, 404);
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
 
     return streamSSE(c, async (stream) => {
@@ -158,18 +172,18 @@ export function createGatewayApp(options: GatewayAppOptions) {
 
   app.post("/dev/inject-command", async (c) => {
     if (process.env.NODE_ENV === "production") {
-      return c.json({ error: "DISABLED_IN_PRODUCTION" }, 404);
+      return errorResponse(c, 404, "DISABLED_IN_PRODUCTION");
     }
 
     let body: unknown;
     try {
       body = await c.req.json();
     } catch {
-      return c.json({ error: "INVALID_JSON" }, 400);
+      return errorResponse(c, 400, "INVALID_JSON");
     }
 
     if (!isAppCommand(body)) {
-      return c.json({ error: "INVALID_COMMAND" }, 400);
+      return errorResponse(c, 400, "INVALID_COMMAND");
     }
 
     const streamId = await injectCommand(options.redis, body);
@@ -177,6 +191,24 @@ export function createGatewayApp(options: GatewayAppOptions) {
   });
 
   return app;
+}
+
+function errorResponse(
+  context: Context,
+  status: 400 | 401 | 404 | 409 | 500 | 502,
+  code: string,
+  message = code,
+) {
+  return context.json(
+    {
+      error: {
+        code,
+        message,
+        requestId: context.req.header("x-request-id"),
+      },
+    },
+    status,
+  );
 }
 
 async function checkEngine(engine: EngineClient): Promise<boolean> {

@@ -76,12 +76,46 @@ describe("OMS HTTP authentication", () => {
     });
 
     expect(listResponse.status).toBe(200);
-    expect(service.listForUser).toHaveBeenCalledWith("owner", undefined);
+    expect(service.listForUser).toHaveBeenCalledWith(
+      "owner",
+      undefined,
+      undefined,
+    );
     expect(cancelResponse.status).toBe(202);
     expect(service.cancel).toHaveBeenCalledWith(
       "owner",
       "engine-order",
       undefined,
     );
+  });
+
+  it("returns request IDs and enforces bounded pagination", async () => {
+    const service = {
+      listForUser: vi.fn().mockResolvedValue({
+        orders: [],
+        nextCursor: null,
+      }),
+    } as unknown as OrderService;
+    const app = createOmsApp(service, { internalToken: "secret" });
+    const headers = {
+      "x-internal-token": "secret",
+      "x-authenticated-user-id": "owner",
+      "x-request-id": "request-123",
+    };
+
+    const valid = await app.request("/orders?limit=2&cursor=cursor-1", {
+      headers,
+    });
+    const invalid = await app.request("/orders?limit=101", { headers });
+
+    expect(valid.status).toBe(200);
+    expect(valid.headers.get("x-request-id")).toBe("request-123");
+    expect(service.listForUser).toHaveBeenCalledWith(
+      "owner",
+      2,
+      "cursor-1",
+    );
+    expect(invalid.status).toBe(400);
+    expect((await invalid.json()).error.code).toBe("INVALID_LIMIT");
   });
 });

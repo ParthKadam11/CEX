@@ -38,9 +38,11 @@ export class EngineClient {
         body: JSON.stringify({ userId, asset, amount }),
       },
     );
-    const body = (await res.json()) as CreditResult & { error?: string };
+    const body = (await res.json()) as CreditResult & {
+      error?: string | { code?: string; message?: string };
+    };
     if (!res.ok) {
-      throw new Error(body.error ?? `credit failed: ${res.status}`);
+      throw new Error(errorMessage(body.error) ?? `credit failed: ${res.status}`);
     }
     return body;
   }
@@ -63,9 +65,19 @@ export class EngineClient {
         }),
       },
     );
-    const body = (await res.json()) as PlacementResult & { error?: string };
+    const body = (await res.json()) as PlacementResult & {
+      error?: string | { code?: string; message?: string };
+    };
     if (!res.ok && body.order === undefined) {
-      throw new Error(body.error ?? `place failed: ${res.status}`);
+      throw new Error(errorMessage(body.error) ?? `place failed: ${res.status}`);
+    }
+    if (!res.ok) {
+      return {
+        order: body.order!,
+        trades: body.trades ?? [],
+        accepted: false,
+        reason: errorCode(body.error) as PlacementResult["reason"],
+      };
     }
     return body;
   }
@@ -75,9 +87,11 @@ export class EngineClient {
       `${this.baseUrl}/v1/markets/${this.market}/orders/${orderId}`,
       { method: "DELETE", headers: this.headers() },
     );
-    const body = (await res.json()) as CancelResult & { error?: string };
+    const body = (await res.json()) as CancelResult & {
+      error?: string | { code?: string; message?: string };
+    };
     if (!res.ok && body.cancelled === undefined) {
-      throw new Error(body.error ?? `cancel failed: ${res.status}`);
+      throw new Error(errorMessage(body.error) ?? `cancel failed: ${res.status}`);
     }
     return body;
   }
@@ -113,4 +127,17 @@ export class EngineClient {
   private headers(): Record<string, string> {
     return { "x-gateway-token": this.gatewayToken };
   }
+}
+
+function errorMessage(
+  error: string | { code?: string; message?: string } | undefined,
+): string | undefined {
+  if (typeof error === "string") return error;
+  return error?.message ?? error?.code;
+}
+
+function errorCode(
+  error: string | { code?: string; message?: string } | undefined,
+): string | undefined {
+  return typeof error === "string" ? error : error?.code;
 }

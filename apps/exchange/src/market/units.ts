@@ -1,5 +1,13 @@
 import {
+  isBoundedPositiveInteger,
+  isIdentifier,
+  isTimestamp,
+  MAX_ORDER_PRICE,
+  MAX_ORDER_QUANTITY,
+  MAX_QUOTE_BUDGET,
   OrderType,
+  Side,
+  TimeInForce,
   type Market,
   type MarketSymbol,
   type Order,
@@ -97,8 +105,22 @@ export function isAligned(value: number, step: number): boolean {
 
 /** True when price / qty / budget are safe integers aligned to the market. */
 export function orderUnitsOk(order: Order): boolean {
+  if (
+    order.market !== "SOL-USD" ||
+    !isIdentifier(order.orderId) ||
+    !isIdentifier(order.userId) ||
+    !isTimestamp(order.timestamp) ||
+    (order.side !== Side.BUY && order.side !== Side.SELL) ||
+    (order.type !== OrderType.LIMIT && order.type !== OrderType.MARKET) ||
+    !Object.values(TimeInForce).includes(order.timeInForce)
+  ) {
+    return false;
+  }
+
   const spec = marketSpec(order.market);
-  if (!isPositiveUnit(order.quantity)) return false;
+  if (!isBoundedPositiveInteger(order.quantity, MAX_ORDER_QUANTITY)) {
+    return false;
+  }
   if (!isAligned(order.quantity, spec.lotSize)) return false;
   if (!isUnit(order.filledQuantity)) return false;
   if (order.filledQuantity > order.quantity) return false;
@@ -107,14 +129,26 @@ export function orderUnitsOk(order: Order): boolean {
     if (order.price !== 0) return false;
     if (
       order.quoteBudget !== undefined &&
-      !isPositiveUnit(order.quoteBudget)
+      !isBoundedPositiveInteger(order.quoteBudget, MAX_QUOTE_BUDGET)
     ) {
       return false;
     }
-    return true;
+    if (
+      order.side === Side.BUY &&
+      !isBoundedPositiveInteger(order.quoteBudget, MAX_QUOTE_BUDGET)
+    ) {
+      return false;
+    }
+    return (
+      order.timeInForce !== TimeInForce.FOK_BUDGET ||
+      (order.side === Side.BUY &&
+        isBoundedPositiveInteger(order.quoteBudget, MAX_QUOTE_BUDGET))
+    );
   }
 
   return (
-    isPositiveUnit(order.price) && isAligned(order.price, spec.tickSize)
+    isBoundedPositiveInteger(order.price, MAX_ORDER_PRICE) &&
+    isAligned(order.price, spec.tickSize) &&
+    order.timeInForce !== TimeInForce.FOK_BUDGET
   );
 }

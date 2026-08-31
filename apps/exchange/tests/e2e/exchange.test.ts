@@ -433,8 +433,9 @@ describe("Exchange E2E — feature checklist", () => {
       });
       expect(res.status).toBe(400);
       const placed = await body(res);
-      expect(placed.accepted).toBe(false);
-      expect(placed.order).toMatchObject({ status: "REJECTED" });
+      expect(
+        (placed.error as { code: string }).code,
+      ).toBe("MARKET_MISSING_QUOTE_BUDGET");
     });
   });
 
@@ -458,23 +459,33 @@ describe("Exchange E2E — feature checklist", () => {
       expect(runtime.balances.get("buyer", "USD").available).toBe(50);
     });
 
-    it("rejects unsupported TimeInForce (FOK_BUDGET)", async () => {
+    it("supports market-buy FOK_BUDGET", async () => {
       const { app } = createExchange();
+      await credit(app, "seller", "SOL", 1);
       await credit(app, "buyer", "USD", 100);
-
-      const res = await place(app, {
-        orderId: "b-tif",
-        userId: "buyer",
-        side: Side.BUY,
+      await place(app, {
+        orderId: "budget-maker",
+        userId: "seller",
+        side: Side.SELL,
         type: "LIMIT",
         price: 100,
+        quantity: 1,
+        timeInForce: "GTC",
+      });
+
+      const res = await place(app, {
+        orderId: "b-budget",
+        userId: "buyer",
+        side: Side.BUY,
+        type: "MARKET",
+        price: 0,
         quantity: 1,
         timeInForce: "FOK_BUDGET",
         quoteBudget: 100,
       });
       const placed = await body(res);
-      expect(placed.accepted).toBe(false);
-      expect(placed.order).toMatchObject({ status: "REJECTED" });
+      expect(placed.accepted).toBe(true);
+      expect(placed.order).toMatchObject({ status: "FILLED" });
     });
   });
 

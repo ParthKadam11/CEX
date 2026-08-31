@@ -40,7 +40,19 @@ describe("OrderService", () => {
   });
 
   it("does not publish a second command for the same client order", async () => {
-    const storedOrder = { id: "db-order-1", status: "PENDING" };
+    const storedOrder = {
+      id: "db-order-1",
+      status: "PENDING",
+      market: "SOL-USD",
+      side: "BUY",
+      type: "LIMIT",
+      timeInForce: "GTC",
+      price: 100,
+      quantity: 2,
+      quoteBudget: null,
+      placeCommandId: "original-command",
+      engineOrderId: "original-engine-order",
+    };
     const repository = {
       findByClientOrderId: vi
         .fn()
@@ -59,6 +71,80 @@ describe("OrderService", () => {
     expect(second.existing).toBe(true);
     expect(repository.createPending).toHaveBeenCalledOnce();
     expect(redis.xadd).toHaveBeenCalledOnce();
+  });
+
+  it("resolves concurrent client-order creates to the original order", async () => {
+    const storedOrder = {
+      id: "db-order-1",
+      status: "PENDING",
+      market: "SOL-USD",
+      side: "BUY",
+      type: "LIMIT",
+      timeInForce: "GTC",
+      price: 100,
+      quantity: 2,
+      quoteBudget: null,
+      placeCommandId: "original-command",
+      engineOrderId: "original-engine-order",
+    };
+    const repository = {
+      findByClientOrderId: vi
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(storedOrder),
+      createPending: vi
+        .fn()
+        .mockRejectedValue({ code: "P2002" }),
+    } as unknown as OrderRepository;
+    const redis = {
+      xadd: vi.fn(),
+    } as unknown as Redis;
+    const service = new OrderService(repository, redis);
+
+    const [first, second] = await Promise.all([
+      service.place(placeInput),
+      service.place(placeInput),
+    ]);
+
+    expect(first.existing).toBe(true);
+    expect(second.existing).toBe(true);
+    expect(first.order).toBe(storedOrder);
+    expect(first.command.commandId).toBe("original-command");
+    expect(first.command.orderId).toBe("original-engine-order");
+    expect(redis.xadd).not.toHaveBeenCalled();
+  });
+
+  it("preserves FOK_BUDGET when creating the command", async () => {
+    const repository = {
+      findByClientOrderId: vi.fn().mockResolvedValue(null),
+      createPending: vi.fn().mockResolvedValue({
+        id: "db-order-1",
+        status: "PENDING",
+      }),
+    } as unknown as OrderRepository;
+    const redis = {
+      xadd: vi.fn().mockResolvedValue("1-0"),
+    } as unknown as Redis;
+    const service = new OrderService(repository, redis);
+
+    await service.place({
+      ...placeInput,
+      clientOrderId: "budget-client",
+      orderType: OrderType.MARKET,
+      timeInForce: TimeInForce.FOK_BUDGET,
+      price: 0,
+      quoteBudget: 300,
+    });
+
+    expect(repository.createPending).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderType: OrderType.MARKET,
+        timeInForce: TimeInForce.FOK_BUDGET,
+        quoteBudget: 300,
+      }),
+      expect.any(String),
+    );
   });
 
   it("rejects cancellation by another user", async () => {

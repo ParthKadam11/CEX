@@ -349,24 +349,132 @@ describe("OrderPlacementService", () => {
     expect(book.getSnapshot()).toEqual(before);
   });
 
-  it("rejects unsupported TimeInForce", () => {
+  it("FOK_BUDGET fully fills a market buy within its quote budget", () => {
     const book = new OrderBook("SOL-USD");
     const service = new OrderPlacementService();
+    fund(service, "seller-1", { SOL: 1 });
+    fund(service, "seller-2", { SOL: 2 });
+    fund(service, "buyer", { USD: 302 });
 
-    const order = makeOrder({
+    service.place(
+      makeOrder({
+        orderId: "seller-1-order",
+        userId: "seller-1",
+        side: Side.SELL,
+        price: 100,
+        quantity: 1,
+      }),
+      book,
+    );
+    service.place(
+      makeOrder({
+        orderId: "seller-2-order",
+        userId: "seller-2",
+        side: Side.SELL,
+        price: 101,
+        quantity: 2,
+      }),
+      book,
+    );
+
+    const result = service.place(
+      makeOrder({
       orderId: "b1",
       side: Side.BUY,
-      price: 100,
-      quantity: 1,
+      type: OrderType.MARKET,
+      price: 0,
+      quantity: 3,
       timeInForce: TimeInForce.FOK_BUDGET,
-      quoteBudget: 100,
-    });
+      quoteBudget: 302,
+      userId: "buyer",
+      }),
+      book,
+    );
 
-    const result = service.place(order, book);
+    expect(result.accepted).toBe(true);
+    expect(result.order.status).toBe("FILLED");
+    expect(result.order.filledQuantity).toBe(3);
+    expect(result.trades).toHaveLength(2);
+    expect(book.getSnapshot().asks).toHaveLength(0);
+    expect(service.balances.get("buyer", "USD")).toEqual({
+      userId: "buyer",
+      asset: "USD",
+      available: 0,
+      locked: 0,
+    });
+  });
+
+  it("FOK_BUDGET rejects without mutating liquidity or balances", () => {
+    const book = new OrderBook("SOL-USD");
+    const service = new OrderPlacementService();
+    fund(service, "seller", { SOL: 2 });
+    fund(service, "buyer", { USD: 100 });
+    service.place(
+      makeOrder({
+        orderId: "seller-order",
+        userId: "seller",
+        side: Side.SELL,
+        price: 100,
+        quantity: 2,
+      }),
+      book,
+    );
+    const beforeBook = book.getSnapshot();
+    const beforeBalance = service.balances.get("buyer", "USD");
+
+    const result = service.place(
+      makeOrder({
+        orderId: "b1",
+        userId: "buyer",
+        side: Side.BUY,
+        type: OrderType.MARKET,
+        price: 0,
+        quantity: 2,
+        timeInForce: TimeInForce.FOK_BUDGET,
+        quoteBudget: 100,
+      }),
+      book,
+    );
 
     expect(result.accepted).toBe(false);
     expect(result.trades).toHaveLength(0);
     expect(result.order.status).toBe("REJECTED");
+    expect(result.reason).toBe("FOK_INSUFFICIENT_LIQUIDITY");
+    expect(book.getSnapshot()).toEqual(beforeBook);
+    expect(service.balances.get("buyer", "USD")).toEqual(beforeBalance);
+  });
+
+  it("rejects duplicate engine order IDs without replacing the original order", () => {
+    const book = new OrderBook("SOL-USD");
+    const service = new OrderPlacementService();
+    fund(service, "buyer", { USD: 100 });
+
+    const first = service.place(
+      makeOrder({
+        orderId: "duplicate-id",
+        userId: "buyer",
+        side: Side.BUY,
+        price: 100,
+        quantity: 1,
+      }),
+      book,
+    );
+    const second = service.place(
+      makeOrder({
+        orderId: "duplicate-id",
+        userId: "other-user",
+        side: Side.SELL,
+        price: 90,
+        quantity: 1,
+      }),
+      book,
+    );
+
+    expect(first.accepted).toBe(true);
+    expect(second.accepted).toBe(false);
+    expect(second.reason).toBe("DUPLICATE_ORDER_ID");
+    expect(second.order).toBe(first.order);
+    expect(book.getOrder("duplicate-id")).toBe(first.order);
   });
 
   it("rejects when buyer has insufficient balance", () => {

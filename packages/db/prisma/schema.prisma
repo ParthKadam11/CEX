@@ -95,6 +95,7 @@ model Order {
 
   @@unique([userId, clientOrderId])
   @@index([userId, createdAt])
+  @@index([userId, createdAt, id])
   @@index([userId, status])
 }
 

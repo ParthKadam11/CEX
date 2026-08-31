@@ -6,6 +6,7 @@ import {
   OrderType,
   OmsOrderStatus,
 } from "@cex/db/enums";
+import { MAX_PAGE_LIMIT } from "@cex/exchange-types";
 
 export class OrderRepository {
   constructor(private readonly db: PrismaClient = prisma) {}
@@ -64,15 +65,38 @@ export class OrderRepository {
     });
   }
 
-  async listForUser(userId: string, limit = 50) {
-    const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+  async listForUser(
+    userId: string,
+    limit = 50,
+    cursor?: string,
+  ) {
+    const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), MAX_PAGE_LIMIT);
+    const decoded = cursor ? decodeCursor(cursor) : null;
+    const where = decoded
+      ? {
+          userId,
+          OR: [
+            { createdAt: { lt: decoded.createdAt } },
+            { createdAt: decoded.createdAt, id: { lt: decoded.id } },
+          ],
+        }
+      : { userId };
 
-    return this.db.order.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: safeLimit,
+    const rows = await this.db.order.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: safeLimit + 1,
       include: { fills: true },
     });
+    const orders = rows.slice(0, safeLimit);
+    const last = orders.at(-1);
+    return {
+      orders,
+      nextCursor:
+        rows.length > safeLimit && last
+          ? encodeCursor(last.createdAt, last.id)
+          : null,
+    };
   }
 
   async requestCancel(id: string, cancelCommandId: string) {
@@ -162,6 +186,31 @@ export class OrderRepository {
 
       return true;
     });
+  }
+}
+
+function encodeCursor(createdAt: Date, id: string): string {
+  return Buffer.from(
+    JSON.stringify({ createdAt: createdAt.toISOString(), id }),
+  ).toString("base64url");
+}
+
+function decodeCursor(value: string): { createdAt: Date; id: string } {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    ) as { createdAt?: unknown; id?: unknown };
+    if (
+      typeof parsed.createdAt !== "string" ||
+      typeof parsed.id !== "string"
+    ) {
+      throw new Error();
+    }
+    const createdAt = new Date(parsed.createdAt);
+    if (Number.isNaN(createdAt.getTime())) throw new Error();
+    return { createdAt, id: parsed.id };
+  } catch {
+    throw new Error("INVALID_CURSOR");
   }
 }
 

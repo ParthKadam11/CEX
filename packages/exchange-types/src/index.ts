@@ -12,7 +12,7 @@ export enum TimeInForce {
   GTC = "GTC", // Good-Till-Cancelled
   IOC = "IOC", // Immediate-or-Cancel
   FOK = "FOK", // Fill-or-Kill
-  FOK_BUDGET = "FOK_BUDGET" // Fill-or-Kill with budget not implemented yet
+  FOK_BUDGET = "FOK_BUDGET", // Market buy fill-or-kill within a quote budget
 }
 
 export type OrderStatus =
@@ -87,7 +87,7 @@ export interface Order {
   price: number;
   /** Size in integer lots. */
   quantity: number;
-  /** MARKET buy: integer quote units to spend. */
+  /** MARKET buy or FOK_BUDGET: integer quote units to spend. */
   quoteBudget?: number;
   /** Filled size in integer lots. */
   filledQuantity: number;
@@ -129,6 +129,7 @@ export interface PlacementResult {
   order: Order;
   trades: Trade[];
   accepted: boolean;
+  reason?: RejectReason;
 }
 
 export type CancelFailReason = "UNKNOWN_ORDER" | "NOT_CANCELLABLE";
@@ -149,6 +150,8 @@ export type OrderEventType =
 
 export type RejectReason =
   | "UNSUPPORTED_TIF"
+  | "DUPLICATE_ORDER_ID"
+  | "FOK_BUDGET_REQUIRES_MARKET_BUY"
   | "FOK_INSUFFICIENT_LIQUIDITY"
   | "INSUFFICIENT_BALANCE"
   | "MARKET_MISSING_QUOTE_BUDGET"
@@ -175,6 +178,40 @@ export type OrderQueryFilter = {
   market?: MarketSymbol;
   openOnly?: boolean;
 };
+
+export const MAX_IDENTIFIER_LENGTH = 128;
+export const MAX_ORDER_QUANTITY = 1_000_000;
+export const MAX_ORDER_PRICE = 1_000_000_000;
+export const MAX_QUOTE_BUDGET = 1_000_000_000_000_000;
+export const MAX_PAGE_LIMIT = 100;
+
+export function isIdentifier(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_IDENTIFIER_LENGTH &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value)
+  );
+}
+
+export function isTimestamp(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0
+  );
+}
+
+export function isSafePositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+export function isBoundedPositiveInteger(
+  value: unknown,
+  maximum: number,
+): value is number {
+  return isSafePositiveInteger(value) && value <= maximum;
+}
 
 /** Durable engine commands (WAL). Replay restores RAM after restart. */
 export type EngineCommandBody =

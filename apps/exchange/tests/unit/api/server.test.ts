@@ -97,7 +97,8 @@ describe("exchange HTTP + SSE", () => {
       body: JSON.stringify({ userId: "u1", asset: "USD", amount: 0.1 }),
     });
     expect(credit.status).toBe(400);
-    expect(await credit.json()).toEqual({ error: "INVALID_UNITS" });
+    expect((await credit.json()).error.code).toBe("INVALID_UNITS");
+    expect(credit.headers.get("x-request-id")).toBeTruthy();
   });
 
   it("group-commits concurrent credits", async () => {
@@ -157,6 +158,83 @@ describe("exchange HTTP + SSE", () => {
 
     expect(unauthorized.status).toBe(401);
     expect(authorized.status).toBe(200);
+    await runtime.close();
+  });
+
+  it("rejects unknown order types and invalid FOK_BUDGET combinations", async () => {
+    const bus = new EventBus();
+    const runtime = MarketRuntime.open("SOL-USD", tempWal(), bus);
+    const app = createExchangeApp(runtime, bus);
+    const request = (body: Record<string, unknown>) =>
+      app.request("/v1/markets/SOL-USD/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          userId: "u1",
+          side: "BUY",
+          type: "LIMIT",
+          price: 100,
+          quantity: 1,
+          ...body,
+        }),
+      });
+
+    const unknownType = await request({ type: "NOT_AN_ORDER_TYPE" });
+    expect(unknownType.status).toBe(400);
+    expect((await unknownType.json()).error.code).toBe("INVALID_ORDER_TYPE");
+
+    const invalidBudget = await request({
+      timeInForce: "FOK_BUDGET",
+      type: "LIMIT",
+      quoteBudget: 100,
+    });
+    expect(invalidBudget.status).toBe(400);
+    expect((await invalidBudget.json()).error.code).toBe(
+      "FOK_BUDGET_REQUIRES_MARKET_BUY",
+    );
+    await runtime.close();
+  });
+
+  it("rejects duplicate engine order IDs and preserves the first order", async () => {
+    const bus = new EventBus();
+    const runtime = MarketRuntime.open("SOL-USD", tempWal(), bus);
+    const app = createExchangeApp(runtime, bus);
+    const headers = { "content-type": "application/json" };
+    const place = (body: Record<string, unknown>) =>
+      app.request("/v1/markets/SOL-USD/orders", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+
+    await app.request("/v1/markets/SOL-USD/credit", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ userId: "u1", asset: "USD", amount: 100 }),
+    });
+    const first = await place({
+      orderId: "same-id",
+      userId: "u1",
+      side: "BUY",
+      type: "LIMIT",
+      price: 100,
+      quantity: 1,
+    });
+    const second = await place({
+      orderId: "same-id",
+      userId: "u2",
+      side: "SELL",
+      type: "LIMIT",
+      price: 90,
+      quantity: 1,
+    });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(400);
+    const duplicate = await second.json();
+    expect(duplicate.error.code).toBe("DUPLICATE_ORDER_ID");
+    expect(duplicate.order.userId).toBe("u1");
+    expect(runtime.book.getOrder("same-id")?.userId).toBe("u1");
     await runtime.close();
   });
 });

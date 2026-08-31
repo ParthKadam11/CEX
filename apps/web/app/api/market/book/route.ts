@@ -1,27 +1,31 @@
-import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import {
+  bffError,
   engineGatewayUrl,
   engineGatewayHeaders,
   getAuthenticatedUserId,
   relayResponse,
 } from "@/lib/backend";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const userId = await getAuthenticatedUserId();
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return bffError(request, 401, "UNAUTHORIZED");
   }
 
   try {
     const response = await fetch(
       `${engineGatewayUrl}/markets/SOL-USD/book`,
-      { cache: "no-store", headers: engineGatewayHeaders() },
+      {
+        cache: "no-store",
+        headers: engineGatewayHeaders(
+          undefined,
+          request.headers.get("x-request-id"),
+        ),
+      },
     );
     return relayResponse(response);
   } catch {
-    return NextResponse.json(
-      { error: "ENGINE_GATEWAY_UNAVAILABLE" },
-      { status: 502 },
-    );
+    return bffError(request, 502, "ENGINE_GATEWAY_UNAVAILABLE");
   }
 }

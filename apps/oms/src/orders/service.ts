@@ -30,6 +30,12 @@ export class OrderOwnershipError extends Error {
   }
 }
 
+export class IdempotencyConflictError extends Error {
+  constructor() {
+    super("IDEMPOTENCY_CONFLICT");
+  }
+}
+
 export class OrderService {
   constructor(
     private readonly repository: OrderRepository,
@@ -50,12 +56,33 @@ export class OrderService {
       command.userId,
       command.clientOrderId,
     );
-    if (existing) return { order: existing, command, existing: true };
+    if (existing) {
+      assertSameOrder(command, existing);
+      return {
+        order: existing,
+        command: originalCommand(command, existing),
+        existing: true,
+      };
+    }
 
-    const order = await this.repository.createPending(
-      command,
-      engineOrderId,
-    );
+    let order;
+    try {
+      order = await this.repository.createPending(command, engineOrderId);
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+
+      const raced = await this.repository.findByClientOrderId(
+        command.userId,
+        command.clientOrderId,
+      );
+      if (!raced) throw error;
+      assertSameOrder(command, raced);
+      return {
+        order: raced,
+        command: originalCommand(command, raced),
+        existing: true,
+      };
+    }
 
     try {
       await publishPlaceCommand(this.redis, command);
@@ -117,7 +144,52 @@ export class OrderService {
     return order;
   }
 
-  listForUser(userId: string, limit?: number) {
-    return this.repository.listForUser(userId, limit);
+  listForUser(userId: string, limit?: number, cursor?: string) {
+    return this.repository.listForUser(userId, limit, cursor);
   }
+}
+
+function originalCommand(
+  command: PlaceCommand,
+  existing: { placeCommandId: string; engineOrderId: string },
+): PlaceCommand {
+  return {
+    ...command,
+    commandId: existing.placeCommandId,
+    orderId: existing.engineOrderId,
+  };
+}
+
+function assertSameOrder(
+  command: PlaceCommand,
+  existing: {
+    market: string;
+    side: string;
+    type: string;
+    timeInForce: string;
+    price: number;
+    quantity: number;
+    quoteBudget: number | null;
+  },
+): void {
+  if (
+    command.market !== existing.market ||
+    command.side !== existing.side ||
+    command.orderType !== existing.type ||
+    command.timeInForce !== existing.timeInForce ||
+    command.price !== existing.price ||
+    command.quantity !== existing.quantity ||
+    (command.quoteBudget ?? null) !== existing.quoteBudget
+  ) {
+    throw new IdempotencyConflictError();
+  }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2002"
+  );
 }

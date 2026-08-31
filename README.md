@@ -180,6 +180,9 @@ It exposes order APIs at `http://localhost:4030`, publishes place/cancel command
 
 For non-local deployments, set the same value as `OMS_INTERNAL_TOKEN` on OMS and the web app. Set `GATEWAY_INTERNAL_TOKEN` on the engine gateway and the same value as `ENGINE_GATEWAY_INTERNAL_TOKEN` on the web app.
 
+See [API.md](API.md) for request IDs, error envelopes, order pagination, and
+the public BFF/internal service boundaries.
+
 ## Exchange API
 
 The exchange currently exposes one market, `SOL-USD`. Its command, balance, book, and stream APIs are internal gateway APIs and require `x-gateway-token`. Only `/health` is public.
@@ -200,7 +203,8 @@ Notable engine rules:
 
 - Units are integer-only.
 - Market buys require `quoteBudget`.
-- `FOK_BUDGET` is defined in types but not implemented by the engine.
+- `FOK_BUDGET` is a market-buy-only fill-or-kill order. It must fill the
+  requested quantity within `quoteBudget` or reject before matching.
 - The exchange `BalanceStore` and its WAL are authoritative for trading balances.
 - Postgres `UsdWallet` is legacy onboarding data, not an execution balance.
 

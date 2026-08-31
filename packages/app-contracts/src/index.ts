@@ -1,14 +1,20 @@
-import type {
-  AssetId,
-  MarketSymbol,
-  Order,
-  OrderEvent,
-  OrderStatus,
-  OrderType,
-  Side,
-  TimeInForce,
+import {
+  isBoundedPositiveInteger,
+  isIdentifier,
+  isTimestamp,
+  MAX_ORDER_PRICE,
+  MAX_ORDER_QUANTITY,
+  MAX_QUOTE_BUDGET,
+  isSafePositiveInteger,
+  type AssetId,
+  type MarketSymbol,
+  type Order,
+  type OrderEvent,
+  type OrderStatus,
+  type OrderType,
+  type Side,
+  type TimeInForce,
 } from "@cex/exchange-types";
-
 /*
   Shared contracts for the application layer (OMS ↔ XPG ↔ Price).
 
@@ -89,10 +95,8 @@ export type AppCommand = PlaceCommand | CancelCommand | CreditCommand;
 export function isAppCommand(value: unknown): value is AppCommand {
   if (!isRecord(value)) return false;
   if (
-    typeof value.commandId !== "string" ||
-    value.commandId.length === 0 ||
-    typeof value.userId !== "string" ||
-    value.userId.length === 0
+    !isIdentifier(value.commandId) ||
+    !isIdentifier(value.userId)
   ) {
     return false;
   }
@@ -100,27 +104,30 @@ export function isAppCommand(value: unknown): value is AppCommand {
   if (value.type === "CREDIT") {
     return (
       (value.asset === "SOL" || value.asset === "USD") &&
-      typeof value.amount === "number" &&
-      Number.isFinite(value.amount) &&
-      typeof value.timestamp === "number"
+      isBoundedPositiveInteger(value.amount, MAX_QUOTE_BUDGET) &&
+      isTimestamp(value.timestamp)
     );
   }
 
   if (value.type === "CANCEL") {
     return (
-      typeof value.orderId === "string" &&
-      value.orderId.length > 0 &&
+      isIdentifier(value.orderId) &&
       value.market === "SOL-USD" &&
       (value.clientOrderId === undefined ||
-        typeof value.clientOrderId === "string") &&
-      typeof value.timestamp === "number"
+        isIdentifier(value.clientOrderId)) &&
+      isTimestamp(value.timestamp)
     );
   }
 
   if (value.type === "PLACE") {
+    const isMarket = value.orderType === "MARKET";
+    const hasBudget =
+      value.quoteBudget === undefined ||
+      isBoundedPositiveInteger(value.quoteBudget, MAX_QUOTE_BUDGET);
+    const budgetRequired = isMarket && value.side === "BUY";
+
     return (
-      typeof value.clientOrderId === "string" &&
-      value.clientOrderId.length > 0 &&
+      isIdentifier(value.clientOrderId) &&
       value.market === "SOL-USD" &&
       (value.side === "BUY" || value.side === "SELL") &&
       (value.orderType === "LIMIT" || value.orderType === "MARKET") &&
@@ -128,15 +135,18 @@ export function isAppCommand(value: unknown): value is AppCommand {
         value.timeInForce === "IOC" ||
         value.timeInForce === "FOK" ||
         value.timeInForce === "FOK_BUDGET") &&
-      typeof value.price === "number" &&
-      Number.isFinite(value.price) &&
-      typeof value.quantity === "number" &&
-      Number.isFinite(value.quantity) &&
-      (value.quoteBudget === undefined ||
-        (typeof value.quoteBudget === "number" &&
-          Number.isFinite(value.quoteBudget))) &&
-      (value.orderId === undefined || typeof value.orderId === "string") &&
-      typeof value.timestamp === "number"
+      (isMarket
+        ? value.price === 0
+        : isBoundedPositiveInteger(value.price, MAX_ORDER_PRICE)) &&
+      isBoundedPositiveInteger(value.quantity, MAX_ORDER_QUANTITY) &&
+      hasBudget &&
+      (!budgetRequired || isSafePositiveInteger(value.quoteBudget)) &&
+      (value.timeInForce !== "FOK_BUDGET" ||
+        (isMarket &&
+          value.side === "BUY" &&
+          isBoundedPositiveInteger(value.quoteBudget, MAX_QUOTE_BUDGET))) &&
+      (value.orderId === undefined || isIdentifier(value.orderId)) &&
+      isTimestamp(value.timestamp)
     );
   }
 
