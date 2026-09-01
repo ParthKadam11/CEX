@@ -325,7 +325,7 @@ export function createExchangeApp(
     return c.json(runtime.book.getSnapshot());
   });
 
-  // Live stream for gateway: ORDER events, BBO, CREDIT
+  // Live stream for gateway: ORDER, TRADE, BBO, CREDIT
   app.get("/v1/markets/:market/stream", (c) => {
     const market = c.req.param("market");
     if (!isMarket(market) || market !== runtime.market) {

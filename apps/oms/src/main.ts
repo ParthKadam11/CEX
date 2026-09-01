@@ -72,6 +72,36 @@ async function main(): Promise<void> {
     }
   })();
 
+  let outboxRunning = true;
+  const outboxLoop = (async () => {
+    const { isOutboxCommand } = await import("./orders/outbox.js");
+    while (outboxRunning) {
+      try {
+        const entries = await orderService.relayOutbox();
+        for (const entry of entries) {
+          if (!isOutboxCommand(entry.payload)) continue;
+          if (entry.payload.type === "CREDIT") continue;
+          try {
+            await orderService.publishOutboxEntry(entry.payload);
+          } catch (error) {
+            console.error(
+              "[oms] outbox publish failed:",
+              error instanceof Error ? error.message : error,
+            );
+          }
+        }
+        await sleep(entries.length === 0 ? 2_000 : 250);
+      } catch (error) {
+        if (!outboxRunning) return;
+        console.error(
+          "[oms] outbox loop error:",
+          error instanceof Error ? error.message : error,
+        );
+        await sleep(2_000);
+      }
+    }
+  })();
+
   const app = createOmsApp(orderService, {
     internalToken: config.internalToken,
   });
@@ -81,8 +111,12 @@ async function main(): Promise<void> {
 
   const shutdown = async () => {
     eventsRunning = false;
+    outboxRunning = false;
     server.close();
-    await eventLoop.catch(() => undefined);
+    await Promise.all([
+      eventLoop.catch(() => undefined),
+      outboxLoop.catch(() => undefined),
+    ]);
     redis.disconnect();
     process.exit(0);
   };

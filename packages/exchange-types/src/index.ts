@@ -254,7 +254,8 @@ export type ExchangeStreamEvent =
       userId: string;
       asset: AssetId;
       amount: number;
-    };
+    }
+  | { kind: "TRADE"; market: MarketSymbol; trade: Trade };
 
 /** HTTP response for POST .../credit */
 export type CreditResult = {

@@ -6,6 +6,7 @@ import type {
   MarketSymbol,
   Order,
   PlacementResult,
+  Trade,
 } from "@cex/exchange-types";
 import { OrderBook } from "../book/orderBook.js";
 import {
@@ -159,6 +160,7 @@ export class MarketRuntime {
       timestamp: snapshot.timestamp,
     });
     this.publishBbo();
+    this.publishTrades(result.trades);
     return result;
   }
 
@@ -199,6 +201,17 @@ export class MarketRuntime {
       engineSequence: this.wal.currentSeq,
       timestamp: Date.now(),
     });
+  }
+
+  private publishTrades(trades: Trade[]): void {
+    if (this.replaying || !this.bus) return;
+    for (const trade of trades) {
+      this.bus.publish({
+        kind: "TRADE",
+        market: this.market,
+        trade,
+      });
+    }
   }
 
   private persist(command: EngineCommandBody): void {

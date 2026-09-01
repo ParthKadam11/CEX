@@ -75,8 +75,9 @@ The command and event streams use approximate `MAXLEN` retention of 100,000
 entries. The durable `md:events` stream retains approximately 1,000,000
 entries, and each dead-letter stream retains approximately 25,000 entries.
 Market-data delivery is at-least-once; the writer deduplicates trades using
-`(market, tradeId)`. DLQ entries must be replayed or exported before they age
-out.
+`(market, tradeId)`. BBO and trade ticks are published from exchange SSE, not
+from command HTTP responses. DLQ entries must be replayed or exported before
+they age out.
 
 Replay DLQ entries after correcting the underlying issue:
 

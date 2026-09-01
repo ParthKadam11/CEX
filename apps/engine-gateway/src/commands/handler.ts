@@ -16,10 +16,10 @@ import type { EngineClient } from "../engine/client.js";
 import type { CommandDedupe } from "../dedupe.js";
 import { log } from "../logger.js";
 import type { GatewayMetrics } from "../metrics.js";
-import { publishMarketDataEvent, publishTrade } from "../redis/pubsub.js";
 import { publishOrderEvent } from "../redis/streams.js";
 
-// One Redis command → engine HTTP → orders:events. HTTP response decides success; SSE is a separate live path.
+// One Redis command → engine HTTP → orders:events. Fills and trades fan out from
+// exchange SSE so market data and maker-side order updates share one source.
 
 export class CommandHandler {
   constructor(
@@ -30,7 +30,7 @@ export class CommandHandler {
   ) {}
 
   async handle(command: AppCommand): Promise<void> {
-    if (await this.dedupe.checkAndMark(command.commandId)) {
+    if (await this.dedupe.isProcessed(command.commandId)) {
       this.metrics.increment("commandsDuplicate");
       log("info", "duplicate command skipped", {
         commandId: command.commandId,
@@ -42,14 +42,15 @@ export class CommandHandler {
       switch (command.type) {
         case "CREDIT":
           await this.handleCredit(command);
-          return;
+          break;
         case "PLACE":
           await this.handlePlace(command);
-          return;
+          break;
         case "CANCEL":
           await this.handleCancel(command);
-          return;
+          break;
       }
+      await this.dedupe.markProcessed(command.commandId);
     } catch (err) {
       this.metrics.increment("commandsFailed");
       const reason = err instanceof Error ? err.message : String(err);
@@ -104,7 +105,6 @@ export class CommandHandler {
     const order = toEngineOrder(command);
     const result = await this.engine.place(order);
     await this.emitPlaceEvents(command, result);
-    await this.publishTrades(result);
   }
 
   private async handleCancel(command: CancelCommand): Promise<void> {
@@ -172,26 +172,6 @@ export class CommandHandler {
       timestamp: Date.now(),
     });
 
-    if (result.trades.length > 0) {
-      await this.emit({
-        eventId: crypto.randomUUID(),
-        commandId: command.commandId,
-        type: "FILL",
-        userId: command.userId,
-        market: command.market,
-        orderId: result.order.orderId,
-        clientOrderId: command.clientOrderId,
-        order: result.order,
-        status: result.order.status,
-        fills: result.trades.map((t) => ({
-          tradeId: t.tradeId,
-          price: t.price,
-          quantity: t.quantity,
-        })),
-        timestamp: Date.now(),
-      });
-    }
-
     if (
       result.order.status === "OPEN" ||
       result.order.status === "PARTIALLY_FILLED"
@@ -219,52 +199,6 @@ export class CommandHandler {
       commandId: event.commandId,
       orderId: event.orderId,
     });
-  }
-
-  private async publishTrades(result: PlacementResult): Promise<void> {
-    for (const trade of result.trades) {
-      try {
-        await publishMarketDataEvent(this.redis, {
-          eventId: `trade-${trade.market}-${trade.tradeId}`,
-          kind: "TRADE",
-          payload: {
-            market: trade.market,
-            tradeId: trade.tradeId,
-            engineSequence: trade.engineSequence,
-            price: trade.price,
-            quantity: trade.quantity,
-            buyOrderId: trade.buyOrderId,
-            sellOrderId: trade.sellOrderId,
-            timestamp: trade.timestamp,
-          },
-        });
-      } catch (error) {
-        log("error", "durable trade publish failed", {
-          tradeId: trade.tradeId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        continue;
-      }
-      try {
-        await publishTrade(this.redis, {
-          market: trade.market,
-          tradeId: trade.tradeId,
-          engineSequence: trade.engineSequence,
-          price: trade.price,
-          quantity: trade.quantity,
-          buyOrderId: trade.buyOrderId,
-          sellOrderId: trade.sellOrderId,
-          timestamp: trade.timestamp,
-        });
-      } catch (error) {
-        log("error", "trade publish failed", {
-          tradeId: trade.tradeId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        continue;
-      }
-      this.metrics.increment("tradesPublished");
-    }
   }
 }
 

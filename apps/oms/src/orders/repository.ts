@@ -1,4 +1,4 @@
-import type { AppOrderEvent, PlaceCommand } from "@cex/app-contracts";
+import type { AppCommand, AppOrderEvent, PlaceCommand } from "@cex/app-contracts";
 import { prisma, type PrismaClient } from "@cex/db";
 import {
   OrderSide,
@@ -15,27 +15,33 @@ export class OrderRepository {
     await this.db.$queryRaw`SELECT 1`;
   }
 
-  async createPending(
-    command: PlaceCommand,
-    engineOrderId: string,
-  ) {
-    return this.db.order.create({
-      data: {
-        engineOrderId,
-        placeCommandId: command.commandId,
-        clientOrderId: command.clientOrderId,
-        userId: command.userId,
-        market: command.market,
-        side: command.side === "BUY" ? OrderSide.BUY : OrderSide.SELL,
-        type:
-          command.orderType === "LIMIT" ? OrderType.LIMIT : OrderType.MARKET,
-        timeInForce: toDbTimeInForce(command.timeInForce),
-        price: command.price,
-        quantity: command.quantity,
-        quoteBudget: command.quoteBudget,
-        status: OmsOrderStatus.PENDING,
-      },
-      include: { fills: true },
+  async createPending(command: PlaceCommand, engineOrderId: string) {
+    return this.db.$transaction(async (tx) => {
+      const order = await tx.order.create({
+        data: {
+          engineOrderId,
+          placeCommandId: command.commandId,
+          clientOrderId: command.clientOrderId,
+          userId: command.userId,
+          market: command.market,
+          side: command.side === "BUY" ? OrderSide.BUY : OrderSide.SELL,
+          type:
+            command.orderType === "LIMIT" ? OrderType.LIMIT : OrderType.MARKET,
+          timeInForce: toDbTimeInForce(command.timeInForce),
+          price: command.price,
+          quantity: command.quantity,
+          quoteBudget: command.quoteBudget,
+          status: OmsOrderStatus.PENDING,
+        },
+        include: { fills: true },
+      });
+      await tx.commandOutbox.create({
+        data: {
+          commandId: command.commandId,
+          payload: command,
+        },
+      });
+      return order;
     });
   }
 
@@ -99,14 +105,42 @@ export class OrderRepository {
     };
   }
 
-  async requestCancel(id: string, cancelCommandId: string) {
-    return this.db.order.update({
-      where: { id },
-      data: {
-        cancelCommandId,
-        status: OmsOrderStatus.CANCEL_REQUESTED,
-      },
-      include: { fills: true },
+  async requestCancel(
+    id: string,
+    cancelCommandId: string,
+    command: AppCommand,
+  ) {
+    return this.db.$transaction(async (tx) => {
+      const order = await tx.order.update({
+        where: { id },
+        data: {
+          cancelCommandId,
+          status: OmsOrderStatus.CANCEL_REQUESTED,
+        },
+        include: { fills: true },
+      });
+      await tx.commandOutbox.create({
+        data: {
+          commandId: cancelCommandId,
+          payload: command,
+        },
+      });
+      return order;
+    });
+  }
+
+  async markOutboxPublished(commandId: string) {
+    await this.db.commandOutbox.updateMany({
+      where: { commandId, publishedAt: null },
+      data: { publishedAt: new Date() },
+    });
+  }
+
+  async listUnpublishedOutbox(limit = 50) {
+    return this.db.commandOutbox.findMany({
+      where: { publishedAt: null },
+      orderBy: { createdAt: "asc" },
+      take: limit,
     });
   }
 
@@ -148,7 +182,12 @@ export class OrderRepository {
       if (event.type === "FILL" && event.fills) {
         for (const fill of event.fills) {
           const existingFill = await tx.orderFill.findUnique({
-            where: { tradeId: fill.tradeId },
+            where: {
+              orderId_tradeId: {
+                orderId: order.id,
+                tradeId: fill.tradeId,
+              },
+            },
           });
           if (existingFill) continue;
 
@@ -165,18 +204,33 @@ export class OrderRepository {
       }
 
       const nextStatus = toOmsStatus(event);
+      const staleEngineEvent =
+        event.engineSequence !== undefined &&
+        event.engineSequence <= order.lastEngineSequence &&
+        event.type !== "FILL";
+      const statusRegression =
+        nextStatus !== null &&
+        !shouldAdvanceStatus(order.status, nextStatus);
+      const appliedStatus =
+        nextStatus && !staleEngineEvent && !statusRegression
+          ? nextStatus
+          : undefined;
       const filledQuantity =
         event.order?.filledQuantity ??
-        (event.fills
-          ? order.filledQuantity +
-            newFillQuantity
+        (newFillQuantity > 0
+          ? order.filledQuantity + newFillQuantity
           : order.filledQuantity);
+      const lastEngineSequence =
+        event.engineSequence !== undefined
+          ? Math.max(order.lastEngineSequence, event.engineSequence)
+          : order.lastEngineSequence;
 
       await tx.order.update({
         where: { id: order.id },
         data: {
-          status: nextStatus ?? undefined,
+          status: appliedStatus,
           filledQuantity,
+          lastEngineSequence,
           failureReason:
             event.type === "REJECTED" || event.type === "COMMAND_FAILED"
               ? event.reason
@@ -245,6 +299,25 @@ function toOmsStatus(event: AppOrderEvent): OmsOrderStatus | null {
   if (event.type === "REJECTED") return OmsOrderStatus.REJECTED;
   if (event.type === "COMMAND_FAILED") return OmsOrderStatus.FAILED;
   return null;
+}
+
+const STATUS_RANK: Record<OmsOrderStatus, number> = {
+  [OmsOrderStatus.PENDING]: 0,
+  [OmsOrderStatus.ACCEPTED]: 10,
+  [OmsOrderStatus.OPEN]: 20,
+  [OmsOrderStatus.PARTIALLY_FILLED]: 30,
+  [OmsOrderStatus.CANCEL_REQUESTED]: 35,
+  [OmsOrderStatus.FILLED]: 40,
+  [OmsOrderStatus.CANCELLED]: 40,
+  [OmsOrderStatus.REJECTED]: 40,
+  [OmsOrderStatus.FAILED]: 40,
+};
+
+function shouldAdvanceStatus(
+  current: OmsOrderStatus,
+  next: OmsOrderStatus,
+): boolean {
+  return STATUS_RANK[next] >= STATUS_RANK[current];
 }
 
 function isUniqueViolation(error: unknown): boolean {

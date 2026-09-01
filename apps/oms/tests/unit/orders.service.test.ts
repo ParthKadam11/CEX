@@ -3,6 +3,7 @@ import { OrderType, Side, TimeInForce } from "@cex/exchange-types";
 import { describe, expect, it, vi } from "vitest";
 import {
   OrderOwnershipError,
+  OrderNotCancellableError,
   OrderService,
   type PlaceOrderInput,
 } from "../../src/orders/service.js";
@@ -25,6 +26,7 @@ describe("OrderService", () => {
     const repository = {
       findByClientOrderId: vi.fn().mockResolvedValue(null),
       createPending: vi.fn().mockResolvedValue(storedOrder),
+      markOutboxPublished: vi.fn().mockResolvedValue(undefined),
     } as unknown as OrderRepository;
     const redis = {
       xadd: vi.fn().mockResolvedValue("1-0"),
@@ -59,6 +61,7 @@ describe("OrderService", () => {
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(storedOrder),
       createPending: vi.fn().mockResolvedValue(storedOrder),
+      markOutboxPublished: vi.fn().mockResolvedValue(undefined),
     } as unknown as OrderRepository;
     const redis = {
       xadd: vi.fn().mockResolvedValue("1-0"),
@@ -122,6 +125,7 @@ describe("OrderService", () => {
         id: "db-order-1",
         status: "PENDING",
       }),
+      markOutboxPublished: vi.fn().mockResolvedValue(undefined),
     } as unknown as OrderRepository;
     const redis = {
       xadd: vi.fn().mockResolvedValue("1-0"),
@@ -162,6 +166,24 @@ describe("OrderService", () => {
 
     await expect(service.cancel("other-user", "engine-order-1")).rejects.toBeInstanceOf(
       OrderOwnershipError,
+    );
+    expect(redis.xadd).not.toHaveBeenCalled();
+  });
+
+  it("rejects cancellation for terminal orders", async () => {
+    const repository = {
+      findByEngineOrderId: vi.fn().mockResolvedValue({
+        id: "db-order-1",
+        userId: "owner",
+        market: "SOL-USD",
+        status: "FILLED",
+      }),
+    } as unknown as OrderRepository;
+    const redis = { xadd: vi.fn() } as unknown as Redis;
+    const service = new OrderService(repository, redis);
+
+    await expect(service.cancel("owner", "engine-order-1")).rejects.toBeInstanceOf(
+      OrderNotCancellableError,
     );
     expect(redis.xadd).not.toHaveBeenCalled();
   });

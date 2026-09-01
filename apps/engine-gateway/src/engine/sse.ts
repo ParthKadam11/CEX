@@ -3,8 +3,10 @@ import type {
   ExchangeStreamEvent,
   MarketSymbol,
   OrderEvent,
+  Trade,
 } from "@cex/exchange-types";
 import {
+  isIdentifier,
   isSafePositiveInteger,
   isTimestamp,
 } from "@cex/exchange-types";
@@ -223,9 +225,33 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
             amount: value.amount,
           }
         : null;
+    case "TRADE":
+      return isTrade(value.trade)
+        ? {
+            kind: "TRADE",
+            market: value.market,
+            trade: value.trade,
+          }
+        : null;
     default:
       return null;
   }
+}
+
+function isTrade(value: unknown): value is Trade {
+  return (
+    isRecord(value) &&
+    isIdentifier(value.tradeId) &&
+    isSafePositiveInteger(value.engineSequence) &&
+    value.market === "SOL-USD" &&
+    isSafePositiveInteger(value.price) &&
+    isSafePositiveInteger(value.quantity) &&
+    isIdentifier(value.buyOrderId) &&
+    isIdentifier(value.sellOrderId) &&
+    isIdentifier(value.buyerUserId) &&
+    isIdentifier(value.sellerUserId) &&
+    isTimestamp(value.timestamp)
+  );
 }
 
 function isOrderEvent(value: unknown): value is OrderEvent {

@@ -9,7 +9,7 @@ import { EngineSseClient } from "./engine/sse.js";
 import { createGatewayApp } from "./http/server.js";
 import { log } from "./logger.js";
 import { GatewayMetrics } from "./metrics.js";
-import { publishBbo, publishMarketDataEvent } from "./redis/pubsub.js";
+import { publishBboSnapshot, publishTradeTick } from "./redis/market-publisher.js";
 import {
   createRedisSubscriber,
   MarketDataHub,
@@ -54,23 +54,27 @@ async function main(): Promise<void> {
   const sse = new EngineSseClient(engine.streamUrl(), async (event) => {
     if (event.kind === "BBO") {
       try {
-        const message = {
+        await publishBboSnapshot(redis, metrics, {
           market: event.market,
           bestBid: event.bestBid,
           bestAsk: event.bestAsk,
           engineSequence: event.engineSequence,
           timestamp: event.timestamp,
-        };
-        await publishMarketDataEvent(redis, {
-          eventId: `bbo-${message.market}-${message.engineSequence}`,
-          kind: "BBO",
-          payload: message,
         });
-        await publishBbo(redis, message);
-        metrics.increment("bboPublished");
-        log("info", "BBO published", { market: event.market });
       } catch (err) {
         log("error", "BBO publish failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return;
+    }
+
+    if (event.kind === "TRADE") {
+      try {
+        await publishTradeTick(redis, metrics, event.trade);
+      } catch (err) {
+        log("error", "trade publish failed", {
+          tradeId: event.trade.tradeId,
           error: err instanceof Error ? err.message : String(err),
         });
       }
@@ -191,6 +195,7 @@ function toAppOrderEvent(event: OrderEvent): AppOrderEvent | null {
     orderId: event.orderId,
     status: event.status,
     reason: event.reason,
+    engineSequence: event.seq,
     fills:
       event.type === "FILL" && event.tradeId && event.price && event.quantity
         ? [

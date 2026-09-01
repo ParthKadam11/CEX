@@ -85,9 +85,10 @@ model Order {
   price           Int
   quantity        Int
   quoteBudget     Int?
-  filledQuantity  Int              @default(0)
-  status          OmsOrderStatus   @default(PENDING)
-  failureReason   String?
+  filledQuantity      Int              @default(0)
+  lastEngineSequence  Int              @default(0)
+  status              OmsOrderStatus   @default(PENDING)
+  failureReason       String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   user            User             @relation(fields: [userId], references: [id])
@@ -102,13 +103,24 @@ model Order {
 model OrderFill {
   id        String   @id @default(uuid())
   orderId   String
-  tradeId   String   @unique
+  tradeId   String
   price     Int
   quantity  Int
   createdAt DateTime @default(now())
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  @@unique([orderId, tradeId])
   @@index([orderId, createdAt])
+}
+
+model CommandOutbox {
+  id          String    @id @default(uuid())
+  commandId   String    @unique
+  payload     Json
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([publishedAt, createdAt])
 }
 
 model OmsProcessedEvent {

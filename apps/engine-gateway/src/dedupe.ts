@@ -1,7 +1,7 @@
-
 import type Redis from "ioredis";
 
-// Redis-backed commandId dedupe so restarts do not double-hit the engine.
+// Redis-backed commandId dedupe. Keys are written only after successful processing
+// so retried commands can reach the engine again when a prior attempt failed early.
 export class CommandDedupe {
   private readonly ttlSeconds: number;
 
@@ -16,15 +16,17 @@ export class CommandDedupe {
 
   private readonly keyPrefix: string;
 
-  // Returns true if this commandId was already processed.
-  async checkAndMark(commandId: string): Promise<boolean> {
-    const result = await this.redis.set(
+  async isProcessed(commandId: string): Promise<boolean> {
+    const value = await this.redis.get(`${this.keyPrefix}${commandId}`);
+    return value !== null;
+  }
+
+  async markProcessed(commandId: string): Promise<void> {
+    await this.redis.set(
       `${this.keyPrefix}${commandId}`,
       "1",
       "EX",
       this.ttlSeconds,
-      "NX",
     );
-    return result === null;
   }
 }

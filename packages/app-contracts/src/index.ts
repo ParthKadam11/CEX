@@ -190,6 +190,8 @@ export type AppOrderEvent = {
     price: number;
     quantity: number;
   }>;
+  /** Monotonic engine event sequence when sourced from exchange SSE. */
+  engineSequence?: number;
   timestamp: number;
 };
 

@@ -12,6 +12,7 @@ import {
   OrderNotFoundError,
   OrderOwnershipError,
   IdempotencyConflictError,
+  OrderNotCancellableError,
   OrderService,
 } from "../orders/service.js";
 
@@ -224,6 +225,9 @@ function errorResponse(
   }
   if (error instanceof OrderOwnershipError) {
     return context.json(errorBody(context, error.message), 403);
+  }
+  if (error instanceof OrderNotCancellableError) {
+    return context.json(errorBody(context, error.message), 409);
   }
   return context.json(
     errorBody(

@@ -2,6 +2,7 @@ import type {
   CancelCommand,
   PlaceCommand,
 } from "@cex/app-contracts";
+import { OmsOrderStatus } from "@cex/db/enums";
 import type Redis from "ioredis";
 import {
   publishCancelCommand,
@@ -35,6 +36,19 @@ export class IdempotencyConflictError extends Error {
     super("IDEMPOTENCY_CONFLICT");
   }
 }
+
+export class OrderNotCancellableError extends Error {
+  constructor() {
+    super("ORDER_NOT_CANCELLABLE");
+  }
+}
+
+const TERMINAL_STATUSES = new Set<OmsOrderStatus>([
+  OmsOrderStatus.FILLED,
+  OmsOrderStatus.CANCELLED,
+  OmsOrderStatus.REJECTED,
+  OmsOrderStatus.FAILED,
+]);
 
 export class OrderService {
   constructor(
@@ -86,11 +100,8 @@ export class OrderService {
 
     try {
       await publishPlaceCommand(this.redis, command);
+      await this.repository.markOutboxPublished(command.commandId);
     } catch (error) {
-      await this.repository.markFailed(
-        order.id,
-        error instanceof Error ? error.message : String(error),
-      );
       throw error;
     }
 
@@ -108,29 +119,27 @@ export class OrderService {
     if (order.market !== "SOL-USD") {
       throw new Error("UNSUPPORTED_MARKET");
     }
+    if (TERMINAL_STATUSES.has(order.status)) {
+      throw new OrderNotCancellableError();
+    }
+    if (order.status === OmsOrderStatus.CANCEL_REQUESTED) {
+      return {
+        order,
+        command: cancelCommandFromOrder(order, userId, clientOrderId),
+      };
+    }
 
-    const command: CancelCommand = {
-      commandId: crypto.randomUUID(),
-      type: "CANCEL",
-      userId,
-      clientOrderId,
-      orderId: engineOrderId,
-      market: order.market,
-      timestamp: Date.now(),
-    };
-
+    const command = cancelCommandFromOrder(order, userId, clientOrderId);
     const updated = await this.repository.requestCancel(
       order.id,
       command.commandId,
+      command,
     );
 
     try {
       await publishCancelCommand(this.redis, command);
+      await this.repository.markOutboxPublished(command.commandId);
     } catch (error) {
-      await this.repository.markFailed(
-        order.id,
-        error instanceof Error ? error.message : String(error),
-      );
       throw error;
     }
 
@@ -147,6 +156,41 @@ export class OrderService {
   listForUser(userId: string, limit?: number, cursor?: string) {
     return this.repository.listForUser(userId, limit, cursor);
   }
+
+  relayOutbox(limit = 50) {
+    return this.repository.listUnpublishedOutbox(limit);
+  }
+
+  async publishOutboxEntry(
+    payload: PlaceCommand | CancelCommand,
+  ): Promise<void> {
+    if (payload.type === "PLACE") {
+      await publishPlaceCommand(this.redis, payload);
+    } else {
+      await publishCancelCommand(this.redis, payload);
+    }
+    await this.repository.markOutboxPublished(payload.commandId);
+  }
+}
+
+function cancelCommandFromOrder(
+  order: {
+    engineOrderId: string;
+    market: string;
+    cancelCommandId: string | null;
+  },
+  userId: string,
+  clientOrderId?: string,
+): CancelCommand {
+  return {
+    commandId: order.cancelCommandId ?? crypto.randomUUID(),
+    type: "CANCEL",
+    userId,
+    clientOrderId,
+    orderId: order.engineOrderId,
+    market: order.market as "SOL-USD",
+    timestamp: Date.now(),
+  };
 }
 
 function originalCommand(

@@ -15,9 +15,10 @@ export function loadConfig(): MarketDataWriterConfig {
     timescaleUrl:
       process.env.TIMESCALE_URL ??
       "postgresql://cex:cex@127.0.0.1:5434/cex_md",
-    internalToken:
-      process.env.MARKET_DATA_INTERNAL_TOKEN ??
+    internalToken: serviceToken(
+      "MARKET_DATA_INTERNAL_TOKEN",
       "local-dev-market-data-token",
+    ),
     consumerName:
       process.env.MARKET_DATA_CONSUMER_NAME ??
       `timescale-writer-${process.pid}`,
@@ -34,6 +35,14 @@ export function loadConfig(): MarketDataWriterConfig {
       30_000,
     ),
   };
+}
+
+function serviceToken(name: string, fallback: string): string {
+  const token = process.env[name];
+  if (process.env.NODE_ENV === "production" && !token) {
+    throw new Error(`${name} is required in production`);
+  }
+  return token ?? fallback;
 }
 
 function boundedNumber(

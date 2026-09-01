@@ -37,10 +37,11 @@ apps/web
 apps/exchange
   └─ matching engine + balances + WAL + snapshots + HTTP/SSE
 
-application layer
+Application layer
   └─ OMS → engine-gateway → exchange
   └─ Redis Streams + Redis pub/sub
-  └─ Redis market-data stream → market-data-writer → TimescaleDB
+  └─ exchange SSE → engine-gateway → md:events + orders:events
+  └─ md:events → market-data-writer → TimescaleDB
 ```
 
 ### Exchange engine
@@ -55,10 +56,12 @@ The exchange engine is intentionally single-writer per market. It keeps matching
 
 ### Application layer direction
 
-The next layer does not reimplement matching. It wraps the engine with service boundaries:
+The application layer wraps the engine with service boundaries:
 
 - Redis Streams for command/event delivery between OMS and the engine gateway
+- Exchange SSE as the canonical source for BBO, trades, and maker-side fills
 - Redis pub/sub for live best bid/ask and trade fan-out
+- The durable `md:events` stream and TimescaleDB for historical market data
 - The existing Postgres database for users, wallets, and OMS order state
 
 ## Monorepo Layout
@@ -68,6 +71,7 @@ CEX/
 ├── apps/
 │   ├── exchange/
 │   ├── engine-gateway/
+│   ├── market-data-writer/
 │   ├── oms/
 │   └── web/
 ├── infra/
@@ -193,7 +197,7 @@ pnpm dev:market-data
 It serves historical trades, BBO snapshots, and one-minute candles at
 `http://localhost:4040`.
 
-For non-local deployments, set the same value as `OMS_INTERNAL_TOKEN` on OMS and the web app. Set `GATEWAY_INTERNAL_TOKEN` on the engine gateway and the same value as `ENGINE_GATEWAY_INTERNAL_TOKEN` on the web app.
+For non-local deployments, set the same value as `OMS_INTERNAL_TOKEN` on OMS and the web app. Set `GATEWAY_INTERNAL_TOKEN` on the engine gateway and the same value as `ENGINE_GATEWAY_INTERNAL_TOKEN` on the web app. Set `MARKET_DATA_INTERNAL_TOKEN` on the market-data writer and web app, and point `MARKET_DATA_URL` at the writer service.
 
 See [API.md](API.md) for request IDs, error envelopes, order pagination, and
 the public BFF/internal service boundaries.
@@ -258,11 +262,12 @@ The integration test requires PostgreSQL, Redis, the exchange, the engine gatewa
 - SSE for live order, credit, and BBO events
 - Web app authentication, custodial wallet setup, deposit, withdraw, and dashboard UX
 - Application-layer infra bootstrap and shared message contracts
-- Engine gateway (Redis Streams ↔ exchange HTTP/SSE ↔ Redis pub/sub)
-- OMS order APIs, Postgres order state, and event-driven status updates
+- Engine gateway (Redis Streams ↔ exchange HTTP/SSE ↔ Redis pub/sub + `md:events`)
+- OMS order APIs, Postgres order state, transactional command outbox, and event-driven status updates
+- Market-data writer (TimescaleDB history for trades, BBO, and one-minute candles)
+- Authenticated web BFF routes for trading, balances, live market data, and historical queries
 
 ### In progress
 
-- Price service and chart history
-- Authenticated application gateway for trading flows
-- Trade UI wired through the application layer
+- Live chart UI wired to historical candle endpoints
+- Authenticated application gateway hardening for non-local deployments
