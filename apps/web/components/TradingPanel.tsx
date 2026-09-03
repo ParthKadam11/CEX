@@ -35,9 +35,12 @@ export function TradingPanel() {
   const [book, setBook] = useState(initialBook);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [orders, setOrders] = useState<TradingOrder[]>([]);
+  const [mode, setMode] = useState<"limit" | "swap">("limit");
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [price, setPrice] = useState("100");
   const [quantity, setQuantity] = useState("1");
+  const [fromAsset, setFromAsset] = useState<"USD" | "SOL">("USD");
+  const [swapAmount, setSwapAmount] = useState("100");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [streamConnected, setStreamConnected] = useState(false);
@@ -122,14 +125,48 @@ export function TradingPanel() {
     });
     const body = (await response.json()) as ApiError & {
       order?: TradingOrder;
+      error?: { code?: string; message?: string } | string;
     };
     setSubmitting(false);
 
     if (!response.ok) {
-      setMessage(body.error ?? "Order rejected");
+      setMessage(errorMessage(body) ?? "Order rejected");
       return;
     }
     setMessage(`Order ${body.order?.engineOrderId ?? "submitted"}`);
+    await loadOrders();
+    await loadBalances();
+  }
+
+  async function placeSwap(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setMessage("");
+
+    const toAsset = fromAsset === "USD" ? "SOL" : "USD";
+    const response = await fetch("/api/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        fromAsset,
+        toAsset,
+        amount: Number(swapAmount),
+        fillMode: "IOC",
+      }),
+    });
+    const body = (await response.json()) as ApiError & {
+      order?: TradingOrder;
+      error?: { code?: string; message?: string } | string;
+    };
+    setSubmitting(false);
+
+    if (!response.ok) {
+      setMessage(errorMessage(body) ?? "Swap rejected");
+      return;
+    }
+    setMessage(
+      `Swap ${fromAsset}→${toAsset}: ${body.order?.engineOrderId ?? "submitted"}`,
+    );
     await loadOrders();
     await loadBalances();
   }
@@ -141,8 +178,10 @@ export function TradingPanel() {
       body: "{}",
     });
     if (!response.ok) {
-      const body = (await response.json()) as ApiError;
-      setMessage(body.error ?? "Cancel failed");
+      const body = (await response.json()) as ApiError & {
+        error?: { code?: string; message?: string } | string;
+      };
+      setMessage(errorMessage(body) ?? "Cancel failed");
       return;
     }
     setMessage("Cancel requested");
@@ -204,39 +243,110 @@ export function TradingPanel() {
 
         <section className="rounded-2xl border border-white/15 bg-slate-950/60 p-5 backdrop-blur-xl">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-semibold text-white">Place order</h2>
-            <span className="text-xs text-white/45">GTC limit</span>
+            <h2 className="font-semibold text-white">Trade</h2>
+            <div className="flex gap-1 rounded-lg bg-white/5 p-1 text-xs">
+              {(["limit", "swap"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setMode(option)}
+                  className={`rounded-md px-2.5 py-1 capitalize ${
+                    mode === option
+                      ? "bg-white text-emerald-950"
+                      : "text-white/55"
+                  }`}
+                >
+                  {option === "swap" ? "Convert" : "Limit"}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            {(["BUY", "SELL"] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setSide(option)}
-                className={`rounded-xl py-2 text-sm font-semibold ${
-                  side === option
-                    ? option === "BUY"
-                      ? "bg-emerald-400 text-emerald-950"
-                      : "bg-rose-400 text-rose-950"
-                    : "bg-white/10 text-white/60"
-                }`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-          <form className="space-y-3" onSubmit={placeOrder}>
-            <Field label="Price (USD)" value={price} onChange={setPrice} />
-            <Field label="Quantity (SOL)" value={quantity} onChange={setQuantity} />
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full rounded-xl bg-white py-2.5 text-sm font-semibold text-emerald-950 transition hover:bg-white/90 disabled:opacity-50"
-            >
-              {submitting ? "Submitting..." : `${side} SOL`}
-            </button>
-          </form>
-          {message && <p className="mt-3 text-center text-xs text-white/70">{message}</p>}
+
+          {mode === "limit" ? (
+            <>
+              <div className="mb-4 grid grid-cols-2 gap-2">
+                {(["BUY", "SELL"] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setSide(option)}
+                    className={`rounded-xl py-2 text-sm font-semibold ${
+                      side === option
+                        ? option === "BUY"
+                          ? "bg-emerald-400 text-emerald-950"
+                          : "bg-rose-400 text-rose-950"
+                        : "bg-white/10 text-white/60"
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+              <form className="space-y-3" onSubmit={placeOrder}>
+                <Field label="Price (USD)" value={price} onChange={setPrice} />
+                <Field
+                  label="Quantity (SOL)"
+                  value={quantity}
+                  onChange={setQuantity}
+                />
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full rounded-xl bg-white py-2.5 text-sm font-semibold text-emerald-950 transition hover:bg-white/90 disabled:opacity-50"
+                >
+                  {submitting ? "Submitting..." : `${side} SOL`}
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <p className="mb-3 text-xs text-white/45">
+                Market convert against the live SOL-USD book (IOC).
+              </p>
+              <div className="mb-4 grid grid-cols-2 gap-2">
+                {(["USD", "SOL"] as const).map((asset) => (
+                  <button
+                    key={asset}
+                    type="button"
+                    onClick={() => setFromAsset(asset)}
+                    className={`rounded-xl py-2 text-sm font-semibold ${
+                      fromAsset === asset
+                        ? "bg-sky-300 text-sky-950"
+                        : "bg-white/10 text-white/60"
+                    }`}
+                  >
+                    {asset} → {asset === "USD" ? "SOL" : "USD"}
+                  </button>
+                ))}
+              </div>
+              <form className="space-y-3" onSubmit={placeSwap}>
+                <Field
+                  label={
+                    fromAsset === "USD"
+                      ? "Spend (USD)"
+                      : "Sell amount (SOL)"
+                  }
+                  value={swapAmount}
+                  onChange={setSwapAmount}
+                />
+                <p className="text-xs text-white/45">
+                  Available {fromAsset}: {available(fromAsset)}
+                </p>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full rounded-xl bg-sky-300 py-2.5 text-sm font-semibold text-sky-950 transition hover:bg-sky-200 disabled:opacity-50"
+                >
+                  {submitting
+                    ? "Converting..."
+                    : `Convert ${fromAsset} → ${fromAsset === "USD" ? "SOL" : "USD"}`}
+                </button>
+              </form>
+            </>
+          )}
+          {message && (
+            <p className="mt-3 text-center text-xs text-white/70">{message}</p>
+          )}
         </section>
       </div>
 
@@ -346,4 +456,11 @@ function parseEvent<T>(event: Event): T | null {
   } catch {
     return null;
   }
+}
+
+function errorMessage(body: {
+  error?: { code?: string; message?: string } | string;
+}): string | undefined {
+  if (typeof body.error === "string") return body.error;
+  return body.error?.message ?? body.error?.code;
 }

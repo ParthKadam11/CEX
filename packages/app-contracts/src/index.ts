@@ -260,6 +260,97 @@ function isNullableUnit(value: unknown): value is number | null {
   return value === null || isSafePositiveInteger(value);
 }
 
+// Spot convert/swap: product UX over marketable SOL-USD orders (not perps).
+export type SpotSwapAsset = "SOL" | "USD";
+
+export type SpotSwapInput = {
+  fromAsset: SpotSwapAsset;
+  toAsset: SpotSwapAsset;
+  // Integer asset units: USD ticks for USD→SOL, SOL lots for SOL→USD.
+  amount: number;
+  clientOrderId: string;
+  // IOC takes available liquidity; FOK is only valid for SOL→USD (sell all or reject).
+  fillMode?: "IOC" | "FOK";
+};
+
+export type SpotSwapOrderBody = {
+  clientOrderId: string;
+  market: "SOL-USD";
+  side: "BUY" | "SELL";
+  orderType: "MARKET";
+  timeInForce: "IOC" | "FOK";
+  price: 0;
+  quantity: number;
+  quoteBudget?: number;
+};
+
+export function buildSpotSwapOrder(
+  input: SpotSwapInput,
+): SpotSwapOrderBody | { error: string } {
+  if (!isIdentifier(input.clientOrderId)) {
+    return { error: "INVALID_CLIENT_ORDER_ID" };
+  }
+  if (
+    (input.fromAsset !== "SOL" && input.fromAsset !== "USD") ||
+    (input.toAsset !== "SOL" && input.toAsset !== "USD") ||
+    input.fromAsset === input.toAsset
+  ) {
+    return { error: "INVALID_SWAP_PAIR" };
+  }
+  if (!isBoundedPositiveInteger(input.amount, MAX_QUOTE_BUDGET)) {
+    return { error: "INVALID_SWAP_AMOUNT" };
+  }
+
+  const mode = input.fillMode ?? "IOC";
+  if (mode !== "IOC" && mode !== "FOK") {
+    return { error: "INVALID_FILL_MODE" };
+  }
+
+  // USD → SOL: spend `amount` quote on as much base as liquidity allows.
+  if (input.fromAsset === "USD" && input.toAsset === "SOL") {
+    if (mode === "FOK") {
+      return { error: "FOK_REQUIRES_SOL_SELL" };
+    }
+    return {
+      clientOrderId: input.clientOrderId,
+      market: "SOL-USD",
+      side: "BUY",
+      orderType: "MARKET",
+      timeInForce: "IOC",
+      price: 0,
+      quantity: MAX_ORDER_QUANTITY,
+      quoteBudget: input.amount,
+    };
+  }
+
+  // SOL → USD: sell `amount` base into bids.
+  if (!isBoundedPositiveInteger(input.amount, MAX_ORDER_QUANTITY)) {
+    return { error: "INVALID_SWAP_AMOUNT" };
+  }
+  return {
+    clientOrderId: input.clientOrderId,
+    market: "SOL-USD",
+    side: "SELL",
+    orderType: "MARKET",
+    timeInForce: mode,
+    price: 0,
+    quantity: input.amount,
+  };
+}
+
+export function isSpotSwapInput(value: unknown): value is SpotSwapInput {
+  if (!isRecord(value)) return false;
+  return (
+    (value.fromAsset === "SOL" || value.fromAsset === "USD") &&
+    (value.toAsset === "SOL" || value.toAsset === "USD") &&
+    isSafePositiveInteger(value.amount) &&
+    isIdentifier(value.clientOrderId) &&
+    (value.fillMode === undefined ||
+      value.fillMode === "IOC" ||
+      value.fillMode === "FOK")
+  );
+}
+
 // Redis Stream entries store JSON in a `payload` field.
 export type StreamEnvelope<T> = {
   payload: T;

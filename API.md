@@ -37,6 +37,31 @@ orders. `limit` is an integer from 1 through 100. The response contains
 
 `GET /api/orders/:orderId` returns one order owned by the authenticated user.
 
+## Spot convert / swap
+
+`POST /api/swap` converts SOL↔USD by placing a marketable spot order on
+`SOL-USD`. It does not introduce a new matching product.
+
+```json
+{
+  "fromAsset": "USD",
+  "toAsset": "SOL",
+  "amount": 250,
+  "fillMode": "IOC",
+  "clientOrderId": "optional-swap-id"
+}
+```
+
+Mapping:
+
+- `USD → SOL`: `MARKET BUY` with `quoteBudget = amount`, `quantity` capped at the
+  exchange max, `timeInForce = IOC` (spend up to `amount` USD).
+- `SOL → USD`: `MARKET SELL` with `quantity = amount`, `timeInForce = IOC` or
+  `FOK` (`FOK` must sell the full amount or reject).
+
+`fillMode: "FOK"` is rejected for `USD → SOL` because FOK budget semantics need
+an exact base quantity.
+
 ## Market history
 
 The authenticated BFF proxies historical data from the separate market-data

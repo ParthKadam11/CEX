@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isAppCommand } from "@cex/app-contracts";
+import { MAX_ORDER_QUANTITY } from "@cex/exchange-types";
+import { buildSpotSwapOrder, isAppCommand } from "@cex/app-contracts";
 
 const basePlace = {
   commandId: "command-1",
@@ -43,5 +44,75 @@ describe("application command validation", () => {
         quoteBudget: 100,
       }),
     ).toBe(false);
+  });
+});
+
+describe("spot swap mapping", () => {
+  it("maps USD→SOL to a market buy with quoteBudget", () => {
+    const order = buildSpotSwapOrder({
+      fromAsset: "USD",
+      toAsset: "SOL",
+      amount: 250,
+      clientOrderId: "swap-1",
+    });
+    expect(order).toEqual({
+      clientOrderId: "swap-1",
+      market: "SOL-USD",
+      side: "BUY",
+      orderType: "MARKET",
+      timeInForce: "IOC",
+      price: 0,
+      quantity: MAX_ORDER_QUANTITY,
+      quoteBudget: 250,
+    });
+    expect(
+      isAppCommand({
+        ...(order as object),
+        commandId: "command-1",
+        type: "PLACE",
+        userId: "user-1",
+        timestamp: Date.now(),
+      }),
+    ).toBe(true);
+  });
+
+  it("maps SOL→USD to a market sell", () => {
+    expect(
+      buildSpotSwapOrder({
+        fromAsset: "SOL",
+        toAsset: "USD",
+        amount: 3,
+        clientOrderId: "swap-2",
+        fillMode: "FOK",
+      }),
+    ).toEqual({
+      clientOrderId: "swap-2",
+      market: "SOL-USD",
+      side: "SELL",
+      orderType: "MARKET",
+      timeInForce: "FOK",
+      price: 0,
+      quantity: 3,
+    });
+  });
+
+  it("rejects invalid pairs and FOK on USD spends", () => {
+    expect(
+      buildSpotSwapOrder({
+        fromAsset: "USD",
+        toAsset: "USD",
+        amount: 1,
+        clientOrderId: "swap-3",
+      }),
+    ).toEqual({ error: "INVALID_SWAP_PAIR" });
+    expect(
+      buildSpotSwapOrder({
+        fromAsset: "USD",
+        toAsset: "SOL",
+        amount: 1,
+        clientOrderId: "swap-4",
+        fillMode: "FOK",
+      }),
+    ).toEqual({ error: "FOK_REQUIRES_SOL_SELL" });
   });
 });

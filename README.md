@@ -266,8 +266,10 @@ The integration test requires PostgreSQL, Redis, the exchange, the engine gatewa
 - OMS order APIs, Postgres order state, transactional command outbox, and event-driven status updates
 - Market-data writer (TimescaleDB history for trades, BBO, and one-minute candles)
 - Authenticated web BFF routes for trading, balances, live market data, and historical queries
+- Spot convert/swap (`POST /api/swap`) mapped to marketable SOL-USD orders
 
 ### In progress
 
 - Live chart UI wired to historical candle endpoints
 - Authenticated application gateway hardening for non-local deployments
+- Perpetual futures / leveraged products
