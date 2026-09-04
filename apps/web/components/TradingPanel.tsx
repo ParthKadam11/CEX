@@ -260,7 +260,7 @@ export function TradingPanel() {
             {streamConnected ? "Live" : "Connecting"}
           </span>
           <MarketMakerControls
-            onTick={(result) => {
+            onTickAction={(result) => {
               if (result.book) setBook(result.book);
               if (result.traded) {
                 void loadTradeHistory(true);

@@ -16,20 +16,20 @@ type TickResult = {
 };
 
 type MarketMakerControlsProps = {
-  onTick?: (result: TickResult) => void;
+  onTickAction?: (result: TickResult) => void;
 };
 
 /**
  * Simulation switch. Browser owns a tight non-overlapping loop;
  * each tick injects engine commands and pushes the fresh book into the UI.
  */
-export function MarketMakerControls({ onTick }: MarketMakerControlsProps) {
+export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) {
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const runningRef = useRef(false);
-  const onTickRef = useRef(onTick);
-  onTickRef.current = onTick;
+  const onTickRef = useRef(onTickAction);
+  onTickRef.current = onTickAction;
 
   useEffect(() => {
     return () => {
