@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { TradeTickMessage } from "@cex/app-contracts";
 import type { Balance, OrderBookSnapshot } from "@cex/exchange-types";
@@ -10,8 +10,10 @@ import { OrderBookPanel } from "@/components/OrderBookPanel";
 import { useMarketStream } from "@/hooks/useMarketStream";
 import {
   balanceFor,
+  buildLiveCandles,
   errorMessage,
   formatTime,
+  normalizeCandle,
   OPEN_ORDER_STATUSES,
   type Candle,
   type HistoryTrade,
@@ -22,7 +24,7 @@ import {
 export function TradingPanel() {
   const [balances, setBalances] = useState<Balance[]>([]);
   const [orders, setOrders] = useState<TradingOrder[]>([]);
-  const [candles, setCandles] = useState<Candle[]>([]);
+  const [historyCandles, setHistoryCandles] = useState<Candle[]>([]);
   const [tape, setTape] = useState<LiveTapeTrade[]>([]);
   const [mode, setMode] = useState<"limit" | "market" | "swap">("limit");
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
@@ -43,18 +45,25 @@ export function TradingPanel() {
         [
           {
             id: trade.tradeId,
-            price: trade.price,
-            quantity: trade.quantity,
+            price: Number(trade.price),
+            quantity: Number(trade.quantity),
             at: Date.now(),
           },
-          ...current,
-        ].slice(0, 40),
+          ...current.filter((row) => row.id !== trade.tradeId),
+        ].slice(0, 120),
       );
-      void loadCandles();
       void loadBalances();
       void loadOrders();
     },
   });
+
+  const liveCandles = useMemo(
+    () => buildLiveCandles(tape, 5_000, 60),
+    [tape],
+  );
+  const chartCandles =
+    liveCandles.length > 0 ? liveCandles : historyCandles;
+  const chartInterval = liveCandles.length > 0 ? "5s live" : "1m history";
 
   useEffect(() => {
     async function bootstrap() {
@@ -63,7 +72,7 @@ export function TradingPanel() {
         loadBalances(),
         loadOrders(),
         loadCandles(),
-        loadTradeHistory(),
+        loadTradeHistory(true),
       ]);
     }
     void bootstrap();
@@ -108,11 +117,15 @@ export function TradingPanel() {
     });
     if (!response.ok) return;
     const body = (await response.json()) as { candles?: Candle[] };
-    setCandles(Array.isArray(body.candles) ? body.candles : []);
+    setHistoryCandles(
+      Array.isArray(body.candles)
+        ? body.candles.map((candle) => normalizeCandle(candle))
+        : [],
+    );
   }
 
   async function loadTradeHistory(force = false) {
-    const response = await fetch("/api/market/history/trades?limit=40", {
+    const response = await fetch("/api/market/history/trades?limit=120", {
       cache: "no-store",
     });
     if (!response.ok) return;
@@ -120,12 +133,21 @@ export function TradingPanel() {
     if (!Array.isArray(body.trades) || body.trades.length === 0) return;
     const mapped = body.trades.map((trade) => ({
       id: trade.tradeId,
-      price: trade.price,
-      quantity: trade.quantity,
+      price: Number(trade.price),
+      quantity: Number(trade.quantity),
       at: new Date(trade.time).getTime(),
     }));
     setTape((current) => {
-      if (!force && current.length > 0) return current;
+      if (!force && current.length > 0) {
+        const seen = new Set(current.map((row) => row.id));
+        const merged = [
+          ...current,
+          ...mapped.filter((row) => !seen.has(row.id)),
+        ];
+        return merged
+          .sort((a, b) => b.at - a.at)
+          .slice(0, 120);
+      }
       return mapped;
     });
   }
@@ -262,9 +284,21 @@ export function TradingPanel() {
           <MarketMakerControls
             onTickAction={(result) => {
               if (result.book) setBook(result.book);
-              if (result.traded) {
+              if (result.prints && result.prints.length > 0) {
+                const at = Date.now();
+                setTape((current) =>
+                  [
+                    ...result.prints!.map((print, index) => ({
+                      id: `sim-${at}-${index}-${print.price}`,
+                      price: print.price,
+                      quantity: print.quantity,
+                      at: at + index,
+                    })),
+                    ...current,
+                  ].slice(0, 120),
+                );
+              } else if (result.traded) {
                 void loadTradeHistory(true);
-                void loadCandles();
               }
             }}
           />
@@ -292,10 +326,10 @@ export function TradingPanel() {
             Chart
           </h2>
           <span className="text-xs text-zinc-400 dark:text-zinc-500">
-            Timescale 1m candles
+            {chartInterval} candles
           </span>
         </div>
-        <CandleChart candles={candles} />
+        <CandleChart candles={chartCandles} intervalLabel={chartInterval} />
       </section>
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(280px,0.95fr)_minmax(300px,1fr)]">

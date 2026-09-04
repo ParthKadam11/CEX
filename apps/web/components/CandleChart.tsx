@@ -5,9 +5,13 @@ import type { Candle } from "@/lib/trading";
 
 type CandleChartProps = {
   candles: Candle[];
+  intervalLabel?: string;
 };
 
-export function CandleChart({ candles }: CandleChartProps) {
+export function CandleChart({
+  candles,
+  intervalLabel = "1m",
+}: CandleChartProps) {
   const series = useMemo(
     () => [...candles].reverse().slice(-60),
     [candles],
@@ -51,7 +55,7 @@ export function CandleChart({ candles }: CandleChartProps) {
         viewBox={`0 0 ${width} ${height}`}
         className="h-[220px] w-full min-w-[320px]"
         role="img"
-        aria-label="SOL-USD 1 minute candles"
+        aria-label={`SOL-USD ${intervalLabel} candles`}
       >
         {series.map((candle, index) => {
           const x = gap + index * (barWidth + gap);
@@ -85,7 +89,9 @@ export function CandleChart({ candles }: CandleChartProps) {
         })}
       </svg>
       <div className="mt-2 flex justify-between text-xs text-zinc-400 dark:text-zinc-500">
-        <span>1m · last {series.length}</span>
+        <span>
+          {intervalLabel} · last {series.length}
+        </span>
         <span>
           {series.at(-1)?.close ?? "—"} close · vol{" "}
           {series.at(-1)?.volume ?? 0}

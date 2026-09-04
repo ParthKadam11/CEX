@@ -173,6 +173,7 @@ export async function runMarketMakerTick(): Promise<{
   traded: boolean;
   ticks: number;
   book: OrderBookSnapshot | null;
+  prints: { price: number; quantity: number }[];
 }> {
   await ensureFunded();
   const s = state();
@@ -200,6 +201,7 @@ export async function runMarketMakerTick(): Promise<{
       traded,
       ticks: s.ticks,
       book,
+      prints: [],
     };
   }
 
@@ -239,21 +241,24 @@ export async function runMarketMakerTick(): Promise<{
   }
 
   // Retail IOC crosses so the tape prints
+  const prints: { price: number; quantity: number }[] = [];
   if (bbo.bestAsk != null && bbo.bestBid != null) {
     const tradeCount = 1 + Math.floor(Math.random() * 3);
     for (let i = 0; i < tradeCount; i += 1) {
       const buy = Math.random() < 0.5;
       const size = 1 + Math.floor(Math.random() * 2);
       const trader = pickRetail();
+      const px = buy ? Number(bbo.bestAsk) : Number(bbo.bestBid);
       jobs.push(
         injectPlace({
           userId: trader,
           side: buy ? "BUY" : "SELL",
-          price: buy ? Number(bbo.bestAsk) : Number(bbo.bestBid),
+          price: px,
           quantity: size,
           timeInForce: "IOC",
         }),
       );
+      prints.push({ price: px, quantity: size });
       traded = true;
     }
   }
@@ -272,6 +277,7 @@ export async function runMarketMakerTick(): Promise<{
     traded,
     ticks: s.ticks,
     book,
+    prints,
   };
 }
 

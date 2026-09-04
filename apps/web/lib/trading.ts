@@ -107,3 +107,109 @@ export function formatTime(value: string | number | Date): string {
     minute: "2-digit",
   });
 }
+
+export function normalizeCandle(
+  raw: Partial<Candle> & { bucket: string },
+): Candle {
+  return {
+    bucket: raw.bucket,
+    market: raw.market ?? "SOL-USD",
+    open: Number(raw.open) || 0,
+    high: Number(raw.high) || 0,
+    low: Number(raw.low) || 0,
+    close: Number(raw.close) || 0,
+    volume: Number(raw.volume) || 0,
+    trades: Number(raw.trades) || 0,
+  };
+}
+
+/** Fold a live trade into the current 1m candle (Timescale CAGG lags real-time). */
+export function applyTradeToCandles(
+  candles: Candle[],
+  trade: { price: number; quantity: number; at: number },
+): Candle[] {
+  const price = Number(trade.price);
+  const quantity = Number(trade.quantity);
+  if (!Number.isFinite(price) || !Number.isFinite(quantity)) return candles;
+
+  const bucketDate = new Date(trade.at);
+  bucketDate.setUTCSeconds(0, 0);
+  const bucket = bucketDate.toISOString();
+
+  const next = candles.map(normalizeCandle);
+  const index = next.findIndex((candle) => candle.bucket === bucket);
+  if (index === -1) {
+    return [
+      {
+        bucket,
+        market: "SOL-USD",
+        open: price,
+        high: price,
+        low: price,
+        close: price,
+        volume: quantity,
+        trades: 1,
+      },
+      ...next,
+    ].slice(0, 90);
+  }
+
+  const current = next[index]!;
+  next[index] = {
+    ...current,
+    high: Math.max(current.high, price),
+    low: Math.min(current.low, price),
+    close: price,
+    volume: current.volume + quantity,
+    trades: current.trades + 1,
+  };
+  return next;
+}
+
+/**
+ * Build short live candles from the trade tape so the chart moves during sim.
+ * Timescale candles_1m only refreshes on a 1m policy with end_offset=1m.
+ */
+export function buildLiveCandles(
+  trades: LiveTapeTrade[],
+  bucketMs = 5_000,
+  maxBuckets = 60,
+): Candle[] {
+  if (trades.length === 0) return [];
+
+  const sorted = [...trades].sort((a, b) => a.at - b.at);
+  const byBucket = new Map<string, Candle>();
+
+  for (const trade of sorted) {
+    const price = Number(trade.price);
+    const quantity = Number(trade.quantity);
+    if (!Number.isFinite(price) || !Number.isFinite(quantity)) continue;
+
+    const bucketStart = Math.floor(trade.at / bucketMs) * bucketMs;
+    const bucket = new Date(bucketStart).toISOString();
+    const existing = byBucket.get(bucket);
+    if (!existing) {
+      byBucket.set(bucket, {
+        bucket,
+        market: "SOL-USD",
+        open: price,
+        high: price,
+        low: price,
+        close: price,
+        volume: quantity,
+        trades: 1,
+      });
+      continue;
+    }
+    existing.high = Math.max(existing.high, price);
+    existing.low = Math.min(existing.low, price);
+    existing.close = price;
+    existing.volume += quantity;
+    existing.trades += 1;
+  }
+
+  return [...byBucket.values()]
+    .sort((a, b) => b.bucket.localeCompare(a.bucket))
+    .slice(0, maxBuckets);
+}
+

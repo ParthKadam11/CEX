@@ -12,6 +12,7 @@ type TickResult = {
   seeded?: boolean;
   ticks?: number;
   book?: OrderBookSnapshot | null;
+  prints?: { price: number; quantity: number }[];
   error?: { message?: string };
 };
 
