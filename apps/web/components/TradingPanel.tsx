@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { TradeTickMessage } from "@cex/app-contracts";
 import type { Balance, OrderBookSnapshot } from "@cex/exchange-types";
 import { CandleChart } from "@/components/CandleChart";
+import { MarketMakerControls } from "@/components/MarketMakerControls";
 import { OrderBookPanel } from "@/components/OrderBookPanel";
 import { useMarketStream } from "@/hooks/useMarketStream";
 import {
@@ -110,21 +111,22 @@ export function TradingPanel() {
     setCandles(Array.isArray(body.candles) ? body.candles : []);
   }
 
-  async function loadTradeHistory() {
-    const response = await fetch("/api/market/history/trades?limit=25", {
+  async function loadTradeHistory(force = false) {
+    const response = await fetch("/api/market/history/trades?limit=40", {
       cache: "no-store",
     });
     if (!response.ok) return;
     const body = (await response.json()) as { trades?: HistoryTrade[] };
     if (!Array.isArray(body.trades) || body.trades.length === 0) return;
+    const mapped = body.trades.map((trade) => ({
+      id: trade.tradeId,
+      price: trade.price,
+      quantity: trade.quantity,
+      at: new Date(trade.time).getTime(),
+    }));
     setTape((current) => {
-      if (current.length > 0) return current;
-      return body.trades!.map((trade) => ({
-        id: trade.tradeId,
-        price: trade.price,
-        quantity: trade.quantity,
-        at: new Date(trade.time).getTime(),
-      }));
+      if (!force && current.length > 0) return current;
+      return mapped;
     });
   }
 
@@ -257,6 +259,15 @@ export function TradingPanel() {
           >
             {streamConnected ? "Live" : "Connecting"}
           </span>
+          <MarketMakerControls
+            onTick={(result) => {
+              if (result.book) setBook(result.book);
+              if (result.traded) {
+                void loadTradeHistory(true);
+                void loadCandles();
+              }
+            }}
+          />
         </div>
       </div>
 
