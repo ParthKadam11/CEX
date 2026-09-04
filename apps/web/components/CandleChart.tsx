@@ -39,7 +39,7 @@ export function CandleChart({ candles }: CandleChartProps) {
 
   if (series.length === 0) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-sm text-zinc-400">
+      <div className="flex h-[220px] items-center justify-center text-sm text-zinc-400 dark:text-zinc-500">
         No candle history yet. Trades will populate 1m candles.
       </div>
     );
@@ -84,7 +84,7 @@ export function CandleChart({ candles }: CandleChartProps) {
           );
         })}
       </svg>
-      <div className="mt-2 flex justify-between text-xs text-zinc-400">
+      <div className="mt-2 flex justify-between text-xs text-zinc-400 dark:text-zinc-500">
         <span>1m · last {series.length}</span>
         <span>
           {series.at(-1)?.close ?? "—"} close · vol{" "}

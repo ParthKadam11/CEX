@@ -61,10 +61,10 @@ export function MarketExplorer() {
 
   return (
     <div className="animate-fade-up w-full max-w-6xl space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 pb-5">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 pb-5 dark:border-zinc-800">
         <div>
-          <p className="text-sm text-zinc-500">Market data</p>
-          <h1 className="font-display text-3xl tracking-tight text-zinc-950">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Market data</p>
+          <h1 className="font-display text-3xl tracking-tight text-zinc-950 dark:text-zinc-50">
             {meta?.market ?? "SOL-USD"}
           </h1>
         </div>
@@ -77,8 +77,8 @@ export function MarketExplorer() {
           <span
             className={`rounded-full px-2.5 py-1 text-xs font-medium ${
               connected
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-zinc-100 text-zinc-500"
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
+                : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
             }`}
           >
             {connected ? "Live" : "Connecting"}
@@ -86,36 +86,44 @@ export function MarketExplorer() {
         </div>
       </div>
 
-      <section className="rounded-lg border border-zinc-200 p-5">
-        <h2 className="mb-4 text-sm font-semibold text-zinc-950">
+      <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+        <h2 className="mb-4 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
           Candles (1m)
         </h2>
         <CandleChart candles={candles} />
       </section>
 
-      <section className="rounded-lg border border-zinc-200 p-5">
+      <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-950">Live book</h2>
-          <span className="text-xs text-zinc-400">
+          <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+            Live book
+          </h2>
+          <span className="text-xs text-zinc-400 dark:text-zinc-500">
             {book.bids.length} bids · {book.asks.length} asks
           </span>
         </div>
         <div className="grid grid-cols-2 gap-6 text-sm">
           <div>
-            <div className="mb-2 flex justify-between text-xs text-zinc-400">
+            <div className="mb-2 flex justify-between text-xs text-zinc-400 dark:text-zinc-500">
               <span>Bids</span>
               <span>Qty</span>
             </div>
             {book.bids.slice(0, 10).map((level) => (
               <div key={level.price} className="flex justify-between py-0.5">
-                <span className="text-emerald-600">{level.price}</span>
-                <span className="text-zinc-600">{level.quantity}</span>
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  {level.price}
+                </span>
+                <span className="text-zinc-600 dark:text-zinc-300">
+                  {level.quantity}
+                </span>
               </div>
             ))}
-            {book.bids.length === 0 && <p className="text-zinc-300">Empty</p>}
+            {book.bids.length === 0 && (
+              <p className="text-zinc-300 dark:text-zinc-600">Empty</p>
+            )}
           </div>
           <div>
-            <div className="mb-2 flex justify-between text-xs text-zinc-400">
+            <div className="mb-2 flex justify-between text-xs text-zinc-400 dark:text-zinc-500">
               <span>Asks</span>
               <span>Qty</span>
             </div>
@@ -124,19 +132,27 @@ export function MarketExplorer() {
               .slice(0, 10)
               .map((level) => (
                 <div key={level.price} className="flex justify-between py-0.5">
-                  <span className="text-red-600">{level.price}</span>
-                  <span className="text-zinc-600">{level.quantity}</span>
+                  <span className="text-red-600 dark:text-red-400">
+                    {level.price}
+                  </span>
+                  <span className="text-zinc-600 dark:text-zinc-300">
+                    {level.quantity}
+                  </span>
                 </div>
               ))}
-            {book.asks.length === 0 && <p className="text-zinc-300">Empty</p>}
+            {book.asks.length === 0 && (
+              <p className="text-zinc-300 dark:text-zinc-600">Empty</p>
+            )}
           </div>
         </div>
       </section>
 
-      <section className="rounded-lg border border-zinc-200 p-5">
+      <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-950">History</h2>
-          <div className="flex rounded-md border border-zinc-200 p-0.5 text-xs">
+          <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+            History
+          </h2>
+          <div className="flex rounded-md border border-zinc-200 p-0.5 text-xs dark:border-zinc-700">
             {(["trades", "bbo"] as const).map((option) => (
               <button
                 key={option}
@@ -144,8 +160,8 @@ export function MarketExplorer() {
                 onClick={() => setTab(option)}
                 className={`rounded px-2.5 py-1 font-medium uppercase ${
                   tab === option
-                    ? "bg-zinc-950 text-white"
-                    : "text-zinc-500 hover:text-zinc-950"
+                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    : "text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
                 }`}
               >
                 {option}
@@ -158,16 +174,16 @@ export function MarketExplorer() {
           trades.length === 0 ? (
             <Empty>No durable trades yet.</Empty>
           ) : (
-            <div className="divide-y divide-zinc-100 text-sm">
+            <div className="max-h-[360px] divide-y divide-zinc-100 overflow-y-auto overscroll-contain text-sm dark:divide-zinc-800">
               {trades.map((trade) => (
                 <div
                   key={trade.tradeId}
                   className="flex flex-wrap items-center justify-between gap-3 py-2.5"
                 >
-                  <span className="font-medium text-zinc-950">
+                  <span className="font-medium text-zinc-950 dark:text-zinc-50">
                     {trade.quantity} @ {trade.price}
                   </span>
-                  <span className="text-xs text-zinc-400">
+                  <span className="text-xs text-zinc-400 dark:text-zinc-500">
                     {formatTime(trade.time)}
                   </span>
                 </div>
@@ -177,18 +193,22 @@ export function MarketExplorer() {
         ) : bboHistory.length === 0 ? (
           <Empty>No BBO snapshots yet.</Empty>
         ) : (
-          <div className="divide-y divide-zinc-100 text-sm">
+          <div className="max-h-[360px] divide-y divide-zinc-100 overflow-y-auto overscroll-contain text-sm dark:divide-zinc-800">
             {bboHistory.map((row) => (
               <div
                 key={`${row.time}-${row.engineSequence}`}
                 className="flex flex-wrap items-center justify-between gap-3 py-2.5"
               >
                 <span>
-                  <span className="text-emerald-600">{row.bestBid ?? "—"}</span>
+                  <span className="text-emerald-600 dark:text-emerald-400">
+                    {row.bestBid ?? "—"}
+                  </span>
                   {" / "}
-                  <span className="text-red-600">{row.bestAsk ?? "—"}</span>
+                  <span className="text-red-600 dark:text-red-400">
+                    {row.bestAsk ?? "—"}
+                  </span>
                 </span>
-                <span className="text-xs text-zinc-400">
+                <span className="text-xs text-zinc-400 dark:text-zinc-500">
                   {formatTime(row.time)}
                 </span>
               </div>
@@ -211,14 +231,14 @@ function MetaChip({
 }) {
   return (
     <div className="text-right">
-      <p className="text-xs text-zinc-400">{label}</p>
+      <p className="text-xs text-zinc-400 dark:text-zinc-500">{label}</p>
       <p
         className={`font-semibold ${
           tone === "bid"
-            ? "text-emerald-600"
+            ? "text-emerald-600 dark:text-emerald-400"
             : tone === "ask"
-              ? "text-red-600"
-              : "text-zinc-950"
+              ? "text-red-600 dark:text-red-400"
+              : "text-zinc-950 dark:text-zinc-50"
         }`}
       >
         {value}
@@ -229,6 +249,8 @@ function MetaChip({
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="py-8 text-center text-sm text-zinc-400">{children}</p>
+    <p className="py-8 text-center text-sm text-zinc-400 dark:text-zinc-500">
+      {children}
+    </p>
   );
 }

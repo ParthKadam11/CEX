@@ -12,13 +12,13 @@ export function Hero() {
   return (
     <main className="flex min-h-[calc(100vh-3.5rem)] flex-col">
       <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-5 py-20 sm:px-8">
-        <p className="animate-fade-up text-sm font-medium tracking-wide text-zinc-500">
+        <p className="animate-fade-up text-sm font-medium tracking-wide text-zinc-500 dark:text-zinc-400">
           Spot exchange
         </p>
-        <h1 className="animate-fade-up mt-4 font-display text-6xl leading-[0.95] tracking-tight text-zinc-950 sm:text-7xl">
+        <h1 className="animate-fade-up mt-4 font-display text-6xl leading-[0.95] tracking-tight text-zinc-950 sm:text-7xl dark:text-zinc-50">
           CEX
         </h1>
-        <p className="animate-fade-up delay-100 mt-6 max-w-md text-lg leading-relaxed text-zinc-500">
+        <p className="animate-fade-up delay-100 mt-6 max-w-md text-lg leading-relaxed text-zinc-500 dark:text-zinc-400">
           Clear markets. Simple balances. Trade SOL-USD without the noise.
         </p>
 
@@ -26,14 +26,14 @@ export function Hero() {
           {session?.user ? (
             <Button
               onClick={() => router.push("/dashboard")}
-              className="h-10 rounded-md bg-zinc-950 px-5 text-white hover:bg-zinc-800"
+              className="h-10 rounded-md bg-zinc-950 px-5 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
             >
               Open dashboard
             </Button>
           ) : (
             <Button
               onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-              className="h-10 rounded-md bg-zinc-950 px-5 text-white hover:bg-zinc-800"
+              className="h-10 rounded-md bg-zinc-950 px-5 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
             >
               <GoogleIcon />
               Continue with Google
@@ -41,7 +41,7 @@ export function Hero() {
           )}
           <a
             href="#product"
-            className="text-sm font-medium text-zinc-500 hover:text-zinc-950"
+            className="text-sm font-medium text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
           >
             See how it works
           </a>
@@ -50,7 +50,7 @@ export function Hero() {
 
       <section
         id="product"
-        className="border-t border-zinc-200 bg-zinc-50/70"
+        className="border-t border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-900/50"
       >
         <div className="mx-auto grid max-w-3xl gap-8 px-5 py-16 sm:grid-cols-3 sm:px-8">
           {[
@@ -68,10 +68,10 @@ export function Hero() {
             },
           ].map((item) => (
             <div key={item.title}>
-              <h2 className="text-sm font-semibold text-zinc-950">
+              <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
                 {item.title}
               </h2>
-              <p className="mt-2 text-sm leading-relaxed text-zinc-500">
+              <p className="mt-2 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
                 {item.body}
               </p>
             </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import type { Balance } from "@cex/exchange-types";
@@ -70,15 +71,33 @@ export function DashboardHome({ publicKey }: DashboardHomeProps) {
   const usd = balanceFor(balances, "USD");
   const sol = balanceFor(balances, "SOL");
   const name = session?.user?.name?.split(" ")[0] ?? "trader";
+  const image = session?.user?.image;
 
   return (
     <div className="animate-fade-up w-full max-w-6xl space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 pb-5">
-        <div>
-          <p className="text-sm text-zinc-500">Overview</p>
-          <h1 className="font-display text-3xl tracking-tight text-zinc-950">
-            {name}
-          </h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          {image ? (
+            <Image
+              src={image}
+              alt=""
+              width={40}
+              height={40}
+              className="size-10 rounded-full"
+            />
+          ) : (
+            <div className="flex size-10 items-center justify-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+              {name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Welcome back
+            </p>
+            <h1 className="font-display text-2xl tracking-tight text-zinc-950 dark:text-zinc-50">
+              {name}
+            </h1>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-6 text-sm">
           <Stat label="Best bid" value={book.bbo.bestBid} tone="bid" />
@@ -86,8 +105,8 @@ export function DashboardHome({ publicKey }: DashboardHomeProps) {
           <span
             className={`rounded-full px-2.5 py-1 text-xs font-medium ${
               connected
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-zinc-100 text-zinc-500"
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
             }`}
           >
             {connected ? "Live" : "Connecting"}
@@ -95,10 +114,10 @@ export function DashboardHome({ publicKey }: DashboardHomeProps) {
         </div>
       </div>
 
-      <section className="rounded-lg border border-zinc-200 p-5">
+      <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-950">
+            <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
               Trading balances
             </h2>
             <p className="mt-1 text-xs text-zinc-400">
@@ -110,7 +129,7 @@ export function DashboardHome({ publicKey }: DashboardHomeProps) {
               type="button"
               disabled={funding}
               onClick={() => paperFund("USD", 10_000)}
-              className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
             >
               +10,000 USD
             </button>
@@ -118,7 +137,7 @@ export function DashboardHome({ publicKey }: DashboardHomeProps) {
               type="button"
               disabled={funding}
               onClick={() => paperFund("SOL", 100)}
-              className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
             >
               +100 SOL
             </button>
@@ -128,49 +147,60 @@ export function DashboardHome({ publicKey }: DashboardHomeProps) {
           <BalanceTile asset="USD" available={usd.available} locked={usd.locked} />
           <BalanceTile asset="SOL" available={sol.available} locked={sol.locked} />
         </div>
-        {message && <p className="mt-3 text-xs text-zinc-500">{message}</p>}
-      </section>
-
-      <section className="rounded-lg border border-zinc-200 p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-950">Recent orders</h2>
-          <Link
-            href="/dashboard/orders"
-            className="text-xs font-medium text-zinc-500 hover:text-zinc-950"
-          >
-            View all
-          </Link>
-        </div>
-        {orders.length === 0 ? (
-          <p className="py-6 text-center text-sm text-zinc-400">
-            No orders yet.{" "}
-            <Link href="/trade" className="text-zinc-700 underline">
-              Place one on Trade
-            </Link>
+        {message && (
+          <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+            {message}
           </p>
-        ) : (
-          <div className="divide-y divide-zinc-100">
-            {orders.map((order) => (
-              <div
-                key={order.id}
-                className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"
-              >
-                <div>
-                  <p className="font-medium text-zinc-950">
-                    {order.side} {order.quantity} @ {order.price}
-                  </p>
-                  <p className="text-xs text-zinc-400">
-                    {formatTime(order.createdAt)} · filled {order.filledQuantity}
-                  </p>
-                </div>
-                <span className="text-zinc-500">{order.status}</span>
-              </div>
-            ))}
-          </div>
         )}
       </section>
 
-      <WalletCard publicKey={publicKey} />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+          <WalletCard publicKey={publicKey} showWelcome={false} />
+        </div>
+
+        <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+              Recent orders
+            </h2>
+            <Link
+              href="/dashboard/orders"
+              className="text-xs font-medium text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
+            >
+              View all
+            </Link>
+          </div>
+          {orders.length === 0 ? (
+            <p className="py-6 text-center text-sm text-zinc-400">
+              No orders yet.{" "}
+              <Link href="/trade" className="text-zinc-700 underline dark:text-zinc-300">
+                Place one on Trade
+              </Link>
+            </p>
+          ) : (
+            <div className="max-h-[360px] divide-y divide-zinc-100 overflow-y-auto overscroll-contain dark:divide-zinc-800">
+              {orders.map((order) => (
+                <div
+                  key={order.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"
+                >
+                  <div>
+                    <p className="font-medium text-zinc-950 dark:text-zinc-50">
+                      {order.side} {order.quantity} @ {order.price}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      {formatTime(order.createdAt)} · filled{" "}
+                      {order.filledQuantity}
+                    </p>
+                  </div>
+                  <span className="text-zinc-500">{order.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
@@ -185,9 +215,9 @@ function BalanceTile({
   locked: number;
 }) {
   return (
-    <div className="rounded-md bg-zinc-50 px-4 py-4">
+    <div className="rounded-md bg-zinc-50 px-4 py-4 dark:bg-zinc-900">
       <p className="text-xs font-medium text-zinc-500">{asset}</p>
-      <p className="mt-1 text-2xl font-semibold text-zinc-950">
+      <p className="mt-1 text-2xl font-semibold text-zinc-950 dark:text-zinc-50">
         {available.toLocaleString()}
       </p>
       <p className="mt-1 text-xs text-zinc-400">
@@ -212,10 +242,10 @@ function Stat({
       <p
         className={`font-semibold ${
           tone === "bid"
-            ? "text-emerald-600"
+            ? "text-emerald-600 dark:text-emerald-400"
             : tone === "ask"
-              ? "text-red-600"
-              : "text-zinc-950"
+              ? "text-red-600 dark:text-red-400"
+              : "text-zinc-950 dark:text-zinc-50"
         }`}
       >
         {value ?? "—"}

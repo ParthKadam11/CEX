@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { TradeTickMessage } from "@cex/app-contracts";
 import type { Balance, OrderBookSnapshot } from "@cex/exchange-types";
 import { CandleChart } from "@/components/CandleChart";
+import { OrderBookPanel } from "@/components/OrderBookPanel";
 import { useMarketStream } from "@/hooks/useMarketStream";
 import {
   balanceFor,
@@ -77,7 +78,6 @@ export function TradingPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once on mount
   }, []);
 
-  const asks = useMemo(() => [...book.asks].reverse(), [book.asks]);
   const usd = balanceFor(balances, "USD");
   const sol = balanceFor(balances, "SOL");
 
@@ -236,10 +236,10 @@ export function TradingPanel() {
 
   return (
     <div className="animate-fade-up w-full max-w-6xl space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 pb-5">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 pb-5 dark:border-zinc-800">
         <div>
-          <p className="text-sm text-zinc-500">Spot</p>
-          <h1 className="font-display text-3xl tracking-tight text-zinc-950">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Spot</p>
+          <h1 className="font-display text-3xl tracking-tight text-zinc-950 dark:text-zinc-50">
             SOL / USD
           </h1>
         </div>
@@ -251,8 +251,8 @@ export function TradingPanel() {
           <span
             className={`rounded-full px-2.5 py-1 text-xs font-medium ${
               streamConnected
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-zinc-100 text-zinc-500"
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
+                : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
             }`}
           >
             {streamConnected ? "Live" : "Connecting"}
@@ -275,30 +275,35 @@ export function TradingPanel() {
         />
       </div>
 
-      <section className="rounded-lg border border-zinc-200 p-5">
+      <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-950">Chart</h2>
-          <span className="text-xs text-zinc-400">Timescale 1m candles</span>
+          <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+            Chart
+          </h2>
+          <span className="text-xs text-zinc-400 dark:text-zinc-500">
+            Timescale 1m candles
+          </span>
         </div>
         <CandleChart candles={candles} />
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr_0.75fr]">
-        <section className="rounded-lg border border-zinc-200 p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-950">Order book</h2>
-            <span className="text-xs text-zinc-400">Ticks · lots</span>
-          </div>
-          <div className="grid grid-cols-2 gap-6 text-sm">
-            <BookSide title="Bids" levels={book.bids} tone="bid" />
-            <BookSide title="Asks" levels={asks} tone="ask" />
-          </div>
-        </section>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(280px,0.95fr)_minmax(300px,1fr)]">
+        <OrderBookPanel
+          book={book}
+          trades={tape}
+          lastTradePrice={tape[0]?.price ?? null}
+          onSelectPrice={(next) => {
+            setPrice(String(next));
+            setMode("limit");
+          }}
+        />
 
-        <section className="rounded-lg border border-zinc-200 p-5">
+        <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-950">Trade</h2>
-            <div className="flex rounded-md border border-zinc-200 p-0.5 text-xs">
+            <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+              Trade
+            </h2>
+            <div className="flex rounded-md border border-zinc-200 p-0.5 text-xs dark:border-zinc-700">
               {(["limit", "market", "swap"] as const).map((option) => (
                 <button
                   key={option}
@@ -306,8 +311,8 @@ export function TradingPanel() {
                   onClick={() => setMode(option)}
                   className={`rounded px-2.5 py-1 font-medium capitalize ${
                     mode === option
-                      ? "bg-zinc-950 text-white"
-                      : "text-zinc-500 hover:text-zinc-950"
+                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                      : "text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
                   }`}
                 >
                   {option === "swap" ? "Convert" : option}
@@ -318,7 +323,7 @@ export function TradingPanel() {
 
           {mode === "swap" ? (
             <>
-              <p className="mb-3 text-xs text-zinc-400">
+              <p className="mb-3 text-xs text-zinc-400 dark:text-zinc-500">
                 Market convert against the live book (IOC).
               </p>
               <div className="mb-3 grid grid-cols-2 gap-2">
@@ -329,8 +334,8 @@ export function TradingPanel() {
                     onClick={() => setFromAsset(asset)}
                     className={`h-9 rounded-md text-sm font-medium ${
                       fromAsset === asset
-                        ? "bg-zinc-950 text-white"
-                        : "border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                        ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                        : "border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
                     }`}
                   >
                     {asset} → {asset === "USD" ? "SOL" : "USD"}
@@ -345,14 +350,14 @@ export function TradingPanel() {
                   value={swapAmount}
                   onChange={setSwapAmount}
                 />
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-zinc-400 dark:text-zinc-500">
                   Available {fromAsset}:{" "}
                   {fromAsset === "USD" ? usd.available : sol.available}
                 </p>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="h-10 w-full rounded-md bg-zinc-950 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                  className="h-10 w-full rounded-md bg-zinc-950 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
                 >
                   {submitting
                     ? "Converting…"
@@ -373,7 +378,7 @@ export function TradingPanel() {
                         ? option === "BUY"
                           ? "bg-emerald-600 text-white"
                           : "bg-red-600 text-white"
-                        : "border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                        : "border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
                     }`}
                   >
                     {option}
@@ -389,7 +394,7 @@ export function TradingPanel() {
                       onChange={setPrice}
                     />
                     <div>
-                      <span className="mb-1.5 block text-xs font-medium text-zinc-500">
+                      <span className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
                         Time in force
                       </span>
                       <div className="grid grid-cols-3 gap-1.5">
@@ -400,8 +405,8 @@ export function TradingPanel() {
                             onClick={() => setTif(option)}
                             className={`h-8 rounded-md text-xs font-medium ${
                               tif === option
-                                ? "bg-zinc-950 text-white"
-                                : "border border-zinc-200 text-zinc-600"
+                                ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                                : "border border-zinc-200 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
                             }`}
                           >
                             {option}
@@ -423,7 +428,7 @@ export function TradingPanel() {
                     onChange={setQuoteBudget}
                   />
                 )}
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-zinc-400 dark:text-zinc-500">
                   Need{" "}
                   {side === "BUY"
                     ? `USD (avail ${usd.available})`
@@ -432,7 +437,7 @@ export function TradingPanel() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="h-10 w-full rounded-md bg-zinc-950 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                  className="h-10 w-full rounded-md bg-zinc-950 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
                 >
                   {submitting
                     ? "Submitting…"
@@ -442,55 +447,31 @@ export function TradingPanel() {
             </>
           )}
           {message && (
-            <p className="mt-3 text-center text-xs text-zinc-500">{message}</p>
-          )}
-        </section>
-
-        <section className="rounded-lg border border-zinc-200 p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-950">Tape</h2>
-            <span className="text-xs text-zinc-400">Live + history</span>
-          </div>
-          {tape.length === 0 ? (
-            <p className="py-8 text-center text-sm text-zinc-400">
-              No trades yet.
+            <p className="mt-3 text-center text-xs text-zinc-500 dark:text-zinc-400">
+              {message}
             </p>
-          ) : (
-            <div className="max-h-[360px] space-y-1 overflow-y-auto text-sm">
-              {tape.map((trade) => (
-                <div
-                  key={`${trade.id}-${trade.at}`}
-                  className="flex items-center justify-between py-1"
-                >
-                  <span className="font-medium text-zinc-950">
-                    {trade.quantity} @ {trade.price}
-                  </span>
-                  <span className="text-xs text-zinc-400">
-                    {formatTime(trade.at)}
-                  </span>
-                </div>
-              ))}
-            </div>
           )}
         </section>
       </div>
 
-      <section className="rounded-lg border border-zinc-200 p-5">
+      <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-950">Your orders</h2>
+          <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+            Your orders
+          </h2>
           <Link
             href="/dashboard/orders"
-            className="text-xs font-medium text-zinc-500 hover:text-zinc-950"
+            className="text-xs font-medium text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
           >
             Full history · {orders.length}
           </Link>
         </div>
         {orders.length === 0 ? (
-          <p className="py-8 text-center text-sm text-zinc-400">
+          <p className="py-8 text-center text-sm text-zinc-400 dark:text-zinc-500">
             No SOL-USD orders yet.
           </p>
         ) : (
-          <div className="divide-y divide-zinc-100">
+          <div className="max-h-[320px] divide-y divide-zinc-100 overflow-y-auto overscroll-contain dark:divide-zinc-800">
             {orders.map((order) => {
               const open = OPEN_ORDER_STATUSES.includes(
                 order.status as (typeof OPEN_ORDER_STATUSES)[number],
@@ -506,11 +487,11 @@ export function TradingPanel() {
                         setExpandedOrderId(expanded ? null : order.id)
                       }
                     >
-                      <p className="font-medium text-zinc-950">
+                      <p className="font-medium text-zinc-950 dark:text-zinc-50">
                         {order.side} {order.type} {order.quantity} SOL @{" "}
                         {order.price || "mkt"}
                       </p>
-                      <p className="text-xs text-zinc-400">
+                      <p className="text-xs text-zinc-400 dark:text-zinc-500">
                         filled {order.filledQuantity}/{order.quantity}
                         {order.failureReason
                           ? ` · ${order.failureReason}`
@@ -518,12 +499,14 @@ export function TradingPanel() {
                       </p>
                     </button>
                     <div className="flex items-center gap-3">
-                      <span className="text-zinc-500">{order.status}</span>
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        {order.status}
+                      </span>
                       {open && (
                         <button
                           type="button"
                           onClick={() => cancelOrder(order.engineOrderId)}
-                          className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+                          className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
                         >
                           Cancel
                         </button>
@@ -572,13 +555,15 @@ function OrderFills({
   }, [orderId]);
 
   if (fills.length === 0) {
-    return <p className="mt-2 text-xs text-zinc-400">No fills.</p>;
+    return (
+      <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500">No fills.</p>
+    );
   }
 
   return (
-    <div className="mt-2 space-y-1 border-l border-zinc-100 pl-3">
+    <div className="mt-2 space-y-1 border-l border-zinc-100 pl-3 dark:border-zinc-800">
       {fills.map((fill) => (
-        <p key={fill.id} className="text-xs text-zinc-500">
+        <p key={fill.id} className="text-xs text-zinc-500 dark:text-zinc-400">
           Fill {fill.quantity} @ {fill.price} · {formatTime(fill.createdAt)}
         </p>
       ))}
@@ -598,12 +583,12 @@ function BalanceBar({
   onFund: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-zinc-200 px-4 py-3 text-sm">
+    <div className="flex items-center justify-between rounded-lg border border-zinc-200 px-4 py-3 text-sm dark:border-zinc-800">
       <div>
-        <p className="text-xs text-zinc-400">{asset} trading</p>
-        <p className="font-semibold text-zinc-950">
+        <p className="text-xs text-zinc-400 dark:text-zinc-500">{asset} trading</p>
+        <p className="font-semibold text-zinc-950 dark:text-zinc-50">
           {available.toLocaleString()} avail
-          <span className="ml-2 font-normal text-zinc-400">
+          <span className="ml-2 font-normal text-zinc-400 dark:text-zinc-500">
             {locked.toLocaleString()} locked
           </span>
         </p>
@@ -611,7 +596,7 @@ function BalanceBar({
       <button
         type="button"
         onClick={onFund}
-        className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+        className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
       >
         Paper fund
       </button>
@@ -630,52 +615,18 @@ function Metric({
 }) {
   return (
     <div className="text-right">
-      <p className="text-xs text-zinc-400">{label}</p>
+      <p className="text-xs text-zinc-400 dark:text-zinc-500">{label}</p>
       <p
         className={`font-semibold ${
           tone === "bid"
-            ? "text-emerald-600"
+            ? "text-emerald-600 dark:text-emerald-400"
             : tone === "ask"
-              ? "text-red-600"
-              : "text-zinc-950"
+              ? "text-red-600 dark:text-red-400"
+              : "text-zinc-950 dark:text-zinc-50"
         }`}
       >
         {value ?? "—"}
       </p>
-    </div>
-  );
-}
-
-function BookSide({
-  title,
-  levels,
-  tone,
-}: {
-  title: string;
-  levels: OrderBookSnapshot["bids"];
-  tone: "bid" | "ask";
-}) {
-  return (
-    <div>
-      <div className="mb-2 flex justify-between text-xs text-zinc-400">
-        <span>{title}</span>
-        <span>Qty</span>
-      </div>
-      <div className="space-y-1">
-        {levels.slice(0, 10).map((level) => (
-          <div key={level.price} className="flex justify-between">
-            <span
-              className={
-                tone === "bid" ? "text-emerald-600" : "text-red-600"
-              }
-            >
-              {level.price}
-            </span>
-            <span className="text-zinc-600">{level.quantity}</span>
-          </div>
-        ))}
-        {levels.length === 0 && <p className="text-zinc-300">Empty</p>}
-      </div>
     </div>
   );
 }
@@ -691,7 +642,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-zinc-500">
+      <span className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
         {label}
       </span>
       <input
@@ -700,7 +651,7 @@ function Field({
         step="1"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none focus:border-zinc-400"
+        className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:border-zinc-500"
         required
       />
     </label>

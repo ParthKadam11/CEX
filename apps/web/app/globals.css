@@ -41,6 +41,21 @@
   --radius: 0.5rem;
 }
 
+.dark {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #09090b;
+  --secondary: #18181b;
+  --secondary-foreground: #fafafa;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --destructive: #f87171;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #a1a1aa;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
