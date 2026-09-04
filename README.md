@@ -112,7 +112,7 @@ GOOGLE_CLIENT_SECRET=...
 NEXTAUTH_SECRET=...
 NEXTAUTH_URL=http://localhost:3000
 
-DATABASE_URL=postgresql://user:pass@localhost:5432/cex
+DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5432/postgres
 OMS_URL=http://127.0.0.1:4030
 ENGINE_GATEWAY_URL=http://127.0.0.1:4020
 # Optional shared-service tokens for non-local deployments.

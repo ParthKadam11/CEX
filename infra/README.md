@@ -1,6 +1,7 @@
 # Local Infrastructure
 
 This directory contains the local infrastructure used by the application layer.
+`pnpm infra:up` starts Redis, PostgreSQL, and TimescaleDB.
 
 ## Services
 
@@ -9,7 +10,7 @@ This directory contains the local infrastructure used by the application layer.
 Redis is used for two separate responsibilities:
 
 - **Redis Streams**  
-  Durable-ish command and event delivery between future application-layer services such as OMS and the exchange gateway.
+  Durable-ish command and event delivery between application-layer services such as OMS and the exchange gateway.
 
 - **Redis pub/sub**  
   Low-latency fan-out for live market data such as best bid/ask and recent trades.
@@ -20,15 +21,25 @@ Default connection string:
 REDIS_URL=redis://127.0.0.1:6379
 ```
 
-### TimescaleDB
+### PostgreSQL
 
-Enabled in `docker-compose.yml`; `pnpm infra:up` starts Redis and TimescaleDB.
+PostgreSQL stores users, wallets, and OMS order state through Prisma (`@cex/db`).
+
+Default connection string:
+
+```env
+DATABASE_URL=postgresql://postgres:mysecretpassword@127.0.0.1:5432/postgres
+```
+
+Set the same value in `packages/db/.env` (and the web app env) so OMS and Next.js can reach it. The exchange engine's WAL-backed balance ledger remains authoritative for trading balances; Postgres `UsdWallet` is not used for order execution.
+
+### TimescaleDB
 
 The market-data writer uses this database for:
 
 - BBO snapshots
 - trade ticks
-- later, candle aggregates built from those ticks
+- candle aggregates built from those ticks
 
 Default connection string:
 
@@ -45,12 +56,6 @@ pnpm dev:market-data
 It owns the TimescaleDB schema and consumes the durable `md:events` Redis
 stream. Its history API listens on port `4040` by default.
 
-### PostgreSQL for users and orders
-
-This stack does **not** start another PostgreSQL container for user data. The repository already uses Prisma and `DATABASE_URL` for user and wallet records through `@cex/db`.
-
-The OMS uses that same database for product order state. Set `DATABASE_URL` in `packages/db/.env` before starting it; the OMS loads that file automatically when the variable is not already present. The exchange engine's WAL-backed balance ledger is authoritative for trading balances; Postgres `UsdWallet` is not used for order execution.
-
 ## Commands
 
 From the repository root:
@@ -66,12 +71,13 @@ pnpm infra:logs
 | Service | Host port | Purpose |
 | --- | --- | --- |
 | Redis | `6379` | Streams and pub/sub |
+| PostgreSQL | `5432` | Users, wallets, OMS orders |
 | TimescaleDB | `5434` | Market-data history |
 
 ## Requirements
 
 - Docker Desktop or a Docker-compatible engine
-- Available ports `6379` and `5434`
+- Available ports `6379`, `5432`, and `5434`
 
 ## What this stack does not start
 
