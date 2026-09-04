@@ -14,8 +14,10 @@ export async function GET(request: NextRequest) {
   }
 
   const limit = request.nextUrl.searchParams.get("limit");
+  const cursor = request.nextUrl.searchParams.get("cursor");
   const query = new URLSearchParams();
   if (limit) query.set("limit", limit);
+  if (cursor) query.set("cursor", cursor);
 
   try {
     const response = await fetch(`${omsUrl}/orders?${query}`, {

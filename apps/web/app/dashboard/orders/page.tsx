@@ -1,13 +1,13 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
-import { MarketExplorer } from "@/components/MarketExplorer";
+import { OrdersPanel } from "@/components/OrdersPanel";
 
-export default async function MarketsPage() {
+export default async function OrdersPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.uid) {
     redirect("/");
   }
 
-  return <MarketExplorer />;
+  return <OrdersPanel />;
 }

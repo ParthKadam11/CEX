@@ -5,6 +5,7 @@ import { isAppCommand } from "@cex/app-contracts";
 import { isIdentifier, type MarketSymbol } from "@cex/exchange-types";
 import type { EngineClient } from "../engine/client.js";
 import type { GatewayMetrics } from "../metrics.js";
+import type { LiveBookHub } from "../redis/live-book.js";
 import type { MarketDataHub } from "../redis/market-data.js";
 import { injectCommand } from "../redis/streams.js";
 
@@ -15,6 +16,7 @@ type GatewayAppOptions = {
   metrics: GatewayMetrics;
   isSseConnected: () => boolean;
   marketData: MarketDataHub;
+  liveBook: LiveBookHub;
   internalToken: string | null;
 };
 
@@ -114,31 +116,39 @@ export function createGatewayApp(options: GatewayAppOptions) {
     }
 
     return streamSSE(c, async (stream) => {
-      let unsubscribe: (() => void) | undefined;
+      const unsubscribers: Array<() => void> = [];
       try {
-        unsubscribe = options.marketData.subscribe((message) => {
-          void stream
-            .writeSSE({
-              event: "tradeId" in message ? "trade" : "bbo",
-              data: JSON.stringify(message),
-            })
-            .catch(() => undefined);
-        });
+        unsubscribers.push(
+          options.marketData.subscribe((message) => {
+            void stream
+              .writeSSE({
+                event: "tradeId" in message ? "trade" : "bbo",
+                data: JSON.stringify(message),
+              })
+              .catch(() => undefined);
+          }),
+        );
+        unsubscribers.push(
+          options.liveBook.subscribe((book) => {
+            void stream
+              .writeSSE({
+                event: "book",
+                data: JSON.stringify(book),
+              })
+              .catch(() => undefined);
+          }),
+        );
 
         await stream.writeSSE({
           event: "ready",
           data: JSON.stringify({ market: options.market }),
-        });
-        await stream.writeSSE({
-          event: "book",
-          data: JSON.stringify(await options.engine.book()),
         });
 
         await new Promise<void>((resolve) => {
           stream.onAbort(resolve);
         });
       } finally {
-        unsubscribe?.();
+        for (const unsubscribe of unsubscribers) unsubscribe();
       }
     });
   });

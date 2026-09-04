@@ -14,6 +14,7 @@ import {
   createRedisSubscriber,
   MarketDataHub,
 } from "./redis/market-data.js";
+import { LiveBookHub } from "./redis/live-book.js";
 import {
   ackCommand,
   createRedis,
@@ -34,12 +35,14 @@ async function main(): Promise<void> {
     config.market,
     config.exchangeToken,
   );
+  const liveBook = new LiveBookHub(engine, marketData);
   const metrics = new GatewayMetrics();
   const dedupe = new CommandDedupe(redis);
   const handler = new CommandHandler(engine, redis, dedupe, metrics);
 
   await ensureCommandGroup(redis);
   await marketData.start();
+  liveBook.start();
   log("info", "redis command group ready");
 
   try {
@@ -52,6 +55,14 @@ async function main(): Promise<void> {
   }
 
   const sse = new EngineSseClient(engine.streamUrl(), async (event) => {
+    if (
+      event.kind === "BBO" ||
+      event.kind === "TRADE" ||
+      event.kind === "ORDER"
+    ) {
+      liveBook.notify();
+    }
+
     if (event.kind === "BBO") {
       try {
         await publishBboSnapshot(redis, metrics, {
@@ -150,6 +161,7 @@ async function main(): Promise<void> {
     metrics,
     isSseConnected: () => metrics.snapshot().sseConnected === true,
     marketData,
+    liveBook,
     internalToken: config.internalToken,
   });
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
@@ -165,6 +177,7 @@ async function main(): Promise<void> {
     sse.stop();
     server.close();
     await commandLoop.catch(() => undefined);
+    await liveBook.close();
     redis.disconnect();
     await marketData.close();
     process.exit(0);

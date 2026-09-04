@@ -9,8 +9,10 @@
   },
   "scripts": {
     "db:generate": "prisma generate",
+    "db:migrate:deploy": "prisma migrate deploy",
     "migrate": "prisma migrate dev",
-    "build": "prisma generate"
+    "build": "prisma generate",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

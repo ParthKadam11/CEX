@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import {
   bffError,
   engineGatewayHeaders,
@@ -7,6 +7,7 @@ import {
 } from "@/lib/backend";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   const userId = await getAuthenticatedUserId();
@@ -19,10 +20,13 @@ export async function GET(request: NextRequest) {
       `${engineGatewayUrl}/markets/SOL-USD/stream`,
       {
         cache: "no-store",
-        headers: engineGatewayHeaders(
-          undefined,
-          request.headers.get("x-request-id"),
-        ),
+        headers: {
+          accept: "text/event-stream",
+          ...engineGatewayHeaders(
+            undefined,
+            request.headers.get("x-request-id"),
+          ),
+        },
       },
     );
 
@@ -35,7 +39,7 @@ export async function GET(request: NextRequest) {
       headers: {
         "cache-control": "no-cache, no-transform",
         connection: "keep-alive",
-        "content-type": "text/event-stream",
+        "content-type": "text/event-stream; charset=utf-8",
         "x-accel-buffering": "no",
         ...(response.headers.get("x-request-id")
           ? { "x-request-id": response.headers.get("x-request-id")! }

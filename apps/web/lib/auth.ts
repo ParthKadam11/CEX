@@ -19,6 +19,7 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+  session: { strategy: "jwt" },
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider !== "google") {
@@ -31,47 +32,56 @@ export const authOptions: NextAuthOptions = {
         return false
       }
 
-      const userDb = await db.user.findFirst({
-        where: { username: email },
-      })
-      if (userDb) {
-        return true
-      }
+      try {
+        const userDb = await db.user.findFirst({
+          where: { username: email },
+        })
+        if (userDb) {
+          return true
+        }
 
-      const keypair = Keypair.generate()
+        const keypair = Keypair.generate()
 
-      await db.user.create({
-        data: {
-          username: email,
-          email,
-          name: googleProfile?.name,
-          profilePic: googleProfile?.picture,
-          provider: Provider.Google,
-          solwallet: {
-            create: {
-              publicKey: keypair.publicKey.toBase58(),
-              privateKey: serializeSecretKey(keypair.secretKey),
+        await db.user.create({
+          data: {
+            username: email,
+            email,
+            name: googleProfile?.name,
+            profilePic: googleProfile?.picture,
+            provider: Provider.Google,
+            solwallet: {
+              create: {
+                publicKey: keypair.publicKey.toBase58(),
+                privateKey: serializeSecretKey(keypair.secretKey),
+              },
+            },
+            // Simulated USD quote currency (UsdWallet — DB only)
+            usdWallet: {
+              create: { balance: STARTING_USD_BALANCE },
             },
           },
-          // Simulated USD quote currency (UsdWallet — DB only)
-          usdWallet: {
-            create: { balance: STARTING_USD_BALANCE },
-          },
-        },
-      })
+        })
 
-      return true
+        return true
+      } catch (error) {
+        console.error("[auth] signIn failed", error)
+        return false
+      }
     },
 
     async jwt({ token, user }) {
       const email = user?.email ?? token.email
       if (email && !token.uid) {
-        const dbUser = await db.user.findUnique({
-          where: { email },
-          select: { id: true },
-        })
-        if (dbUser) {
-          token.uid = dbUser.id
+        try {
+          const dbUser = await db.user.findUnique({
+            where: { email },
+            select: { id: true },
+          })
+          if (dbUser) {
+            token.uid = dbUser.id
+          }
+        } catch (error) {
+          console.error("[auth] jwt uid lookup failed", error)
         }
       }
       return token

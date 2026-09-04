@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import db from "@cex/db";
-import { WalletCard } from "@/components/WalletCard";
+import { DashboardHome } from "@/components/DashboardHome";
 
 async function getWallet() {
   const session = await getServerSession(authOptions);
@@ -29,9 +29,5 @@ export default async function Dashboard() {
     redirect("/");
   }
 
-  return (
-    <WalletCard
-      publicKey={wallet.publicKey}
-    />
-  );
+  return <DashboardHome publicKey={wallet.publicKey} />;
 }

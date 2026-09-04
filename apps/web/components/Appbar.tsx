@@ -1,21 +1,27 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { LayoutGrid, TrendingUp, Wallet } from "lucide-react";
+import {
+  LayoutGrid,
+  ListOrdered,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const dashboardLinks = [
-  { label: "Wallet", href: "/dashboard", icon: Wallet },
-  { label: "Trade", href: "/dashboard/trade", icon: TrendingUp },
-  { label: "Apps", href: "/dashboard/apps", icon: LayoutGrid },
+const appLinks = [
+  { label: "Home", href: "/dashboard", icon: Wallet },
+  { label: "Trade", href: "/trade", icon: TrendingUp },
+  { label: "Orders", href: "/dashboard/orders", icon: ListOrdered },
+  { label: "Markets", href: "/dashboard/apps", icon: LayoutGrid },
 ];
 
 export const Appbar = () => {
   const session = useSession();
   const pathname = usePathname();
-  const onDashboard = pathname.startsWith("/dashboard");
+  const showAppNav = Boolean(session.data?.user);
 
   return (
     <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 backdrop-blur-sm">
@@ -27,15 +33,18 @@ export const Appbar = () => {
           CEX
         </Link>
 
-        {onDashboard ? (
-          <nav className="flex items-center gap-1">
-            {dashboardLinks.map(({ label, href, icon: Icon }) => {
-              const active = pathname === href;
+        {showAppNav ? (
+          <nav className="flex items-center gap-1 overflow-x-auto">
+            {appLinks.map(({ label, href, icon: Icon }) => {
+              const active =
+                href === "/dashboard"
+                  ? pathname === href
+                  : pathname === href || pathname.startsWith(`${href}/`);
               return (
                 <Link
                   key={label}
                   href={href}
-                  className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  className={`inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                     active
                       ? "bg-zinc-100 text-zinc-950"
                       : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950"

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   ArrowDownLeft,
@@ -95,7 +96,7 @@ export function WalletCard({ publicKey }: WalletCardProps) {
 
   return (
     <>
-      <div className="animate-fade-up w-full max-w-2xl">
+      <div className="animate-fade-up w-full">
         <div className="flex items-center gap-3">
           {image ? (
             <Image
@@ -204,10 +205,17 @@ export function WalletCard({ publicKey }: WalletCardProps) {
                     </li>
                     <li className="flex items-center justify-between py-3">
                       <div>
-                        <p className="font-medium text-zinc-950">USD</p>
-                        <p className="text-sm text-zinc-400">Trading balance</p>
+                        <p className="font-medium text-zinc-950">USD / SOL</p>
+                        <p className="text-sm text-zinc-400">
+                          Engine trading ledger (paper fund on Home)
+                        </p>
                       </div>
-                      <p className="text-sm text-zinc-400">View on Trade</p>
+                      <Link
+                        href="/trade"
+                        className="text-sm font-medium text-zinc-700 hover:text-zinc-950"
+                      >
+                        Open trade →
+                      </Link>
                     </li>
                   </ul>
                 )}

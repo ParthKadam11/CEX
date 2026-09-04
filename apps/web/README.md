@@ -20,8 +20,9 @@
 | --- | --- |
 | `/` | Landing page |
 | `/dashboard` | Wallet dashboard for signed-in users |
-| `/dashboard/trade` | SOL-USD trading surface |
-| `/dashboard/apps` | Placeholder page for future product surfaces |
+| `/trade` | SOL-USD trading surface |
+| `/dashboard/trade` | Redirects to `/trade` |
+| `/dashboard/apps` | Market explorer (candles, book, history) |
 | `/api/auth/[...nextauth]` | NextAuth handlers |
 | `/api/orders` | Authenticated OMS order proxy |
 | `/api/market/book` | Authenticated SOL-USD book proxy |
