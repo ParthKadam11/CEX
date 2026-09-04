@@ -59,9 +59,7 @@ export function TradingPanel() {
     });
     source.addEventListener("bbo", (event) => {
       const bbo = parseEvent<BboMessage>(event);
-      if (bbo) {
-        setBook((current) => ({ ...current, bbo }));
-      }
+      if (bbo) setBook((current) => ({ ...current, bbo }));
     });
     source.addEventListener("trade", (event) => {
       const trade = parseEvent<TradeTickMessage>(event);
@@ -83,15 +81,13 @@ export function TradingPanel() {
   async function loadBook() {
     const response = await fetch("/api/market/book", { cache: "no-store" });
     if (!response.ok) return;
-    const nextBook = (await response.json()) as OrderBookSnapshot;
-    setBook(nextBook);
+    setBook((await response.json()) as OrderBookSnapshot);
   }
 
   async function loadOrders() {
     const response = await fetch("/api/orders", { cache: "no-store" });
     if (!response.ok) return;
-    const nextOrders = (await response.json()) as TradingOrder[];
-    setOrders(nextOrders);
+    setOrders((await response.json()) as TradingOrder[]);
   }
 
   async function loadBalances() {
@@ -190,38 +186,23 @@ export function TradingPanel() {
   }
 
   return (
-    <div className="animate-fade-up w-full max-w-6xl space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/15 bg-slate-950/60 px-5 py-4 backdrop-blur-xl">
+    <div className="animate-fade-up w-full max-w-6xl space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 pb-5">
         <div>
-          <p className="text-xs uppercase tracking-[0.25em] text-white/50">
-            Spot market
-          </p>
-          <h1 className="mt-1 text-3xl font-semibold text-white">SOL / USD</h1>
+          <p className="text-sm text-zinc-500">Spot</p>
+          <h1 className="font-display text-3xl tracking-tight text-zinc-950">
+            SOL / USD
+          </h1>
         </div>
-        <div className="flex items-center gap-5 text-right">
-          <div>
-            <p className="text-xs text-white/50">Best bid</p>
-            <p className="text-lg font-semibold text-emerald-300">
-              {book.bbo.bestBid ?? "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-white/50">Best ask</p>
-            <p className="text-lg font-semibold text-rose-300">
-              {book.bbo.bestAsk ?? "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-white/50">Available USD</p>
-            <p className="text-lg font-semibold text-white">
-              {available("USD")}
-            </p>
-          </div>
+        <div className="flex flex-wrap items-center gap-6 text-sm">
+          <Metric label="Bid" value={book.bbo.bestBid} tone="bid" />
+          <Metric label="Ask" value={book.bbo.bestAsk} tone="ask" />
+          <Metric label="USD" value={available("USD")} />
           <span
-            className={`rounded-full px-3 py-1 text-xs ${
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
               streamConnected
-                ? "bg-emerald-400/15 text-emerald-200"
-                : "bg-white/10 text-white/50"
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-zinc-100 text-zinc-500"
             }`}
           >
             {streamConnected ? "Live" : "Connecting"}
@@ -229,11 +210,11 @@ export function TradingPanel() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
-        <section className="rounded-2xl border border-white/15 bg-slate-950/60 p-5 backdrop-blur-xl">
+      <div className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+        <section className="rounded-lg border border-zinc-200 p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-semibold text-white">Order book</h2>
-            <span className="text-xs text-white/45">Integer ticks and lots</span>
+            <h2 className="text-sm font-semibold text-zinc-950">Order book</h2>
+            <span className="text-xs text-zinc-400">Ticks · lots</span>
           </div>
           <div className="grid grid-cols-2 gap-6 text-sm">
             <BookSide title="Bids" levels={book.bids} tone="bid" />
@@ -241,19 +222,19 @@ export function TradingPanel() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-white/15 bg-slate-950/60 p-5 backdrop-blur-xl">
+        <section className="rounded-lg border border-zinc-200 p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-semibold text-white">Trade</h2>
-            <div className="flex gap-1 rounded-lg bg-white/5 p-1 text-xs">
+            <h2 className="text-sm font-semibold text-zinc-950">Trade</h2>
+            <div className="flex rounded-md border border-zinc-200 p-0.5 text-xs">
               {(["limit", "swap"] as const).map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => setMode(option)}
-                  className={`rounded-md px-2.5 py-1 capitalize ${
+                  className={`rounded px-2.5 py-1 font-medium capitalize ${
                     mode === option
-                      ? "bg-white text-emerald-950"
-                      : "text-white/55"
+                      ? "bg-zinc-950 text-white"
+                      : "text-zinc-500 hover:text-zinc-950"
                   }`}
                 >
                   {option === "swap" ? "Convert" : "Limit"}
@@ -264,18 +245,18 @@ export function TradingPanel() {
 
           {mode === "limit" ? (
             <>
-              <div className="mb-4 grid grid-cols-2 gap-2">
+              <div className="mb-3 grid grid-cols-2 gap-2">
                 {(["BUY", "SELL"] as const).map((option) => (
                   <button
                     key={option}
                     type="button"
                     onClick={() => setSide(option)}
-                    className={`rounded-xl py-2 text-sm font-semibold ${
+                    className={`h-9 rounded-md text-sm font-medium ${
                       side === option
                         ? option === "BUY"
-                          ? "bg-emerald-400 text-emerald-950"
-                          : "bg-rose-400 text-rose-950"
-                        : "bg-white/10 text-white/60"
+                          ? "bg-emerald-600 text-white"
+                          : "bg-red-600 text-white"
+                        : "border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
                     }`}
                   >
                     {option}
@@ -292,27 +273,27 @@ export function TradingPanel() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full rounded-xl bg-white py-2.5 text-sm font-semibold text-emerald-950 transition hover:bg-white/90 disabled:opacity-50"
+                  className="h-10 w-full rounded-md bg-zinc-950 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
                 >
-                  {submitting ? "Submitting..." : `${side} SOL`}
+                  {submitting ? "Submitting…" : `${side} SOL`}
                 </button>
               </form>
             </>
           ) : (
             <>
-              <p className="mb-3 text-xs text-white/45">
-                Market convert against the live SOL-USD book (IOC).
+              <p className="mb-3 text-xs text-zinc-400">
+                Market convert against the live book (IOC).
               </p>
-              <div className="mb-4 grid grid-cols-2 gap-2">
+              <div className="mb-3 grid grid-cols-2 gap-2">
                 {(["USD", "SOL"] as const).map((asset) => (
                   <button
                     key={asset}
                     type="button"
                     onClick={() => setFromAsset(asset)}
-                    className={`rounded-xl py-2 text-sm font-semibold ${
+                    className={`h-9 rounded-md text-sm font-medium ${
                       fromAsset === asset
-                        ? "bg-sky-300 text-sky-950"
-                        : "bg-white/10 text-white/60"
+                        ? "bg-zinc-950 text-white"
+                        : "border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
                     }`}
                   >
                     {asset} → {asset === "USD" ? "SOL" : "USD"}
@@ -322,65 +303,63 @@ export function TradingPanel() {
               <form className="space-y-3" onSubmit={placeSwap}>
                 <Field
                   label={
-                    fromAsset === "USD"
-                      ? "Spend (USD)"
-                      : "Sell amount (SOL)"
+                    fromAsset === "USD" ? "Spend (USD)" : "Sell amount (SOL)"
                   }
                   value={swapAmount}
                   onChange={setSwapAmount}
                 />
-                <p className="text-xs text-white/45">
+                <p className="text-xs text-zinc-400">
                   Available {fromAsset}: {available(fromAsset)}
                 </p>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full rounded-xl bg-sky-300 py-2.5 text-sm font-semibold text-sky-950 transition hover:bg-sky-200 disabled:opacity-50"
+                  className="h-10 w-full rounded-md bg-zinc-950 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
                 >
                   {submitting
-                    ? "Converting..."
+                    ? "Converting…"
                     : `Convert ${fromAsset} → ${fromAsset === "USD" ? "SOL" : "USD"}`}
                 </button>
               </form>
             </>
           )}
           {message && (
-            <p className="mt-3 text-center text-xs text-white/70">{message}</p>
+            <p className="mt-3 text-center text-xs text-zinc-500">{message}</p>
           )}
         </section>
       </div>
 
-      <section className="rounded-2xl border border-white/15 bg-slate-950/60 p-5 backdrop-blur-xl">
+      <section className="rounded-lg border border-zinc-200 p-5">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-semibold text-white">Your orders</h2>
-          <span className="text-xs text-white/45">{orders.length} total</span>
+          <h2 className="text-sm font-semibold text-zinc-950">Your orders</h2>
+          <span className="text-xs text-zinc-400">{orders.length} total</span>
         </div>
         {orders.length === 0 ? (
-          <p className="py-6 text-center text-sm text-white/50">
+          <p className="py-8 text-center text-sm text-zinc-400">
             No SOL-USD orders yet.
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="divide-y divide-zinc-100">
             {orders.map((order) => (
               <div
                 key={order.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white/5 px-4 py-3 text-sm"
+                className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"
               >
                 <div>
-                  <p className="font-medium text-white">
+                  <p className="font-medium text-zinc-950">
                     {order.side} {order.quantity} SOL @ {order.price} USD
                   </p>
-                  <p className="text-xs text-white/45">{order.engineOrderId}</p>
+                  <p className="text-xs text-zinc-400">{order.engineOrderId}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-white/70">{order.status}</span>
+                  <span className="text-zinc-500">{order.status}</span>
                   {["PENDING", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"].includes(
                     order.status,
                   ) && (
                     <button
                       type="button"
                       onClick={() => cancelOrder(order.engineOrderId)}
-                      className="rounded-lg border border-white/15 px-3 py-1 text-xs text-white/70 hover:bg-white/10"
+                      className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
                     >
                       Cancel
                     </button>
@@ -391,6 +370,33 @@ export function TradingPanel() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number | null;
+  tone?: "bid" | "ask";
+}) {
+  return (
+    <div className="text-right">
+      <p className="text-xs text-zinc-400">{label}</p>
+      <p
+        className={`font-semibold ${
+          tone === "bid"
+            ? "text-emerald-600"
+            : tone === "ask"
+              ? "text-red-600"
+              : "text-zinc-950"
+        }`}
+      >
+        {value ?? "—"}
+      </p>
     </div>
   );
 }
@@ -406,20 +412,26 @@ function BookSide({
 }) {
   return (
     <div>
-      <div className="mb-2 flex justify-between text-xs text-white/45">
+      <div className="mb-2 flex justify-between text-xs text-zinc-400">
         <span>{title}</span>
         <span>Qty</span>
       </div>
       <div className="space-y-1">
         {levels.slice(0, 8).map((level) => (
           <div key={level.price} className="flex justify-between">
-            <span className={tone === "bid" ? "text-emerald-300" : "text-rose-300"}>
+            <span
+              className={
+                tone === "bid" ? "text-emerald-600" : "text-red-600"
+              }
+            >
               {level.price}
             </span>
-            <span className="text-white/65">{level.quantity}</span>
+            <span className="text-zinc-600">{level.quantity}</span>
           </div>
         ))}
-        {levels.length === 0 && <p className="text-white/35">Empty</p>}
+        {levels.length === 0 && (
+          <p className="text-zinc-300">Empty</p>
+        )}
       </div>
     </div>
   );
@@ -436,14 +448,16 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-white/50">{label}</span>
+      <span className="mb-1.5 block text-xs font-medium text-zinc-500">
+        {label}
+      </span>
       <input
         type="number"
         min="1"
         step="1"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white outline-none focus:border-white/40"
+        className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none focus:border-zinc-400"
         required
       />
     </label>

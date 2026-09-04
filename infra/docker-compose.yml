@@ -11,6 +11,22 @@ services:
       timeout: 3s
       retries: 10
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - cex_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   timescale:
     image: timescale/timescaledb:latest-pg16
     environment:
@@ -29,4 +45,5 @@ services:
 
 volumes:
   cex_redis:
+  cex_postgres:
   cex_timescale:

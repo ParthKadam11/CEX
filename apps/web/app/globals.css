@@ -26,34 +26,19 @@
 }
 
 :root {
-  --background: oklch(0.98 0.01 240);
-  --foreground: oklch(0.2 0.03 250);
-  --primary: oklch(0.32 0.06 250);
-  --primary-foreground: oklch(0.98 0.01 240);
-  --secondary: oklch(0.94 0.02 240);
-  --secondary-foreground: oklch(0.28 0.04 250);
-  --muted: oklch(0.94 0.02 240);
-  --muted-foreground: oklch(0.5 0.03 250);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.88 0.02 240);
-  --input: oklch(0.88 0.02 240);
-  --ring: oklch(0.55 0.05 240);
-  --radius: 0.625rem;
-}
-
-.dark {
-  --background: oklch(0.18 0.03 250);
-  --foreground: oklch(0.97 0.01 240);
-  --primary: oklch(0.92 0.02 240);
-  --primary-foreground: oklch(0.22 0.04 250);
-  --secondary: oklch(0.28 0.04 250);
-  --secondary-foreground: oklch(0.97 0.01 240);
-  --muted: oklch(0.28 0.04 250);
-  --muted-foreground: oklch(0.7 0.03 240);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.6 0.04 240);
+  --background: #ffffff;
+  --foreground: #111111;
+  --primary: #111111;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --destructive: #dc2626;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #111111;
+  --radius: 0.5rem;
 }
 
 @layer base {
@@ -75,7 +60,7 @@
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(18px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -83,35 +68,8 @@
   }
 }
 
-@keyframes bg-drift {
-  from {
-    transform: scale(1.04) translate3d(0, 0, 0);
-  }
-  to {
-    transform: scale(1.08) translate3d(0, -1.2%, 0);
-  }
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
 @utility animate-fade-up {
-  animation: fade-up 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@utility animate-bg-drift {
-  animation: bg-drift 18s ease-in-out infinite alternate;
-}
-
-@utility animate-float {
-  animation: float 5s ease-in-out infinite;
+  animation: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @utility delay-100 {
@@ -120,12 +78,4 @@
 
 @utility delay-200 {
   animation-delay: 200ms;
-}
-
-@utility delay-300 {
-  animation-delay: 300ms;
-}
-
-@utility delay-500 {
-  animation-delay: 500ms;
 }

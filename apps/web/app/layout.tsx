@@ -16,8 +16,8 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "CEX — Trade beyond the ordinary",
-  description: "A calm, clear crypto exchange for serious trading.",
+  title: "CEX",
+  description: "A clean spot exchange for SOL-USD.",
 };
 
 export default function RootLayout({

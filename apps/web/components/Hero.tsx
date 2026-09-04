@@ -10,46 +10,74 @@ export function Hero() {
   const router = useRouter();
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 animate-bg-drift bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('/hero-bg.png')" }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-gradient-to-b from-sky-950/35 via-transparent to-emerald-950/55"
-      />
-
-      <section className="relative z-10 flex min-h-screen flex-col items-center px-5 pb-16 pt-28 text-center sm:px-8 sm:pt-32">
-        <h1 className="animate-fade-up font-display max-w-3xl text-5xl leading-[1.05] tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)] sm:text-7xl">
+    <main className="flex min-h-[calc(100vh-3.5rem)] flex-col">
+      <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-5 py-20 sm:px-8">
+        <p className="animate-fade-up text-sm font-medium tracking-wide text-zinc-500">
+          Spot exchange
+        </p>
+        <h1 className="animate-fade-up mt-4 font-display text-6xl leading-[0.95] tracking-tight text-zinc-950 sm:text-7xl">
           CEX
         </h1>
+        <p className="animate-fade-up delay-100 mt-6 max-w-md text-lg leading-relaxed text-zinc-500">
+          Clear markets. Simple balances. Trade SOL-USD without the noise.
+        </p>
 
-        <div className="animate-fade-up mt-auto flex w-full max-w-xl flex-col items-center delay-100">
-          <p className="max-w-lg text-lg font-medium leading-relaxed tracking-wide text-white [text-shadow:0_1px_12px_rgba(15,23,42,0.55)] sm:text-xl">
-            Better than your typical exchange clear markets and a calmer
-            way to trade.
-          </p>
-
+        <div className="animate-fade-up delay-200 mt-10 flex flex-wrap items-center gap-3">
           {session?.user ? (
             <Button
               onClick={() => router.push("/dashboard")}
-              className="mt-6 h-11 rounded-2xl bg-white px-6 text-emerald-950 hover:bg-white/90"
+              className="h-10 rounded-md bg-zinc-950 px-5 text-white hover:bg-zinc-800"
             >
-              Go to Dashboard
+              Open dashboard
             </Button>
           ) : (
             <Button
-              onClick={() => signIn("google", { callbackUrl: "/" })}
-              className="mt-6 h-11 rounded-2xl bg-white px-6 text-emerald-950 hover:bg-white/90"
+              onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+              className="h-10 rounded-md bg-zinc-950 px-5 text-white hover:bg-zinc-800"
             >
               <GoogleIcon />
-              Login with Google
+              Continue with Google
             </Button>
           )}
+          <a
+            href="#product"
+            className="text-sm font-medium text-zinc-500 hover:text-zinc-950"
+          >
+            See how it works
+          </a>
         </div>
       </section>
-    </div>
+
+      <section
+        id="product"
+        className="border-t border-zinc-200 bg-zinc-50/70"
+      >
+        <div className="mx-auto grid max-w-3xl gap-8 px-5 py-16 sm:grid-cols-3 sm:px-8">
+          {[
+            {
+              title: "Wallet",
+              body: "Custodial Solana wallet with deposit and withdraw.",
+            },
+            {
+              title: "Trade",
+              body: "Limit orders and instant convert on SOL-USD.",
+            },
+            {
+              title: "History",
+              body: "Live book, balances, and durable market data.",
+            },
+          ].map((item) => (
+            <div key={item.title}>
+              <h2 className="text-sm font-semibold text-zinc-950">
+                {item.title}
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-zinc-500">
+                {item.body}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </main>
   );
 }

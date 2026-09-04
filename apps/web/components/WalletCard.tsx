@@ -9,7 +9,6 @@ import {
   ArrowUpRight,
   Check,
   Copy,
-  CreditCard,
   ExternalLink,
   Plus,
   Send,
@@ -41,15 +40,12 @@ export function WalletCard({ publicKey }: WalletCardProps) {
 
   useEffect(() => {
     return () => {
-      if (resetTimer.current) {
-        clearTimeout(resetTimer.current);
-      }
+      if (resetTimer.current) clearTimeout(resetTimer.current);
     };
   }, []);
 
   const name = session?.user?.name?.split(" ")[0] ?? "trader";
   const image = session?.user?.image;
-
   const shortKey = publicKey
     ? `${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`
     : "No wallet";
@@ -83,14 +79,10 @@ export function WalletCard({ publicKey }: WalletCardProps) {
 
   async function copyAddress() {
     if (!publicKey) return;
-
     try {
       await navigator.clipboard.writeText(publicKey);
       setCopied(true);
-
-      if (resetTimer.current) {
-        clearTimeout(resetTimer.current);
-      }
+      if (resetTimer.current) clearTimeout(resetTimer.current);
       resetTimer.current = setTimeout(() => setCopied(false), 1000);
     } catch {
       setCopied(false);
@@ -103,165 +95,135 @@ export function WalletCard({ publicKey }: WalletCardProps) {
 
   return (
     <>
-      <div className="animate-fade-up w-full max-w-3xl">
-        <div className="overflow-hidden rounded-2xl border border-white/15 bg-slate-950/60 backdrop-blur-3xl">
-          <div className="p-6">
-            <div className="flex items-center gap-4">
-              {image ? (
-                <Image
-                  src={image}
-                  alt=""
-                  width={56}
-                  height={56}
-                  className="size-14 rounded-full ring-1 ring-white/25"
-                />
-              ) : (
-                <div className="flex size-14 items-center justify-center rounded-full bg-white/15 text-lg font-semibold text-white ring-1 ring-white/25">
-                  {name.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <h1 className="font-display text-3xl tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
-                Welcome back, {name}!
-              </h1>
+      <div className="animate-fade-up w-full max-w-2xl">
+        <div className="flex items-center gap-3">
+          {image ? (
+            <Image
+              src={image}
+              alt=""
+              width={40}
+              height={40}
+              className="size-10 rounded-full"
+            />
+          ) : (
+            <div className="flex size-10 items-center justify-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-700">
+              {name.charAt(0).toUpperCase()}
             </div>
+          )}
+          <div>
+            <p className="text-sm text-zinc-500">Welcome back</p>
+            <h1 className="font-display text-2xl tracking-tight text-zinc-950">
+              {name}
+            </h1>
+          </div>
+        </div>
 
-            <div className="mt-6 flex items-center gap-2 text-sm text-white/70">
-              <CreditCard className="size-4" />
-              Account balances
-            </div>
-
-            <div className="mt-1 flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <p className="text-5xl font-bold tracking-tight text-white [text-shadow:0_2px_24px_rgba(15,23,42,0.45)]">
-                  Wallet
-                </p>
-                <p className="mt-2 text-lg text-white/70">
-                  {loading ? (
-                    <span className="text-white/40">… SOL</span>
-                  ) : (
-                    <>
-                      {(balance ?? 0).toLocaleString(undefined, {
-                        maximumFractionDigits: 6,
-                      })}{" "}
-                      <span className="text-white/50">SOL</span>
-                    </>
-                  )}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={copyAddress}
-                disabled={!publicKey}
-                title={publicKey ?? undefined}
-                aria-label={
-                  publicKey ? `Copy wallet address ${publicKey}` : "No wallet"
-                }
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white/15 px-4 py-2 text-sm text-white transition-colors hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white/15"
-              >
-                {copied ? (
-                  <Check className="size-4" />
+        <div className="mt-8 border-t border-zinc-200 pt-8">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-sm text-zinc-500">SOL balance</p>
+              <p className="mt-1 text-4xl font-semibold tracking-tight text-zinc-950">
+                {loading ? (
+                  <span className="text-zinc-300">…</span>
                 ) : (
-                  <Copy className="size-4" />
+                  (balance ?? 0).toLocaleString(undefined, {
+                    maximumFractionDigits: 6,
+                  })
                 )}
-                {copied ? "Copied!" : shortKey}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={copyAddress}
+              disabled={!publicKey}
+              className="inline-flex items-center gap-2 rounded-md border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              {copied ? "Copied" : shortKey}
+            </button>
+          </div>
+
+          <div className="mt-6 grid grid-cols-3 gap-2">
+            {actions.map(({ id, label, primary, onClick, disabled }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={onClick}
+                disabled={disabled}
+                className={`h-9 rounded-md text-sm font-medium transition disabled:opacity-40 ${
+                  primary
+                    ? "bg-zinc-950 text-white hover:bg-zinc-800"
+                    : "border border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                }`}
+              >
+                {label}
               </button>
-            </div>
+            ))}
+          </div>
+        </div>
 
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              {actions.map(({ id, label, primary, onClick, disabled }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={onClick}
-                  disabled={disabled}
-                  className={`h-10 rounded-2xl text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    primary
-                      ? "bg-white text-emerald-950 hover:bg-white/90"
-                      : "border border-white/20 bg-white/15 text-white hover:bg-white/25"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+        <div className="mt-8">
+          <div className="flex gap-5 border-b border-zinc-200">
+            {assetTabs.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setAssetTab(tab)}
+                className={`-mb-px border-b-2 pb-2.5 text-sm font-medium transition ${
+                  assetTab === tab
+                    ? "border-zinc-950 text-zinc-950"
+                    : "border-transparent text-zinc-400 hover:text-zinc-700"
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
           </div>
 
-          <div className="px-6">
-            <div className="flex gap-6 border-b border-white/15">
-              {assetTabs.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setAssetTab(tab)}
-                  className={`-mb-px border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${
-                    assetTab === tab
-                      ? "border-white text-white"
-                      : "border-transparent text-white/50 hover:text-white/80"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="px-6 py-6">
+          <div className="py-6">
             {assetTab === "Wallet" && (
               <>
                 {loading ? (
-                  <p className="py-6 text-center text-sm text-white/60">
-                    Loading balance...
+                  <p className="py-8 text-center text-sm text-zinc-400">
+                    Loading balance…
                   </p>
                 ) : error ? (
-                  <p className="py-6 text-center text-sm text-rose-300">
-                    {error}
-                  </p>
+                  <p className="py-8 text-center text-sm text-red-600">{error}</p>
                 ) : (
-                  <ul className="divide-y divide-white/10">
-                    <li className="flex items-center justify-between gap-4 py-3">
+                  <ul className="divide-y divide-zinc-100">
+                    <li className="flex items-center justify-between py-3">
                       <div>
-                        <p className="font-semibold text-white">SOL</p>
-                        <p className="text-sm text-white/50">
-                          Devnet · deposit & withdraw
-                        </p>
+                        <p className="font-medium text-zinc-950">SOL</p>
+                        <p className="text-sm text-zinc-400">Devnet</p>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-white">
-                          {(balance ?? 0).toLocaleString(undefined, {
-                            maximumFractionDigits: 6,
-                          })}
-                        </p>
-                        <p className="text-sm text-white/50">Available</p>
-                      </div>
+                      <p className="font-medium text-zinc-950">
+                        {(balance ?? 0).toLocaleString(undefined, {
+                          maximumFractionDigits: 6,
+                        })}
+                      </p>
                     </li>
-                    <li className="flex items-center justify-between gap-4 py-3">
+                    <li className="flex items-center justify-between py-3">
                       <div>
-                        <p className="font-semibold text-white">USD</p>
-                        <p className="text-sm text-white/50">
-                          Trading balance available on Trade
-                        </p>
+                        <p className="font-medium text-zinc-950">USD</p>
+                        <p className="text-sm text-zinc-400">Trading balance</p>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-white/70">—</p>
-                        <p className="text-sm text-white/50">View on Trade</p>
-                      </div>
+                      <p className="text-sm text-zinc-400">View on Trade</p>
                     </li>
                   </ul>
                 )}
 
                 {!loading && !error && (balance ?? 0) === 0 && (
-                  <div className="mt-4 flex flex-col items-center border-t border-white/10 pt-4 text-center">
-                    <p className="text-sm text-white/70">
-                      Deposit Devnet SOL from Phantom to start trading later
+                  <div className="mt-4 border-t border-zinc-100 pt-6 text-center">
+                    <p className="text-sm text-zinc-500">
+                      Deposit Devnet SOL to get started
                     </p>
                     <button
                       type="button"
                       disabled={!publicKey}
                       onClick={() => setDepositOpen(true)}
-                      className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-950 transition-colors hover:bg-white/90 disabled:opacity-50"
+                      className="mt-3 inline-flex h-9 items-center gap-2 rounded-md bg-zinc-950 px-4 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
                     >
-                      <Plus className="size-4" />
+                      <Plus className="size-3.5" />
                       Deposit SOL
                     </button>
                   </div>
@@ -272,15 +234,15 @@ export function WalletCard({ publicKey }: WalletCardProps) {
             {assetTab === "Activity" && (
               <>
                 {activityLoading ? (
-                  <p className="py-6 text-center text-sm text-white/60">
-                    Loading activity...
+                  <p className="py-8 text-center text-sm text-zinc-400">
+                    Loading activity…
                   </p>
                 ) : activityError ? (
-                  <p className="py-6 text-center text-sm text-rose-300">
+                  <p className="py-8 text-center text-sm text-red-600">
                     {activityError}
                   </p>
                 ) : activities && activities.length > 0 ? (
-                  <ul className="divide-y divide-white/10">
+                  <ul className="divide-y divide-zinc-100">
                     {activities.map((item) => {
                       const when = item.blockTime
                         ? new Date(item.blockTime * 1000).toLocaleString()
@@ -304,27 +266,19 @@ export function WalletCard({ publicKey }: WalletCardProps) {
                           className="flex items-center justify-between gap-4 py-3"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="flex size-10 items-center justify-center rounded-full bg-white/10">
-                              <Icon className="size-4 text-white/80" />
+                            <div className="flex size-8 items-center justify-center rounded-full bg-zinc-100">
+                              <Icon className="size-3.5 text-zinc-600" />
                             </div>
                             <div>
-                              <p className="font-semibold text-white">
+                              <p className="text-sm font-medium text-zinc-950">
                                 {label}
                                 {item.status === "failed" ? " (failed)" : ""}
                               </p>
-                              <p className="text-sm text-white/50">{when}</p>
+                              <p className="text-xs text-zinc-400">{when}</p>
                             </div>
                           </div>
                           <div className="text-right">
-                            <p
-                              className={`font-semibold ${
-                                item.direction === "in"
-                                  ? "text-emerald-300"
-                                  : item.direction === "out"
-                                    ? "text-white"
-                                    : "text-white/80"
-                              }`}
-                            >
+                            <p className="text-sm font-medium text-zinc-950">
                               {item.amount != null
                                 ? `${item.direction === "in" ? "+" : item.direction === "out" ? "−" : ""}${item.amount.toLocaleString(undefined, { maximumFractionDigits: 6 })} SOL`
                                 : item.shortSignature}
@@ -333,7 +287,7 @@ export function WalletCard({ publicKey }: WalletCardProps) {
                               href={item.explorerUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-sm text-white/50 hover:text-white"
+                              className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-700"
                             >
                               {item.shortSignature}
                               <ExternalLink className="size-3" />
@@ -344,7 +298,7 @@ export function WalletCard({ publicKey }: WalletCardProps) {
                     })}
                   </ul>
                 ) : (
-                  <p className="py-6 text-center text-sm text-white/60">
+                  <p className="py-8 text-center text-sm text-zinc-400">
                     No recent activity
                   </p>
                 )}

@@ -6,13 +6,6 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const marketingLinks = [
-  { label: "Markets", href: "#markets" },
-  { label: "Trade", href: "#trade" },
-  { label: "Earn", href: "#earn" },
-  { label: "About", href: "#about" },
-];
-
 const dashboardLinks = [
   { label: "Wallet", href: "/dashboard", icon: Wallet },
   { label: "Trade", href: "/dashboard/trade", icon: TrendingUp },
@@ -22,47 +15,46 @@ const dashboardLinks = [
 export const Appbar = () => {
   const session = useSession();
   const pathname = usePathname();
-
   const onDashboard = pathname.startsWith("/dashboard");
 
   return (
-    <header className="absolute inset-x-0 top-0 z-20 px-5 pt-5 sm:px-8">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+    <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 backdrop-blur-sm">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-5 sm:px-8">
         <Link
-          href="/"
-          className="font-display text-2xl tracking-tight text-white drop-shadow-sm"
+          href={session.data?.user ? "/dashboard" : "/"}
+          className="font-display text-xl tracking-tight text-zinc-950"
         >
           CEX
         </Link>
 
         {onDashboard ? (
-          <nav className="flex items-center gap-1 rounded-2xl border border-white/15 bg-slate-950/25 p-1 backdrop-blur-md">
-            {dashboardLinks.map(({ label, href, icon: Icon }) => (
-              <Link
-                key={label}
-                href={href}
-                className={`inline-flex items-center gap-2 rounded-xl px-4 py-1.5 text-sm font-medium transition-colors ${
-                  pathname === href
-                    ? "bg-white text-emerald-950"
-                    : "text-white/80 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <Icon className="size-4" />
-                {label}
-              </Link>
-            ))}
+          <nav className="flex items-center gap-1">
+            {dashboardLinks.map(({ label, href, icon: Icon }) => {
+              const active = pathname === href;
+              return (
+                <Link
+                  key={label}
+                  href={href}
+                  className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    active
+                      ? "bg-zinc-100 text-zinc-950"
+                      : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950"
+                  }`}
+                >
+                  <Icon className="size-3.5" />
+                  {label}
+                </Link>
+              );
+            })}
           </nav>
         ) : (
-          <nav className="hidden items-center gap-1 rounded-2xl border border-white/15 bg-slate-950/25 px-2 py-1.5 backdrop-blur-md md:flex">
-            {marketingLinks.map(({ label, href }) => (
-              <a
-                key={label}
-                href={href}
-                className="rounded-xl px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-              >
-                {label}
-              </a>
-            ))}
+          <nav className="hidden items-center gap-6 text-sm text-zinc-500 md:flex">
+            <a href="#product" className="hover:text-zinc-950">
+              Product
+            </a>
+            <a href="#markets" className="hover:text-zinc-950">
+              Markets
+            </a>
           </nav>
         )}
 
@@ -70,14 +62,15 @@ export const Appbar = () => {
           {session.data?.user ? (
             <Button
               onClick={() => signOut()}
-              className="rounded-2xl bg-white text-emerald-950 hover:bg-white/90"
+              variant="outline"
+              className="h-8 rounded-md border-zinc-200 px-3 text-sm text-zinc-700 hover:bg-zinc-50"
             >
-              Logout
+              Log out
             </Button>
           ) : (
             <Button
               onClick={() => signIn()}
-              className="rounded-2xl bg-white text-emerald-950 hover:bg-white/90"
+              className="h-8 rounded-md bg-zinc-950 px-3 text-sm text-white hover:bg-zinc-800"
             >
               Sign in
             </Button>
