@@ -124,6 +124,23 @@ export class BalanceStore {
     return { ...bal };
   }
 
+  // Consume available (e.g. perp realized loss).
+  debitAvailable(userId: string, asset: AssetId, amount: number): Balance {
+    this.assertPositive(amount);
+    const bal = this.ensure(userId, asset);
+    if (bal.available < amount) {
+      throw new InsufficientBalanceError(
+        userId,
+        asset,
+        amount,
+        bal.available,
+        "available",
+      );
+    }
+    bal.available -= amount;
+    return { ...bal };
+  }
+
   clear(): void {
     this.balances.clear();
   }

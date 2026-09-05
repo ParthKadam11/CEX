@@ -84,6 +84,10 @@ export class MarketRuntime {
       if (this.replaying || !this.bus) return;
       this.bus.publish({ kind: "ORDER", market: this.market, event });
     });
+    this.placement.onPositionUpdate((position) => {
+      if (this.replaying || !this.bus) return;
+      this.bus.publish({ kind: "POSITION", market: this.market, position });
+    });
   }
 
   static open(
@@ -108,6 +112,10 @@ export class MarketRuntime {
     return this.placement.balances;
   }
 
+  get positions() {
+    return this.placement.positions;
+  }
+
   credit(userId: string, asset: AssetId, amount: number) {
     return this.enqueue(() => this.creditNow(userId, asset, amount));
   }
@@ -120,15 +128,12 @@ export class MarketRuntime {
     return this.enqueue(() => this.cancelNow(orderId));
   }
 
-  /**
-   * Dev-only: wipe book, balances, order indexes, WAL, and snapshot.
-   * Market is empty afterward (users must re-credit).
-   */
+  //Dev-only: wipe book, balances, order indexes, WAL, and snapshot. Market is empty afterward (users must re-credit).
   hardReset(): Promise<void> {
     return this.enqueue(() => {
       this.book.clear();
       const empty: EngineSnapshot = {
-        version: 1,
+        version: 2,
         market: this.market,
         walSeq: 0,
         tradeSeq: 0,
@@ -138,6 +143,7 @@ export class MarketRuntime {
         orders: [],
         events: [],
         ledger: [],
+        positions: [],
       };
       this.placement.restoreSnapshot(empty, this.book);
       this.wal.wipe();
@@ -149,7 +155,7 @@ export class MarketRuntime {
     });
   }
 
-  /** Persist live state, drop WAL history through this seq, prune RAM indexes. */
+  // Persist live state, drop WAL history through this seq, prune RAM indexes. 
   checkpoint(): Promise<void> {
     return this.enqueue(() => {
       this.checkpointNow();

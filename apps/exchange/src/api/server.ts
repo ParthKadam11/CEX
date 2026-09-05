@@ -3,6 +3,7 @@ import { streamSSE } from "hono/streaming";
 import {
   isBoundedPositiveInteger,
   isIdentifier,
+  isMarketSymbol,
   MAX_ORDER_PRICE,
   MAX_ORDER_QUANTITY,
   MAX_QUOTE_BUDGET,
@@ -16,10 +17,10 @@ import {
 } from "@cex/exchange-types";
 import type { EventBus } from "./eventBus.js";
 import type { MarketRuntime } from "../market/runtime.js";
-import { isPositiveUnit, isUnit } from "../market/units.js";
+import { isPositiveUnit, isUnit, marketSpec } from "../market/units.js";
 
 function isMarket(value: string): value is MarketSymbol {
-  return value === "SOL-USD";
+  return isMarketSymbol(value);
 }
 
 function parseSide(value: unknown): Side | null {
@@ -208,6 +209,14 @@ export function createExchangeApp(
     if (
       type === OrderType.MARKET &&
       side === Side.BUY &&
+      market === "SOL-USD" &&
+      quoteBudget === undefined
+    ) {
+      return errorResponse(c, 400, "MARKET_MISSING_QUOTE_BUDGET");
+    }
+    if (
+      type === OrderType.MARKET &&
+      market !== "SOL-USD" &&
       quoteBudget === undefined
     ) {
       return errorResponse(c, 400, "MARKET_MISSING_QUOTE_BUDGET");
@@ -224,6 +233,17 @@ export function createExchangeApp(
       return errorResponse(c, 400, "INVALID_ORDER_ID");
     }
 
+    let leverage: number | undefined;
+    if (body.leverage !== undefined) {
+      const parsed = parsePositiveUnit(body.leverage);
+      const spec = marketSpec(market);
+      const maxLev = spec.maxLeverage ?? 1;
+      if (parsed === null || parsed > maxLev || spec.kind !== "PERP") {
+        return errorResponse(c, 400, "INVALID_LEVERAGE");
+      }
+      leverage = parsed;
+    }
+
     const order: Order = {
       orderId:
         isIdentifier(body.orderId)
@@ -237,6 +257,7 @@ export function createExchangeApp(
       price,
       quantity,
       quoteBudget,
+      leverage,
       filledQuantity: 0,
       status: "NEW",
       timestamp: Date.now(),
@@ -329,6 +350,49 @@ export function createExchangeApp(
     });
   });
 
+  app.get("/v1/markets/:market/positions", (c) => {
+    const market = c.req.param("market");
+    if (!isMarket(market) || market !== runtime.market) {
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
+    }
+
+    const userId = c.req.query("userId");
+    if (userId !== undefined && !isIdentifier(userId)) {
+      return errorResponse(c, 400, "INVALID_USER_ID");
+    }
+
+    const positions = userId
+      ? runtime.positions.listByUser(userId).filter((p) => p.market === market)
+      : runtime.positions.listByMarket(market);
+    return c.json({ positions });
+  });
+
+  app.get("/v1/markets/:market/positions/:userId", (c) => {
+    const market = c.req.param("market");
+    if (!isMarket(market) || market !== runtime.market) {
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
+    }
+
+    const userId = c.req.param("userId");
+    if (!isIdentifier(userId)) {
+      return errorResponse(c, 400, "INVALID_USER_ID");
+    }
+
+    const position = runtime.positions.get(userId, market);
+    return c.json({
+      position:
+        position ?? {
+          userId,
+          market,
+          size: 0,
+          entryPrice: 0,
+          margin: 0,
+          leverage: 1,
+          updatedAt: 0,
+        },
+    });
+  });
+
   app.get("/v1/markets/:market/book", (c) => {
     const market = c.req.param("market");
     if (!isMarket(market) || market !== runtime.market) {
@@ -375,6 +439,13 @@ export function createExchangeApp(
           return;
         }
         if (userId && event.kind === "CREDIT" && event.userId !== userId) {
+          return;
+        }
+        if (
+          userId &&
+          event.kind === "POSITION" &&
+          event.position.userId !== userId
+        ) {
           return;
         }
 

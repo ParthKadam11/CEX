@@ -267,7 +267,7 @@ function isOrderEvent(value: unknown): value is OrderEvent {
 }
 
 function isMarketSymbol(value: unknown): value is MarketSymbol {
-  return value === "SOL-USD";
+  return value === "SOL-USD" || value === "SOL-USD-PERP";
 }
 
 function isAssetId(value: unknown): value is AssetId {

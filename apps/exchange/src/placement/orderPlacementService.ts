@@ -6,6 +6,7 @@ import {
   type CancelResult,
   type Order,
   type PlacementResult,
+  type Position,
   type RejectReason,
   type Trade,
 } from "@cex/exchange-types";
@@ -25,10 +26,18 @@ import {
   type BalanceRef,
 } from "../account/balanceService.js";
 import { InsufficientBalanceError } from "../account/balanceStore.js";
-import { lockForOrder, marketAssets } from "../market/assets.js";
-import { lotsForBudget, orderUnitsOk, quoteNotional } from "../market/units.js";
+import { lockForOrder, marginForFill, marketAssets } from "../market/assets.js";
+import {
+  isPerpMarket,
+  lotsForBudget,
+  orderUnitsOk,
+  quoteNotional,
+  resolveLeverage,
+} from "../market/units.js";
 import { cloneOrder } from "../journal/cloneOrder.js";
 import type { EngineSnapshot } from "../journal/snapshot.js";
+import { PositionStore } from "../position/positionStore.js";
+import { applyPerpFill } from "../position/perpSettlement.js";
 
 type OrderLock = { asset: AssetId; amount: number };
 
@@ -43,14 +52,9 @@ export type RamBounds = {
 
   MatchingEngine only crosses orders. This class:
     - locks funds before matching
-    - settles balances on each trade
+    - settles balances on each trade (spot delivery or perp positions)
     - unlocks leftovers (IOC / MARKET leftover / FOK reject / user cancel)
     - records order events and keeps OrderStore in sync
-
-  MARKET:
-    - buy locks quoteBudget; sell locks base qty
-    - never rests (leftover always cancelled + unlocked)
-    - matcher ignores limit price; buy stops when leftover budget cannot buy a whole lot
 
   Call place() one-at-a-time per market (no concurrent book mutation).
 */
@@ -60,8 +64,10 @@ export class OrderPlacementService {
   private readonly log: OrderEventLog;
   private readonly store: OrderStore;
   private readonly money: BalanceService;
-  //How much is still reserved per live order (after fills / unlocks). 
+  private readonly positionStore: PositionStore;
+  // How much is still reserved per live order (after fills / unlocks).
   private readonly locks = new Map<string, OrderLock>();
+  private readonly positionHandlers: Array<(position: Position) => void> = [];
   readonly queries: OrderQueryService;
 
   constructor(
@@ -69,11 +75,13 @@ export class OrderPlacementService {
     log = new OrderEventLog(),
     store = new OrderStore(),
     money = new BalanceService(),
+    positionStore = new PositionStore(),
   ) {
     this.matcher = matcher;
     this.log = log;
     this.store = store;
     this.money = money;
+    this.positionStore = positionStore;
     this.queries = new OrderQueryService(store, log);
   }
 
@@ -85,12 +93,20 @@ export class OrderPlacementService {
     return this.money;
   }
 
+  get positions(): PositionStore {
+    return this.positionStore;
+  }
+
+  onPositionUpdate(handler: (position: Position) => void): void {
+    this.positionHandlers.push(handler);
+  }
+
   captureSnapshot(
     market: EngineSnapshot["market"],
     walSeq: number,
   ): EngineSnapshot {
     return {
-      version: 1,
+      version: 2,
       market,
       walSeq,
       tradeSeq: this.matcher.getTradeSeq(),
@@ -100,12 +116,14 @@ export class OrderPlacementService {
       orders: this.store.all().map(cloneOrder),
       events: [...this.log.all()],
       ledger: [...this.money.ledger.all()],
+      positions: this.positionStore.listAll(),
     };
   }
 
   restoreSnapshot(snapshot: EngineSnapshot, book: OrderBook): void {
     this.store.clear();
     this.locks.clear();
+    this.positionStore.loadAll(snapshot.positions ?? []);
     this.money.balances.loadAll(snapshot.balances);
     this.money.ledger.replace(snapshot.ledger, snapshot.ledgerSeq);
     this.log.replace(snapshot.events, snapshot.eventSeq);
@@ -130,7 +148,10 @@ export class OrderPlacementService {
     const terminals = this.store
       .all()
       .filter((order) => isTerminal(order.status))
-      .sort((a, b) => a.timestamp - b.timestamp || a.orderId.localeCompare(b.orderId));
+      .sort(
+        (a, b) =>
+          a.timestamp - b.timestamp || a.orderId.localeCompare(b.orderId),
+      );
     const overflow = terminals.length - bounds.maxTerminalOrders;
     if (overflow > 0) {
       for (const order of terminals.slice(0, overflow)) {
@@ -174,6 +195,7 @@ export class OrderPlacementService {
     if (
       order.type === OrderType.MARKET &&
       order.side === Side.BUY &&
+      !isPerpMarket(order.market) &&
       !(order.quoteBudget && order.quoteBudget > 0)
     ) {
       return this.reject(order, "MARKET_MISSING_QUOTE_BUDGET");
@@ -219,7 +241,7 @@ export class OrderPlacementService {
     const takerFrom = order.status;
     const { trades, taker } = this.matcher.match(order, book);
 
-    this.settleAndLogFills(trades, book, taker);
+    const positions = this.settleAndLogFills(trades, book, taker);
     this.logStatus(taker, takerFrom);
 
     if (remaining(taker) > 0) {
@@ -236,7 +258,6 @@ export class OrderPlacementService {
           quantity: remaining(taker),
         });
       } else if (isMarket || taker.timeInForce === TimeInForce.IOC) {
-        // MARKET never rests; IOC never rests
         this.unlockOrder(taker);
         const fromStatus = taker.status;
         transitionCancel(taker);
@@ -250,13 +271,17 @@ export class OrderPlacementService {
           quantity: remaining(taker),
         });
       }
-      // FOK LIMIT should not reach here with leftover (precheck passed)
     } else {
       this.locks.delete(taker.orderId);
     }
 
     this.store.upsert(taker);
-    return { order: taker, trades, accepted: true };
+    return {
+      order: taker,
+      trades,
+      accepted: true,
+      positions: positions.length > 0 ? positions : undefined,
+    };
   }
 
   cancel(orderId: string, book: OrderBook): CancelResult {
@@ -330,23 +355,33 @@ export class OrderPlacementService {
     trades: Trade[],
     book: OrderBook,
     taker: Order,
-  ): void {
-    const { base, quote } = marketAssets(taker.market);
+  ): Position[] {
+    const touched = new Map<string, Position>();
 
     for (const trade of trades) {
-      // market buy: reserved per fill = actual cost (budget pool, no limit improvement)
-      const buyLimit = this.buyReservePrice(trade.buyOrderId, taker, trade.price);
-      const { buyLockRelease, sellLockRelease } = this.money.settleTrade({
-        trade,
-        buyLimitPrice: buyLimit,
-        base,
-        quote,
-      });
+      if (isPerpMarket(taker.market)) {
+        for (const position of this.settlePerpTrade(trade, taker)) {
+          touched.set(`${position.userId}:${position.market}`, position);
+        }
+      } else {
+        const { base, quote } = marketAssets(taker.market);
+        const buyLimit = this.buyReservePrice(
+          trade.buyOrderId,
+          taker,
+          trade.price,
+        );
+        const { buyLockRelease, sellLockRelease } = this.money.settleTrade({
+          trade,
+          buyLimitPrice: buyLimit,
+          base,
+          quote,
+        });
 
-      this.releaseTrackedLock(trade.buyOrderId, buyLockRelease);
-      this.releaseTrackedLock(trade.sellOrderId, sellLockRelease);
-      this.dropEmptyLock(trade.buyOrderId);
-      this.dropEmptyLock(trade.sellOrderId);
+        this.releaseTrackedLock(trade.buyOrderId, buyLockRelease);
+        this.releaseTrackedLock(trade.sellOrderId, sellLockRelease);
+        this.dropEmptyLock(trade.buyOrderId);
+        this.dropEmptyLock(trade.sellOrderId);
+      }
 
       this.log.append({
         type: "FILL",
@@ -369,9 +404,91 @@ export class OrderPlacementService {
         status: this.statusAfterFill(trade.sellOrderId, book, taker),
       });
     }
+
+    return [...touched.values()];
   }
 
-  // Limit buy uses order.price; market buy uses trade price so reserve === cost. */
+  private settlePerpTrade(trade: Trade, taker: Order): Position[] {
+    const buyOrder = this.orderForFill(trade.buyOrderId, taker);
+    const sellOrder = this.orderForFill(trade.sellOrderId, taker);
+
+    return [
+      this.settlePerpSide({
+        order: buyOrder,
+        side: Side.BUY,
+        trade,
+      }),
+      this.settlePerpSide({
+        order: sellOrder,
+        side: Side.SELL,
+        trade,
+      }),
+    ];
+  }
+
+  private settlePerpSide(args: {
+    order: Order;
+    side: Side;
+    trade: Trade;
+  }): Position {
+    const { order, side, trade } = args;
+    const { orderLockRelease, positionMargin, unlockExcess } = marginForFill(
+      order,
+      trade.quantity,
+      trade.price,
+    );
+
+    this.releaseTrackedLock(order.orderId, orderLockRelease);
+    this.dropEmptyLock(order.orderId);
+
+    if (unlockExcess > 0) {
+      this.money.unlock(order.userId, "USD", unlockExcess, {
+        refType: "ORDER",
+        refId: order.orderId,
+      });
+    }
+
+    const before = this.positionStore.getOrEmpty(order.userId, order.market);
+    const applied = applyPerpFill({
+      position: before,
+      side,
+      quantity: trade.quantity,
+      price: trade.price,
+      leverage: resolveLeverage(order),
+      marginIn: positionMargin,
+      timestamp: trade.timestamp,
+    });
+
+    if (applied.marginUnlocked > 0) {
+      this.money.unlock(order.userId, "USD", applied.marginUnlocked, {
+        refType: "POSITION",
+        refId: `${order.userId}:${order.market}`,
+      });
+    }
+
+    if (applied.realizedPnl !== 0) {
+      this.money.applyPnl(order.userId, applied.realizedPnl, {
+        refType: "TRADE",
+        refId: trade.tradeId,
+      });
+    }
+
+    this.positionStore.set(applied.position);
+    for (const handler of this.positionHandlers) {
+      handler(applied.position);
+    }
+    return applied.position;
+  }
+
+  private orderForFill(orderId: string, taker: Order): Order {
+    if (taker.orderId === orderId) return taker;
+    const order = this.store.get(orderId);
+    if (!order) {
+      throw new Error(`unknown order ${orderId} for settlement`);
+    }
+    return order;
+  }
+
   private buyReservePrice(
     orderId: string,
     taker: Order,
@@ -426,7 +543,6 @@ export class OrderPlacementService {
   private canFullyFill(taker: Order, book: OrderBook): boolean {
     const isMarket = taker.type === OrderType.MARKET;
 
-    // market buy FOK: enough ask volume that quoteBudget can buy full quantity
     if (isMarket && taker.side === Side.BUY) {
       let need = remaining(taker);
       let budget = taker.quoteBudget ?? 0;

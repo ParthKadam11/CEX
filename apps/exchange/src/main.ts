@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isMarketSymbol, type MarketSymbol } from "@cex/exchange-types";
 import { serve } from "@hono/node-server";
 import { EventBus } from "./api/eventBus.js";
 import { createExchangeApp } from "./api/server.js";
@@ -7,11 +8,13 @@ import { MarketRuntime } from "./market/runtime.js";
 /*
   Exchange process entrypoint.
 
-  REST  → place / cancel / credit / queries / book
-  SSE   → /v1/markets/:market/stream  (ORDER, BBO, CREDIT)
+  REST  → place / cancel / credit / queries / book / positions
+  SSE   → /v1/markets/:market/stream  (ORDER, BBO, CREDIT, TRADE, POSITION)
+
+  One process = one market. Set EXCHANGE_MARKET=SOL-USD-PERP for perps.
 */
 
-const market = "SOL-USD" as const;
+const market = resolveMarket(process.env.EXCHANGE_MARKET);
 const port = Number(process.env.EXCHANGE_PORT ?? 4010);
 const gatewayToken = serviceToken(
   "EXCHANGE_GATEWAY_TOKEN",
@@ -36,6 +39,11 @@ serve({ fetch: app.fetch, port }, (info) => {
     `exchange listening on http://localhost:${info.port} market=${market} wal=${walPath}`,
   );
 });
+
+function resolveMarket(raw: string | undefined): MarketSymbol {
+  if (raw && isMarketSymbol(raw)) return raw;
+  return "SOL-USD";
+}
 
 function serviceToken(name: string, fallback: string): string {
   const token = process.env[name];

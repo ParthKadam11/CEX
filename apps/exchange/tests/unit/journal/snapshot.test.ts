@@ -26,7 +26,7 @@ describe("engine snapshot file", () => {
     expect(loadSnapshot(file)).toBeNull();
 
     const snapshot: EngineSnapshot = {
-      version: 1,
+      version: 2,
       market: "SOL-USD",
       walSeq: 4,
       tradeSeq: 1,
@@ -38,6 +38,7 @@ describe("engine snapshot file", () => {
       orders: [],
       events: [],
       ledger: [],
+      positions: [],
     };
     saveSnapshot(file, snapshot);
     expect(loadSnapshot(file)).toEqual(snapshot);

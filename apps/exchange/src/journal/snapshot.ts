@@ -6,13 +6,14 @@ import type {
   MarketSymbol,
   Order,
   OrderEvent,
+  Position,
 } from "@cex/exchange-types";
 import { atomicWriteFile } from "./atomicFile.js";
 
-export const SNAPSHOT_VERSION = 1 as const;
+export const SNAPSHOT_VERSION = 2 as const;
 
 export type EngineSnapshot = {
-  version: typeof SNAPSHOT_VERSION;
+  version: typeof SNAPSHOT_VERSION | 1;
   market: MarketSymbol;
   walSeq: number;
   tradeSeq: number;
@@ -22,6 +23,8 @@ export type EngineSnapshot = {
   orders: Order[];
   events: OrderEvent[];
   ledger: LedgerEntry[];
+ // v2+: perp positions (spot snapshots omit or use []). */
+  positions?: Position[];
 };
 
 export function snapshotPathFor(walPath: string): string {
@@ -31,14 +34,22 @@ export function snapshotPathFor(walPath: string): string {
 }
 
 export function saveSnapshot(filePath: string, snapshot: EngineSnapshot): void {
-  atomicWriteFile(filePath, `${JSON.stringify(snapshot)}\n`);
+  const toWrite: EngineSnapshot = {
+    ...snapshot,
+    version: SNAPSHOT_VERSION,
+    positions: snapshot.positions ?? [],
+  };
+  atomicWriteFile(filePath, `${JSON.stringify(toWrite)}\n`);
 }
 
 export function loadSnapshot(filePath: string): EngineSnapshot | null {
   if (!fs.existsSync(filePath)) return null;
   const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as EngineSnapshot;
-  if (parsed.version !== SNAPSHOT_VERSION) {
+  if (parsed.version !== 1 && parsed.version !== SNAPSHOT_VERSION) {
     throw new Error(`unsupported snapshot version ${String(parsed.version)}`);
   }
-  return parsed;
+  return {
+    ...parsed,
+    positions: parsed.positions ?? [],
+  };
 }

@@ -23,7 +23,9 @@ export type OrderStatus =
   | "CANCELLED"
   | "REJECTED";
 
-export type MarketSymbol = "SOL-USD";
+export type MarketSymbol = "SOL-USD" | "SOL-USD-PERP";
+
+export type MarketKind = "SPOT" | "PERP";
 
 export type AssetId = "SOL" | "USD";
 
@@ -41,15 +43,30 @@ export interface Balance {
   locked: number;
 }
 
+// Signed perp position (engine state). size > 0 long, < 0 short. */
+export interface Position {
+  userId: string;
+  market: MarketSymbol;
+  size: number;
+  // VWAP entry in integer ticks.
+  entryPrice: number;
+  // USD margin held in balance.locked for this position. 
+  margin: number;
+  // Effective leverage used while opening/increasing.
+  leverage: number;
+  updatedAt: number;
+}
+
 export type LedgerReason =
   | "DEPOSIT"
   | "LOCK_ORDER"
   | "UNLOCK_ORDER"
   | "SETTLE_DEBIT"
   | "SETTLE_CREDIT"
+  | "PNL_SETTLE"
   | "WITHDRAW";
 
-export type LedgerRefType = "ORDER" | "TRADE" | "DEPOSIT" | "WITHDRAW";
+export type LedgerRefType = "ORDER" | "TRADE" | "DEPOSIT" | "WITHDRAW" | "POSITION";
 
 export interface LedgerEntry {
   seq: number;
@@ -67,13 +84,22 @@ export interface LedgerEntry {
 
 export interface Market {
   symbol: MarketSymbol;
+  kind: MarketKind;
   base: "SOL";
   quote: "USD";
-  /** Minimum price increment in integer ticks. */
+  // Margin / settlement asset (perps always USD).
+  collateral: "USD";
+  // Minimum price increment in integer ticks. 
   tickSize: number;
-  /** Minimum size increment in integer lots. */
+  // Minimum size increment in integer lots.
   lotSize: number;
   status: "OPEN" | "CLOSED";
+  // Perp: default leverage when order omits leverage.
+  defaultLeverage?: number;
+  // Perp: max accepted leverage. 
+  maxLeverage?: number;
+  // Perp: maintenance margin in bps of notional (e.g. 50 = 0.5%).
+  maintenanceMarginBps?: number;
 }
 
 export interface Order {
@@ -83,13 +109,15 @@ export interface Order {
   side: Side;
   type: OrderType;
   timeInForce: TimeInForce;
-  /** Limit price in integer ticks (MARKET uses 0). */
+  // Limit price in integer ticks (MARKET uses 0). 
   price: number;
-  /** Size in integer lots. */
+  // Size in integer lots
   quantity: number;
-  /** MARKET buy or FOK_BUDGET: integer quote units to spend. */
+  // MARKET buy or FOK_BUDGET: integer quote units to spend. 
   quoteBudget?: number;
-  /** Filled size in integer lots. */
+  // Perp only: integer leverage (defaults to market.defaultLeverage). 
+  leverage?: number;
+  // Filled size in integer lots. 
   filledQuantity: number;
   status: OrderStatus;
   timestamp: number;
@@ -97,12 +125,12 @@ export interface Order {
 
 export interface Trade {
   tradeId: string;
-  /** Monotonic trade sequence assigned by the matching engine. */
+  // Monotonic trade sequence assigned by the matching engine.
   engineSequence: number;
   market: MarketSymbol;
-  /** Trade price in integer ticks (maker price). */
+  // Trade price in integer ticks (maker price). 
   price: number;
-  /** Fill size in integer lots. */
+  // Fill size in integer lots.
   quantity: number;
   buyOrderId: string;
   sellOrderId: string;
@@ -132,6 +160,8 @@ export interface PlacementResult {
   trades: Trade[];
   accepted: boolean;
   reason?: RejectReason;
+  // Perp markets: positions touched by this placement's fills. 
+  positions?: Position[];
 }
 
 export type CancelFailReason = "UNKNOWN_ORDER" | "NOT_CANCELLABLE";
@@ -215,7 +245,7 @@ export function isBoundedPositiveInteger(
   return isSafePositiveInteger(value) && value <= maximum;
 }
 
-/** Durable engine commands (WAL). Replay restores RAM after restart. */
+// Durable engine commands (WAL). Replay restores RAM after restart.
 export type EngineCommandBody =
   | {
       type: "CREDIT";
@@ -237,7 +267,7 @@ export type EngineCommandBody =
 
 export type EngineCommand = EngineCommandBody & { seq: number };
 
-/** Live SSE payloads from the exchange process (ORDER / BBO / CREDIT). */
+// Live SSE payloads from the exchange process (ORDER / BBO / CREDIT / POSITION). 
 export type ExchangeStreamEvent =
   | { kind: "ORDER"; market: MarketSymbol; event: OrderEvent }
   | {
@@ -255,9 +285,13 @@ export type ExchangeStreamEvent =
       asset: AssetId;
       amount: number;
     }
-  | { kind: "TRADE"; market: MarketSymbol; trade: Trade };
+  | { kind: "TRADE"; market: MarketSymbol; trade: Trade }
+  | { kind: "POSITION"; market: MarketSymbol; position: Position };
 
-/** HTTP response for POST .../credit */
+export function isMarketSymbol(value: unknown): value is MarketSymbol {
+  return value === "SOL-USD" || value === "SOL-USD-PERP";
+}
+// HTTP response for POST .../credit/
 export type CreditResult = {
   balance: Balance;
   entry: LedgerEntry;

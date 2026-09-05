@@ -107,11 +107,31 @@ export class BalanceService {
     return this.credit(userId, asset, amount, "SETTLE_CREDIT", ref);
   }
 
+  //Apply realized perp PnL to available USD (profit credit / loss debit). 
+  applyPnl(
+    userId: string,
+    amount: number,
+    ref?: BalanceRef,
+  ): { balance: Balance; entry: LedgerEntry } | null {
+    if (amount === 0) return null;
+    const asset: AssetId = "USD";
+    const before = this.store.get(userId, asset);
+    const balance =
+      amount > 0
+        ? this.store.credit(userId, asset, amount)
+        : this.store.debitAvailable(userId, asset, -amount);
+    const entry = this.write(userId, asset, before, balance, "PNL_SETTLE", ref);
+    return { balance, entry };
+  }
+
   /**
-   * Move funds for one trade (both sides).
-   * Buyer: spend quote from lock (release limit−trade price improvement), receive base.
-   * Seller: spend base from lock, receive quote.
-   * Returns how much reserved lock to release from each order's tracked lock.
+  Move funds for one trade (both sides).
+  
+  Buyer: spend quote from lock (release limit−trade price improvement), receive base.
+   
+  Seller: spend base from lock, receive quote.
+   
+  Returns how much reserved lock to release from each order's tracked lock.
    */
   settleTrade(args: {
     trade: Trade;
