@@ -124,6 +124,15 @@ export class OrderBook {
     return this.orders.get(orderId);
   }
 
+  /** Drop every resting order (dev hard-reset). */
+  clear(): void {
+    this.bids.clear();
+    this.asks.clear();
+    this.bidPrices = [];
+    this.askPrices = [];
+    this.orders.clear();
+  }
+
   // walk asks from best (lowest) — used by FOK precheck
   iterateAsksFromBest(): Generator<PriceLevel> {
     return this.iterate(this.askPrices, this.asks);

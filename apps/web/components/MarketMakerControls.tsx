@@ -4,10 +4,23 @@ import { useEffect, useRef, useState } from "react";
 import { Activity, Settings2, X } from "lucide-react";
 import type { OrderBookSnapshot } from "@cex/exchange-types";
 
+const MAX_EVENTS = 40;
+
+const SPEED_OPTIONS = [
+  { id: "fast", label: "Fast", ms: 120 },
+  { id: "normal", label: "Normal", ms: 280 },
+  { id: "slow", label: "Slow", ms: 700 },
+] as const;
+
+const INTENSITY_OPTIONS = ["low", "medium", "high"] as const;
+
 type HeartbeatInfo = {
   enabled: boolean;
   intensity: "idle" | "medium" | "high";
-  boost: "medium" | "high";
+  boost: "low" | "medium" | "high";
+  placeQuotes?: boolean;
+  placeTrades?: boolean;
+  spread?: number;
   viewersActive: boolean;
   lastTickAt: number | null;
   lastError: string | null;
@@ -16,6 +29,9 @@ type HeartbeatInfo = {
 
 type StatusBody = {
   ok?: boolean;
+  mid?: number;
+  placed?: number;
+  seeded?: boolean;
   ticks?: number;
   lastMid?: number;
   heartbeat?: HeartbeatInfo;
@@ -23,7 +39,15 @@ type StatusBody = {
   book?: OrderBookSnapshot | null;
   prints?: { price: number; quantity: number }[];
   traded?: boolean;
+  wiped?: boolean;
   error?: { message?: string };
+};
+
+type SimEvent = {
+  id: string;
+  at: number;
+  text: string;
+  tone?: "ok" | "warn" | "err";
 };
 
 type MarketMakerControlsProps = {
@@ -31,29 +55,61 @@ type MarketMakerControlsProps = {
 };
 
 /**
- * Controls for the server-side MM heartbeat.
- * Presence / intensity boost is driven from TradingPanel while the user is on /trade.
+ * MM menu: server heartbeat switch + speed/intensity/spread/mode + wipe.
  */
 export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<HeartbeatInfo | null>(null);
-  const [boost, setBoost] = useState<"medium" | "high">("medium");
-  const [message, setMessage] = useState<string | null>(null);
+  const [events, setEvents] = useState<SimEvent[]>([]);
+  const [speedId, setSpeedId] = useState<(typeof SPEED_OPTIONS)[number]["id"]>(
+    "normal",
+  );
+  const [intensity, setIntensity] =
+    useState<(typeof INTENSITY_OPTIONS)[number]>("medium");
+  const [placeQuotes, setPlaceQuotes] = useState(true);
+  const [placeTrades, setPlaceTrades] = useState(false);
+  const [spread, setSpread] = useState(2);
+
   const rootRef = useRef<HTMLDivElement | null>(null);
   const onTickRef = useRef(onTickAction);
   onTickRef.current = onTickAction;
 
+  function pushEvent(text: string, tone: SimEvent["tone"] = "ok") {
+    setEvents((current) =>
+      [
+        { id: `${Date.now()}-${Math.random()}`, at: Date.now(), text, tone },
+        ...current,
+      ].slice(0, MAX_EVENTS),
+    );
+  }
+
   async function refreshStatus() {
     try {
-      const response = await fetch("/api/sim/market-maker?action=status", {
+      const response = await fetch("/api/sim/market-maker", {
         cache: "no-store",
       });
       if (!response.ok) return;
       const body = (await response.json()) as StatusBody;
-      if (body.heartbeat) setStatus(body.heartbeat);
+      if (body.heartbeat) {
+        setStatus(body.heartbeat);
+        if (body.heartbeat.spread != null) setSpread(body.heartbeat.spread);
+        if (typeof body.heartbeat.placeQuotes === "boolean") {
+          setPlaceQuotes(body.heartbeat.placeQuotes);
+        }
+        if (typeof body.heartbeat.placeTrades === "boolean") {
+          setPlaceTrades(body.heartbeat.placeTrades);
+        }
+        if (
+          body.heartbeat.boost === "low" ||
+          body.heartbeat.boost === "medium" ||
+          body.heartbeat.boost === "high"
+        ) {
+          setIntensity(body.heartbeat.boost);
+        }
+      }
     } catch {
-      // gateway / web may still be starting
+      // ignore
     }
   }
 
@@ -81,7 +137,6 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
 
   async function post(action: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
-    setMessage(null);
     try {
       const response = await fetch("/api/sim/market-maker", {
         method: "POST",
@@ -90,50 +145,126 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
       });
       const body = (await response.json()) as StatusBody;
       if (!response.ok) {
-        setMessage(body.error?.message ?? "Request failed");
+        pushEvent(body.error?.message ?? "Request failed", "err");
         return null;
       }
       if (body.heartbeat) setStatus(body.heartbeat);
       onTickRef.current?.(body);
       return body;
     } catch {
-      setMessage("Sim unavailable — is gateway up?");
+      pushEvent("Sim unavailable — is gateway up?", "err");
       return null;
     } finally {
       setBusy(false);
     }
   }
 
+  async function syncConfig(next?: {
+    speedId?: (typeof SPEED_OPTIONS)[number]["id"];
+    intensity?: (typeof INTENSITY_OPTIONS)[number];
+    placeQuotes?: boolean;
+    placeTrades?: boolean;
+    spread?: number;
+  }) {
+    const speed =
+      SPEED_OPTIONS.find((s) => s.id === (next?.speedId ?? speedId))?.ms ?? 280;
+    const body = await post("configure", {
+      intervalMs: speed,
+      intensity: next?.intensity ?? intensity,
+      placeQuotes: next?.placeQuotes ?? placeQuotes,
+      placeTrades: next?.placeTrades ?? placeTrades,
+      spread: next?.spread ?? spread,
+    });
+    if (body) pushEvent("Sim options updated", "warn");
+  }
+
   async function toggleHeartbeat() {
     const enabled = status?.enabled ?? false;
+    if (!enabled && !placeQuotes && !placeTrades) {
+      pushEvent("Enable quotes and/or trades first", "err");
+      return;
+    }
     const body = await post(enabled ? "stop" : "start");
     if (body) {
-      setMessage(enabled ? "MM heartbeat paused" : "MM heartbeat running");
+      pushEvent(enabled ? "Simulation paused" : "Simulation started");
+      if (!enabled) await syncConfig();
     }
   }
 
-  async function applyBoost(next: "medium" | "high") {
-    setBoost(next);
-    const body = await post("presence", { boost: next });
-    if (body) setMessage(`Boost set to ${next} while viewers are on Trade`);
+  async function runOnce() {
+    pushEvent("Manual tick");
+    const body = await post("tick", {
+      intensity,
+      spread,
+      placeQuotes,
+      placeTrades,
+    });
+    if (!body) return;
+    const parts = [
+      `mid ${body.mid}`,
+      `+${body.placed ?? 0} orders`,
+      body.seeded ? "seeded book" : null,
+      body.traded ? `${body.prints?.length ?? 0} print(s)` : null,
+    ].filter(Boolean);
+    pushEvent(parts.join(" · "), body.traded ? "ok" : "warn");
   }
 
   async function clearBook() {
     const body = await post("clear");
     if (body) {
-      setMessage(`Cleared · ${body.cancelled ?? 0} cancelled`);
+      pushEvent(`Cleared order book · ${body.cancelled ?? 0} cancelled`, "warn");
     }
   }
 
-  async function runOnce() {
-    const body = await post("tick", {
-      intensity: boost === "high" ? "high" : "medium",
-    });
-    if (body) setMessage("Manual tick sent");
+  async function nuclearReset() {
+    const confirmed = window.confirm(
+      "Wipe EVERYTHING?\n\n• Order book & engine balances\n• OMS orders\n• Wallet balances\n• Trade/chart history\n• Redis streams\n\nUser logins stay. You will need to paper-fund again.",
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/dev/nuclear-reset", {
+        method: "POST",
+      });
+      const body = (await response.json()) as {
+        ok?: boolean;
+        steps?: Record<string, { ok: boolean; detail?: string }>;
+        error?: { message?: string };
+      };
+      if (!response.ok && response.status !== 207) {
+        pushEvent(body.error?.message ?? "Nuclear reset failed", "err");
+        return;
+      }
+      onTickRef.current?.({
+        wiped: true,
+        book: {
+          market: "SOL-USD",
+          bids: [],
+          asks: [],
+          bbo: { bestBid: null, bestAsk: null },
+        },
+        prints: [],
+        traded: false,
+      });
+      const failed = Object.entries(body.steps ?? {})
+        .filter(([, step]) => !step.ok)
+        .map(([name]) => name);
+      pushEvent(
+        failed.length === 0
+          ? "Nuclear wipe complete — chart/history cleared"
+          : `Wipe partial — failed: ${failed.join(", ")}`,
+        failed.length === 0 ? "warn" : "err",
+      );
+      void refreshStatus();
+    } catch {
+      pushEvent("Nuclear reset unavailable", "err");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const live = status?.enabled ?? false;
-  const intensity = status?.intensity ?? "idle";
+  const effective = status?.intensity ?? "idle";
 
   return (
     <div ref={rootRef} className="relative flex items-center gap-2">
@@ -143,13 +274,13 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
             <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
             <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
           </span>
-          MM {intensity === "idle" ? "idle" : intensity}
+          SIM {effective === "idle" ? "idle" : effective}
         </span>
       )}
 
       <button
         type="button"
-        aria-label="Market maker settings"
+        aria-label="Simulation settings"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex size-8 items-center justify-center rounded-md border transition ${
@@ -170,10 +301,10 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
               <Activity className="size-4 text-zinc-400" />
               <div>
                 <p className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-                  Market makers
+                  Simulator
                 </p>
                 <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
-                  Server heartbeat · low load by default
+                  Market makers & retail flow
                 </p>
               </div>
             </div>
@@ -181,7 +312,7 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
               type="button"
               role="switch"
               aria-checked={live}
-              aria-label="Toggle market-maker heartbeat"
+              aria-label="Toggle market simulation"
               disabled={busy}
               onClick={() => void toggleHeartbeat()}
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
@@ -197,40 +328,84 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
           </div>
 
           <div className="space-y-3 border-b border-zinc-100 px-3 py-3 dark:border-zinc-800">
-            <p className="text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
-              Idle ≈ every 4.5s. When you&apos;re on Trade, intensity rises
-              automatically so the tape feels active.
-            </p>
-
-            <div className="flex items-center justify-between gap-3 text-[11px]">
-              <span className="text-zinc-500">Effective</span>
-              <span className="font-medium capitalize text-zinc-800 dark:text-zinc-200">
-                {intensity}
-                {status?.viewersActive ? " · viewers" : " · ambient"}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-                Viewer boost
-              </span>
+            <ControlRow label="Speed">
               <div className="flex gap-1">
-                {(["medium", "high"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void applyBoost(option)}
-                    className={`rounded px-2 py-1 text-[11px] font-medium capitalize transition ${
-                      boost === option
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950"
-                        : "bg-zinc-100 text-zinc-500 hover:text-zinc-800 dark:bg-zinc-800 dark:text-zinc-400"
-                    }`}
-                  >
-                    {option}
-                  </button>
+                {SPEED_OPTIONS.map((option) => (
+                  <Chip
+                    key={option.id}
+                    active={speedId === option.id}
+                    onClick={() => {
+                      setSpeedId(option.id);
+                      void syncConfig({ speedId: option.id });
+                    }}
+                    label={option.label}
+                  />
                 ))}
               </div>
+            </ControlRow>
+
+            <ControlRow label="Intensity">
+              <div className="flex gap-1">
+                {INTENSITY_OPTIONS.map((option) => (
+                  <Chip
+                    key={option}
+                    active={intensity === option}
+                    onClick={() => {
+                      setIntensity(option);
+                      void syncConfig({ intensity: option });
+                    }}
+                    label={option}
+                  />
+                ))}
+              </div>
+            </ControlRow>
+
+            <ControlRow label="Spread">
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={1}
+                  max={6}
+                  step={1}
+                  value={spread}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setSpread(next);
+                    void syncConfig({ spread: next });
+                  }}
+                  className="h-1 w-24 accent-zinc-700 dark:accent-zinc-300"
+                />
+                <span className="w-4 text-[11px] tabular-nums text-zinc-500">
+                  {spread}
+                </span>
+              </div>
+            </ControlRow>
+
+            <div className="flex flex-wrap gap-3 text-[11px]">
+              <label className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={placeQuotes}
+                  onChange={(e) => {
+                    setPlaceQuotes(e.target.checked);
+                    void syncConfig({ placeQuotes: e.target.checked });
+                  }}
+                  className="rounded border-zinc-300 dark:border-zinc-600"
+                />
+                Place quotes
+              </label>
+              <label className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={placeTrades}
+                  onChange={(e) => {
+                    setPlaceTrades(e.target.checked);
+                    void syncConfig({ placeTrades: e.target.checked });
+                  }}
+                  className="rounded border-zinc-300 dark:border-zinc-600"
+                />
+                Retail prints
+              </label>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
@@ -252,19 +427,105 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
               </button>
             </div>
 
-            {message && (
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                {message}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void nuclearReset()}
+              className="h-8 w-full rounded-md bg-red-600 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+            >
+              Wipe all market data
+            </button>
+          </div>
+
+          <div className="px-3 py-2">
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                Recent events
               </p>
-            )}
-            {status?.lastError && (
-              <p className="text-[11px] text-red-600 dark:text-red-400">
-                {status.lastError}
-              </p>
-            )}
+              {busy && live && (
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                  ticking…
+                </span>
+              )}
+            </div>
+            <div className="ob-scroll max-h-40 space-y-1.5 pr-1">
+              {events.length === 0 ? (
+                <p className="py-5 text-center text-[11px] text-zinc-400 dark:text-zinc-500">
+                  Turn on the switch or run one tick.
+                </p>
+              ) : (
+                events.map((event) => (
+                  <div
+                    key={event.id}
+                    className="rounded-md bg-zinc-50 px-2 py-1.5 dark:bg-zinc-900/70"
+                  >
+                    <p
+                      className={`text-[11px] leading-snug ${
+                        event.tone === "err"
+                          ? "text-red-600 dark:text-red-400"
+                          : event.tone === "warn"
+                            ? "text-amber-600 dark:text-amber-400"
+                            : "text-zinc-700 dark:text-zinc-200"
+                      }`}
+                    >
+                      {event.text}
+                    </p>
+                    <p className="mt-0.5 text-[10px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                      {new Date(event.at).toLocaleTimeString(undefined, {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                        hour12: false,
+                      })}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function ControlRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded px-2 py-1 text-[11px] font-medium capitalize transition ${
+        active
+          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950"
+          : "bg-zinc-100 text-zinc-500 hover:text-zinc-800 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+      }`}
+    >
+      {label}
+    </button>
   );
 }

@@ -125,25 +125,25 @@ export function TradingPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once on mount
   }, []);
 
-  // Raise MM heartbeat intensity while this signed-in user is on Trade.
+  // Keep MM heartbeat aware that a viewer is on Trade (does not change intensity).
   useEffect(() => {
     let stopped = false;
 
-    async function ping(boost: "medium" | "high" = "medium") {
+    async function ping() {
       try {
         await fetch("/api/sim/market-maker", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: "presence", boost }),
+          body: JSON.stringify({ action: "presence" }),
         });
       } catch {
         // ignore — heartbeat may start on next ping
       }
     }
 
-    void ping("medium");
+    void ping();
     const timer = window.setInterval(() => {
-      if (!stopped) void ping("medium");
+      if (!stopped) void ping();
     }, 20_000);
 
     return () => {
@@ -373,6 +373,19 @@ export function TradingPanel() {
           </span>
           <MarketMakerControls
             onTickAction={(result) => {
+              if (result.wiped) {
+                setBook({
+                  market: "SOL-USD",
+                  bids: [],
+                  asks: [],
+                  bbo: { bestBid: null, bestAsk: null },
+                });
+                setTape([]);
+                setHistoryCandles([]);
+                void loadOrders();
+                void loadBalances();
+                return;
+              }
               if (result.book) setBook(result.book);
               if (result.prints && result.prints.length > 0) {
                 const at = Date.now();

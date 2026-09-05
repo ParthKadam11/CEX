@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { bffError, getAuthenticatedUserId } from "@/lib/backend";
 import {
   clearSimOrderBook,
+  configureSimOptions,
   getMarketMakerStatus,
   runMarketMakerTick,
   startSimHeartbeat,
@@ -50,10 +51,12 @@ export async function POST(request: NextRequest) {
 
   if (action === "presence") {
     const boost =
-      record.boost === "high" || record.boost === "medium"
+      record.boost === "high" ||
+      record.boost === "medium" ||
+      record.boost === "low"
         ? record.boost
-        : "medium";
-    const result = touchSimPresence({ boost });
+        : undefined;
+    const result = touchSimPresence(boost ? { boost } : undefined);
     // Ensure heartbeat is on when a real user is watching.
     startSimHeartbeat();
     return NextResponse.json({
@@ -61,6 +64,34 @@ export async function POST(request: NextRequest) {
       ...result,
       ...getMarketMakerStatus(),
     });
+  }
+
+  if (action === "configure") {
+    const status = configureSimOptions({
+      intensity:
+        record.intensity === "low" ||
+        record.intensity === "medium" ||
+        record.intensity === "high"
+          ? record.intensity
+          : undefined,
+      intervalMs:
+        typeof record.intervalMs === "number" && Number.isFinite(record.intervalMs)
+          ? record.intervalMs
+          : undefined,
+      placeQuotes:
+        typeof record.placeQuotes === "boolean"
+          ? record.placeQuotes
+          : undefined,
+      placeTrades:
+        typeof record.placeTrades === "boolean"
+          ? record.placeTrades
+          : undefined,
+      spread:
+        typeof record.spread === "number" && Number.isFinite(record.spread)
+          ? record.spread
+          : undefined,
+    });
+    return NextResponse.json({ ok: true, ...status });
   }
 
   if (action === "start") {
@@ -93,7 +124,7 @@ export async function POST(request: NextRequest) {
 
   const options: MarketMakerTickOptions = {
     placeQuotes: record.placeQuotes !== false,
-    placeTrades: record.placeTrades !== false,
+    placeTrades: record.placeTrades === true,
     intensity:
       record.intensity === "low" ||
       record.intensity === "medium" ||

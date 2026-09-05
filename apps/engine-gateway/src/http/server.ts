@@ -221,7 +221,24 @@ export function createGatewayApp(options: GatewayAppOptions) {
     }
 
     const streamId = await injectCommand(options.redis, body);
-    return c.json({ streamId }, 202);
+    return c.json({ ok: true, streamId }, 202);
+  });
+
+  app.post("/dev/reset", async (c) => {
+    if (process.env.NODE_ENV === "production") {
+      return errorResponse(c, 404, "DISABLED_IN_PRODUCTION");
+    }
+    try {
+      await options.engine.hardReset();
+      return c.json({ ok: true, market: options.market });
+    } catch (error) {
+      return errorResponse(
+        c,
+        502,
+        "RESET_FAILED",
+        error instanceof Error ? error.message : "RESET_FAILED",
+      );
+    }
   });
 
   return app;

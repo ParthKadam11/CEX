@@ -168,6 +168,17 @@ export class EngineClient {
     return (await res.json()) as OrderBookSnapshot;
   }
 
+  /** Dev hard-reset of exchange in-memory state + WAL. */
+  async hardReset(signal?: AbortSignal): Promise<void> {
+    const res = await this.request(
+      `/v1/dev/reset`,
+      { method: "POST", headers: this.headers() },
+      false,
+      signal,
+    );
+    if (!res.ok) throw new Error(`hardReset failed: ${res.status}`);
+  }
+
   async balances(userId: string, signal?: AbortSignal): Promise<Balance[]> {
     const res = await this.request(
       `/v1/markets/${this.market}/balances/${encodeURIComponent(userId)}`,

@@ -94,6 +94,19 @@ export function createExchangeApp(
 
   app.get("/health", (c) => c.json({ ok: true, market: runtime.market }));
 
+  // Dev hard-reset: empty book + balances + WAL (not for production).
+  app.post("/v1/dev/reset", async (c) => {
+    if (process.env.NODE_ENV === "production") {
+      return errorResponse(c, 404, "NOT_FOUND");
+    }
+    await runtime.hardReset();
+    return c.json({
+      ok: true,
+      market: runtime.market,
+      book: runtime.book.getSnapshot(0),
+    });
+  });
+
   app.post("/v1/markets/:market/credit", async (c) => {
     const market = c.req.param("market");
     if (!isMarket(market) || market !== runtime.market) {

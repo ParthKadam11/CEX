@@ -85,6 +85,21 @@ export class FileWal {
     this.closed = false;
   }
 
+  /** Empty the WAL and reset the sequence (dev hard-reset). */
+  wipe(): void {
+    this.assertOpen();
+    if (this.dirty) {
+      fs.fsyncSync(this.fd);
+      this.dirty = false;
+    }
+    fs.closeSync(this.fd);
+    this.closed = true;
+    atomicWriteFile(this.filePath, "");
+    this.seq = 0;
+    this.fd = fs.openSync(this.filePath, "a");
+    this.closed = false;
+  }
+
   close(): void {
     if (this.closed) return;
     if (this.dirty) fs.fsyncSync(this.fd);

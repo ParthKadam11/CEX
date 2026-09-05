@@ -8,6 +8,7 @@ import type {
   PlacementResult,
   Trade,
 } from "@cex/exchange-types";
+import fs from "node:fs";
 import { OrderBook } from "../book/orderBook.js";
 import {
   OrderPlacementService,
@@ -19,6 +20,7 @@ import {
   loadSnapshot,
   saveSnapshot,
   snapshotPathFor,
+  type EngineSnapshot,
 } from "../journal/snapshot.js";
 import type { EventBus } from "../api/eventBus.js";
 import { CommandQueue } from "./commandQueue.js";
@@ -116,6 +118,35 @@ export class MarketRuntime {
 
   cancel(orderId: string): Promise<CancelResult> {
     return this.enqueue(() => this.cancelNow(orderId));
+  }
+
+  /**
+   * Dev-only: wipe book, balances, order indexes, WAL, and snapshot.
+   * Market is empty afterward (users must re-credit).
+   */
+  hardReset(): Promise<void> {
+    return this.enqueue(() => {
+      this.book.clear();
+      const empty: EngineSnapshot = {
+        version: 1,
+        market: this.market,
+        walSeq: 0,
+        tradeSeq: 0,
+        eventSeq: 0,
+        ledgerSeq: 0,
+        balances: [],
+        orders: [],
+        events: [],
+        ledger: [],
+      };
+      this.placement.restoreSnapshot(empty, this.book);
+      this.wal.wipe();
+      this.snapshotSeq = 0;
+      if (this.snapshotPath && fs.existsSync(this.snapshotPath)) {
+        fs.rmSync(this.snapshotPath, { force: true });
+      }
+      this.publishBbo();
+    });
   }
 
   /** Persist live state, drop WAL history through this seq, prune RAM indexes. */

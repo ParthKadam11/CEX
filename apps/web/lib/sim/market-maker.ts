@@ -1,9 +1,6 @@
 /**
- * Low-load market ambience for demos/prod.
- * Places via gateway `/dev/inject-command` (synthetic users, no OMS User FK).
- *
- * Idle: slow cancel+requote + rare prints.
- * Presence (logged-in client on /trade): faster ticks + more prints.
+ * Market ambience for demos: MM sits on a dense resting order book.
+ * Optional rare retail IOC prints when "Retail prints" is enabled.
  */
 
 import type { OrderBookSnapshot } from "@cex/exchange-types";
@@ -14,6 +11,9 @@ import {
 
 export const MM_BID_USER = "sim-mm-bid";
 export const MM_ASK_USER = "sim-mm-ask";
+/** Extra quote accounts so each price level can stack size. */
+export const MM_BID_USERS = [MM_BID_USER, "sim-mm-bid-b"] as const;
+export const MM_ASK_USERS = [MM_ASK_USER, "sim-mm-ask-b"] as const;
 export const RETAIL_USERS = [
   "sim-trader-alice",
   "sim-trader-bob",
@@ -21,14 +21,18 @@ export const RETAIL_USERS = [
   "sim-trader-dave",
 ] as const;
 
-const ALL_USERS = [MM_BID_USER, MM_ASK_USER, ...RETAIL_USERS] as const;
-const MM_USERS = [MM_BID_USER, MM_ASK_USER] as const;
+const MM_USERS = [...MM_BID_USERS, ...MM_ASK_USERS] as const;
+const ALL_USERS = [...MM_USERS, ...RETAIL_USERS] as const;
 
 const DEFAULT_MID = 100;
-/** Tight ladder — enough to look like MMs without book bloat. */
-const LADDER = [1, 2, 3, 5, 8] as const;
-const SETTLE_MS = 60;
+/** Contiguous price offsets from mid — dense resting book. */
+const LADDER_DEPTH = 18;
+const SETTLE_MS = 20;
 const PRESENCE_TTL_MS = 45_000;
+/** Bump when MM accounts / funding change so hot-reload re-credits. */
+const FUND_EPOCH = 2;
+/** Bump when default MM behaviour changes (e.g. quotes-only). */
+const DEFAULTS_EPOCH = 2;
 
 export type SimIntensity = "idle" | "medium" | "high";
 
@@ -39,20 +43,27 @@ type BookBbo = {
 
 type SimState = {
   funded: boolean;
+  fundEpoch: number;
   ticks: number;
   lastMid: number;
 };
 
 type HeartbeatState = {
   enabled: boolean;
-  /** Preferred intensity while viewers are present. */
-  boost: "medium" | "high";
+  /** Preferred intensity while viewers are present / client boost. */
+  boost: "low" | "medium" | "high";
+  /** Tick interval override from UI speed control (ms). */
+  intervalMs: number | null;
+  placeQuotes: boolean;
+  placeTrades: boolean;
+  spread: number;
   lastPresenceAt: number;
   viewers: number;
   timer: ReturnType<typeof setTimeout> | null;
   inFlight: boolean;
   lastError: string | null;
   lastTickAt: number | null;
+  defaultsEpoch: number;
 };
 
 const globalSim = globalThis as unknown as {
@@ -62,7 +73,14 @@ const globalSim = globalThis as unknown as {
 
 function state(): SimState {
   if (!globalSim.__cexMmSim) {
-    globalSim.__cexMmSim = { funded: false, ticks: 0, lastMid: DEFAULT_MID };
+    globalSim.__cexMmSim = {
+      funded: false,
+      fundEpoch: 0,
+      ticks: 0,
+      lastMid: DEFAULT_MID,
+    };
+  } else if (typeof globalSim.__cexMmSim.fundEpoch !== "number") {
+    globalSim.__cexMmSim.fundEpoch = 0;
   }
   return globalSim.__cexMmSim;
 }
@@ -72,13 +90,27 @@ function heartbeat(): HeartbeatState {
     globalSim.__cexMmHeartbeat = {
       enabled: false,
       boost: "medium",
+      intervalMs: null,
+      placeQuotes: true,
+      placeTrades: false,
+      spread: 1,
       lastPresenceAt: 0,
       viewers: 0,
       timer: null,
       inFlight: false,
       lastError: null,
       lastTickAt: null,
+      defaultsEpoch: DEFAULTS_EPOCH,
     };
+  } else if (globalSim.__cexMmHeartbeat.defaultsEpoch !== DEFAULTS_EPOCH) {
+    // Quote-first: MM sits on the book; trades are opt-in.
+    globalSim.__cexMmHeartbeat.placeTrades = false;
+    globalSim.__cexMmHeartbeat.placeQuotes = true;
+    globalSim.__cexMmHeartbeat.spread = Math.min(
+      globalSim.__cexMmHeartbeat.spread || 1,
+      2,
+    );
+    globalSim.__cexMmHeartbeat.defaultsEpoch = DEFAULTS_EPOCH;
   }
   return globalSim.__cexMmHeartbeat;
 }
@@ -90,20 +122,38 @@ function hasActivePresence(hb: HeartbeatState): boolean {
 /** Effective intensity for the next tick. */
 export function resolveEffectiveIntensity(): SimIntensity {
   const hb = heartbeat();
-  if (!hasActivePresence(hb)) return "idle";
+  if (!hasActivePresence(hb) && hb.intervalMs == null) return "idle";
+  if (hb.boost === "low") return "idle";
   return hb.boost;
 }
 
 function intervalFor(intensity: SimIntensity): number {
-  if (intensity === "high") return 900;
-  if (intensity === "medium") return 1_800;
-  return 4_500;
+  const hb = heartbeat();
+  // Intensity defaults (ms). Speed override can only slow things down from these floors
+  // when explicitly set higher — high stays snappy.
+  const byIntensity =
+    intensity === "high" ? 160 : intensity === "medium" ? 420 : 2_800;
+  if (hb.intervalMs != null && hb.intervalMs > 0) {
+    if (intensity === "high") return Math.min(hb.intervalMs, 220);
+    return hb.intervalMs;
+  }
+  return byIntensity;
 }
 
 function tradeChance(intensity: SimIntensity): number {
-  if (intensity === "high") return 0.85;
-  if (intensity === "medium") return 0.55;
-  return 0.22;
+  // Trades are optional ambience only — MM's job is resting quotes.
+  if (intensity === "high") return 0.12;
+  if (intensity === "medium") return 0.06;
+  return 0.02;
+}
+
+function tradesPerTick(intensity: SimIntensity): number {
+  if (intensity === "high") return Math.random() < 0.4 ? 1 : 0;
+  return Math.random() < 0.2 ? 1 : 0;
+}
+
+function ladderQty(offset: number): number {
+  return 2 + Math.floor(offset / 2) + (offset % 3);
 }
 
 async function inject(command: Record<string, unknown>): Promise<boolean> {
@@ -201,13 +251,17 @@ function resolveMid(bbo: BookBbo, fallback: number): number {
 
 async function ensureFunded(): Promise<void> {
   const s = state();
-  if (s.funded) return;
+  if (s.funded && s.fundEpoch === FUND_EPOCH) return;
 
   await Promise.all([
-    injectCredit(MM_BID_USER, "USD", 5_000_000),
-    injectCredit(MM_ASK_USER, "SOL", 50_000),
-    injectCredit(MM_BID_USER, "SOL", 5_000),
-    injectCredit(MM_ASK_USER, "USD", 500_000),
+    ...MM_BID_USERS.flatMap((user) => [
+      injectCredit(user, "USD", 10_000_000),
+      injectCredit(user, "SOL", 10_000),
+    ]),
+    ...MM_ASK_USERS.flatMap((user) => [
+      injectCredit(user, "SOL", 100_000),
+      injectCredit(user, "USD", 1_000_000),
+    ]),
     ...RETAIL_USERS.flatMap((user) => [
       injectCredit(user, "USD", 250_000),
       injectCredit(user, "SOL", 2_500),
@@ -216,34 +270,132 @@ async function ensureFunded(): Promise<void> {
 
   await sleep(SETTLE_MS * 3);
   s.funded = true;
+  s.fundEpoch = FUND_EPOCH;
 }
 
+function bookPriceSets(book: OrderBookSnapshot | null): {
+  bids: Set<number>;
+  asks: Set<number>;
+  bidLevels: number;
+  askLevels: number;
+} {
+  const bids = new Set(
+    (book?.bids ?? []).map((l) => Number(l.price)).filter((p) => Number.isFinite(p)),
+  );
+  const asks = new Set(
+    (book?.asks ?? []).map((l) => Number(l.price)).filter((p) => Number.isFinite(p)),
+  );
+  return {
+    bids,
+    asks,
+    bidLevels: bids.size,
+    askLevels: asks.size,
+  };
+}
+
+/** Place resting GTC quotes at every integer offset from mid (both MM stacks). */
 async function seedLadder(mid: number): Promise<number> {
-  const jobs: Promise<boolean>[] = [];
-  for (const offset of LADDER) {
+  const jobs: Array<() => Promise<boolean>> = [];
+  for (let offset = 1; offset <= LADDER_DEPTH; offset += 1) {
     const bid = mid - offset;
     const ask = mid + offset;
-    if (bid >= 1) {
-      jobs.push(
+    const qty = ladderQty(offset);
+    for (const userId of MM_BID_USERS) {
+      if (bid >= 1) {
+        jobs.push(() =>
+          injectPlace({
+            userId,
+            side: "BUY",
+            price: bid,
+            quantity: qty,
+          }),
+        );
+      }
+    }
+    for (const userId of MM_ASK_USERS) {
+      jobs.push(() =>
         injectPlace({
-          userId: MM_BID_USER,
-          side: "BUY",
-          price: bid,
-          quantity: 1 + (offset % 3),
+          userId,
+          side: "SELL",
+          price: ask,
+          quantity: qty,
         }),
       );
     }
-    jobs.push(
-      injectPlace({
-        userId: MM_ASK_USER,
-        side: "SELL",
-        price: ask,
-        quantity: 1 + (offset % 3),
-      }),
-    );
   }
-  const results = await Promise.all(jobs);
-  return results.filter(Boolean).length;
+  // Chunk so we don't stampede the gateway on cold start.
+  let placed = 0;
+  const CHUNK = 16;
+  for (let i = 0; i < jobs.length; i += CHUNK) {
+    const results = await Promise.all(jobs.slice(i, i + CHUNK).map((fn) => fn()));
+    placed += results.filter(Boolean).length;
+  }
+  return placed;
+}
+
+/**
+ * Fill missing ladder prices without wiping existing depth.
+ * This is how the book gets thick quickly and stays that way.
+ */
+async function topUpLadder(
+  mid: number,
+  book: OrderBookSnapshot | null,
+): Promise<number> {
+  const { bids, asks } = bookPriceSets(book);
+  const jobs: Array<() => Promise<boolean>> = [];
+  for (let offset = 1; offset <= LADDER_DEPTH; offset += 1) {
+    const bid = mid - offset;
+    const ask = mid + offset;
+    const qty = ladderQty(offset);
+    if (bid >= 1 && !bids.has(bid)) {
+      jobs.push(() =>
+        injectPlace({
+          userId: MM_BID_USERS[0]!,
+          side: "BUY",
+          price: bid,
+          quantity: qty,
+        }),
+      );
+      if (offset <= 8) {
+        jobs.push(() =>
+          injectPlace({
+            userId: MM_BID_USERS[1]!,
+            side: "BUY",
+            price: bid,
+            quantity: qty,
+          }),
+        );
+      }
+    }
+    if (!asks.has(ask)) {
+      jobs.push(() =>
+        injectPlace({
+          userId: MM_ASK_USERS[0]!,
+          side: "SELL",
+          price: ask,
+          quantity: qty,
+        }),
+      );
+      if (offset <= 8) {
+        jobs.push(() =>
+          injectPlace({
+            userId: MM_ASK_USERS[1]!,
+            side: "SELL",
+            price: ask,
+            quantity: qty,
+          }),
+        );
+      }
+    }
+  }
+  if (jobs.length === 0) return 0;
+  const CHUNK = 16;
+  let placed = 0;
+  for (let i = 0; i < jobs.length; i += CHUNK) {
+    const results = await Promise.all(jobs.slice(i, i + CHUNK).map((fn) => fn()));
+    placed += results.filter(Boolean).length;
+  }
+  return placed;
 }
 
 /** Cancel only MM quotes so the book stays capped. */
@@ -294,7 +446,7 @@ export async function runMarketMakerTick(
   prints: { price: number; quantity: number }[];
 }> {
   const placeQuotes = options.placeQuotes !== false;
-  const placeTrades = options.placeTrades !== false;
+  const placeTrades = options.placeTrades === true;
   const intensity = options.intensity ?? "medium";
   const spreadBase = Math.max(1, Math.min(10, options.spread ?? 2));
 
@@ -311,10 +463,31 @@ export async function runMarketMakerTick(
   const prints: { price: number; quantity: number }[] = [];
 
   const empty = bbo.bestBid == null && bbo.bestAsk == null;
-  if (empty || placeQuotes) {
+  // Manual tick: only rebuild when empty; otherwise nudge + trade.
+  if (empty) {
     await cancelMmQuotes();
     placed += await seedLadder(mid);
     seeded = true;
+    await sleep(SETTLE_MS);
+    book = await readBook();
+  } else if (placeQuotes) {
+    const jitter = spreadBase + Math.floor(Math.random() * spreadBase);
+    const qty = 1 + Math.floor(Math.random() * 2);
+    const results = await Promise.all([
+      injectPlace({
+        userId: MM_BID_USER,
+        side: "BUY",
+        price: Math.max(1, mid - jitter),
+        quantity: qty,
+      }),
+      injectPlace({
+        userId: MM_ASK_USER,
+        side: "SELL",
+        price: mid + jitter,
+        quantity: qty,
+      }),
+    ]);
+    placed += results.filter(Boolean).length;
     await sleep(SETTLE_MS);
     book = await readBook();
   }
@@ -351,9 +524,6 @@ export async function runMarketMakerTick(
     }
   }
 
-  // spreadBase unused after requote style — keep API stable
-  void spreadBase;
-
   s.ticks += 1;
   return {
     mid: resolveMid(book?.bbo ?? bbo, mid),
@@ -366,7 +536,7 @@ export async function runMarketMakerTick(
   };
 }
 
-/** One low-load heartbeat: replace MM ladder + maybe one retail print. */
+/** One low-load heartbeat: keep a stable MM ladder; trade / nudge without wiping the book. */
 export async function runHeartbeatTick(): Promise<{
   mid: number;
   placed: number;
@@ -376,6 +546,7 @@ export async function runHeartbeatTick(): Promise<{
   book: OrderBookSnapshot | null;
   prints: { price: number; quantity: number }[];
 }> {
+  const hb = heartbeat();
   const intensity = resolveEffectiveIntensity();
   await ensureFunded();
   const s = state();
@@ -383,44 +554,70 @@ export async function runHeartbeatTick(): Promise<{
   const bbo = book?.bbo ?? { bestBid: null, bestAsk: null };
   let mid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
 
-  // Slight drift so the chart isn't flat forever.
-  if (intensity !== "idle" && Math.random() < 0.35) {
+  // Slight drift so the chart isn't flat forever (quotes follow; rare prints optional).
+  if (intensity !== "idle" && Math.random() < (intensity === "high" ? 0.25 : 0.12)) {
     mid = Math.max(1, mid + (Math.random() < 0.5 ? -1 : 1));
   }
   s.lastMid = mid;
 
-  const cancelled = await cancelMmQuotes();
-  const placed = await seedLadder(mid);
-  await sleep(SETTLE_MS);
-  book = await readBook();
+  let cancelled = 0;
+  let placed = 0;
+  const levels = bookPriceSets(book);
+  const empty = levels.bidLevels === 0 && levels.askLevels === 0;
+  const thin =
+    levels.bidLevels < Math.floor(LADDER_DEPTH * 0.7) ||
+    levels.askLevels < Math.floor(LADDER_DEPTH * 0.7);
+  // Rare full rebuild — MM should sit on the book, not churn it.
+  const rebuildEvery = intensity === "high" ? 80 : 120;
+  const shouldRebuild = empty || s.ticks % rebuildEvery === 0;
 
-  const prints: { price: number; quantity: number }[] = [];
-  let traded = false;
-  const live = book?.bbo ?? bbo;
-  if (
-    live.bestAsk != null &&
-    live.bestBid != null &&
-    Math.random() < tradeChance(intensity)
-  ) {
-    const buy = Math.random() < 0.5;
-    const px = buy ? Number(live.bestAsk) : Number(live.bestBid);
-    const ok = await injectPlace({
-      userId: pickRetail(),
-      side: buy ? "BUY" : "SELL",
-      price: px,
-      quantity: 1,
-      timeInForce: "IOC",
-    });
-    if (ok) {
-      traded = true;
-      prints.push({ price: px, quantity: 1 });
+  if (hb.placeQuotes && shouldRebuild) {
+    cancelled = await cancelMmQuotes();
+    placed = await seedLadder(mid);
+    await sleep(SETTLE_MS);
+    book = await readBook();
+  } else if (hb.placeQuotes && (thin || intensity !== "idle")) {
+    // Always top up missing ladder prices so depth fills / stays thick.
+    placed = await topUpLadder(mid, book);
+    if (placed > 0) {
       await sleep(SETTLE_MS);
       book = await readBook();
     }
   }
 
+  const prints: { price: number; quantity: number }[] = [];
+  let traded = false;
+  let live = book?.bbo ?? bbo;
+  // Optional rare retail prints — off by default; never the main MM job.
+  if (hb.placeTrades) {
+    const nTrades = tradesPerTick(intensity);
+    for (let i = 0; i < nTrades; i++) {
+      if (
+        live.bestAsk == null ||
+        live.bestBid == null ||
+        Math.random() >= tradeChance(intensity)
+      ) {
+        continue;
+      }
+      const buy = Math.random() < 0.5;
+      const px = buy ? Number(live.bestAsk) : Number(live.bestBid);
+      const ok = await injectPlace({
+        userId: pickRetail(),
+        side: buy ? "BUY" : "SELL",
+        price: px,
+        quantity: 1,
+        timeInForce: "IOC",
+      });
+      if (ok) {
+        traded = true;
+        prints.push({ price: px, quantity: 1 });
+        book = await readBook();
+        live = book?.bbo ?? live;
+      }
+    }
+  }
+
   s.ticks += 1;
-  const hb = heartbeat();
   hb.lastTickAt = Date.now();
   hb.lastError = null;
 
@@ -435,31 +632,35 @@ export async function runHeartbeatTick(): Promise<{
   };
 }
 
-function scheduleNext(): void {
+function scheduleNext(delayMs?: number): void {
   const hb = heartbeat();
   if (!hb.enabled) return;
   if (hb.timer) clearTimeout(hb.timer);
-  const ms = intervalFor(resolveEffectiveIntensity());
+  const ms =
+    delayMs ?? intervalFor(resolveEffectiveIntensity());
   hb.timer = setTimeout(() => {
     void loopOnce();
-  }, ms);
+  }, Math.max(0, ms));
 }
 
 async function loopOnce(): Promise<void> {
   const hb = heartbeat();
   if (!hb.enabled) return;
   if (hb.inFlight) {
-    scheduleNext();
+    scheduleNext(50);
     return;
   }
   hb.inFlight = true;
+  // Wall-clock cadence: next tick is due from *start*, so slow engine
+  // round-trips don't stack on top of the interval.
+  const dueAt = Date.now() + intervalFor(resolveEffectiveIntensity());
   try {
     await runHeartbeatTick();
   } catch (error) {
     hb.lastError = error instanceof Error ? error.message : String(error);
   } finally {
     hb.inFlight = false;
-    scheduleNext();
+    scheduleNext(dueAt - Date.now());
   }
 }
 
@@ -489,14 +690,18 @@ export function stopSimHeartbeat(): { stopped: boolean } {
  * Raises effective intensity until presence TTL expires.
  */
 export function touchSimPresence(options?: {
-  boost?: "medium" | "high";
+  boost?: "low" | "medium" | "high";
 }): {
   intensity: SimIntensity;
-  boost: "medium" | "high";
+  boost: "low" | "medium" | "high";
 } {
   const hb = heartbeat();
   hb.lastPresenceAt = Date.now();
-  if (options?.boost === "high" || options?.boost === "medium") {
+  if (
+    options?.boost === "high" ||
+    options?.boost === "medium" ||
+    options?.boost === "low"
+  ) {
     hb.boost = options.boost;
   }
   // Nudge sooner when someone arrives.
@@ -508,6 +713,46 @@ export function touchSimPresence(options?: {
     intensity: resolveEffectiveIntensity(),
     boost: hb.boost,
   };
+}
+
+/** Apply Speed / Intensity / Spread / quote-trade toggles from the MM menu. */
+export function configureSimOptions(options: {
+  intensity?: "low" | "medium" | "high";
+  intervalMs?: number;
+  placeQuotes?: boolean;
+  placeTrades?: boolean;
+  spread?: number;
+}): ReturnType<typeof getMarketMakerStatus> {
+  const hb = heartbeat();
+  if (
+    options.intensity === "low" ||
+    options.intensity === "medium" ||
+    options.intensity === "high"
+  ) {
+    hb.boost = options.intensity;
+    hb.lastPresenceAt = Date.now();
+  }
+  if (typeof options.intervalMs === "number" && options.intervalMs > 0) {
+    hb.intervalMs = options.intervalMs;
+  }
+  // High should feel fast even if Speed was left on Normal/Slow.
+  if (hb.boost === "high" && (hb.intervalMs == null || hb.intervalMs > 180)) {
+    hb.intervalMs = 160;
+  }
+  if (typeof options.placeQuotes === "boolean") {
+    hb.placeQuotes = options.placeQuotes;
+  }
+  if (typeof options.placeTrades === "boolean") {
+    hb.placeTrades = options.placeTrades;
+  }
+  if (typeof options.spread === "number" && Number.isFinite(options.spread)) {
+    hb.spread = Math.max(1, Math.min(10, options.spread));
+  }
+  if (hb.enabled && !hb.inFlight) {
+    if (hb.timer) clearTimeout(hb.timer);
+    hb.timer = setTimeout(() => void loopOnce(), 100);
+  }
+  return getMarketMakerStatus();
 }
 
 export function getMarketMakerStatus() {
@@ -523,6 +768,9 @@ export function getMarketMakerStatus() {
       enabled: hb.enabled,
       intensity,
       boost: hb.boost,
+      placeQuotes: hb.placeQuotes,
+      placeTrades: hb.placeTrades,
+      spread: hb.spread,
       viewersActive: hasActivePresence(hb),
       lastPresenceAt: hb.lastPresenceAt || null,
       lastTickAt: hb.lastTickAt,
@@ -530,6 +778,18 @@ export function getMarketMakerStatus() {
       intervalMs: intervalFor(intensity),
     },
   };
+}
+
+/** Reset in-process sim counters so the next tick re-funds and re-seeds. */
+export function resetSimRuntimeState(): void {
+  const s = state();
+  s.funded = false;
+  s.fundEpoch = 0;
+  s.ticks = 0;
+  s.lastMid = DEFAULT_MID;
+  const hb = heartbeat();
+  hb.lastError = null;
+  hb.lastTickAt = null;
 }
 
 /** Cancel every resting order owned by sim users and reset tick state. */
