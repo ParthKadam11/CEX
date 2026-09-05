@@ -90,6 +90,22 @@ export function createGatewayApp(options: GatewayAppOptions) {
     }
   });
 
+  app.get("/markets/:market/mark", async (c) => {
+    const engine = options.engines.tryGet(c.req.param("market"));
+    if (!engine) return errorResponse(c, 404, "UNKNOWN_MARKET");
+
+    try {
+      return c.json(await engine.mark());
+    } catch (error) {
+      return errorResponse(
+        c,
+        502,
+        "MARK_UNAVAILABLE",
+        error instanceof Error ? error.message : "MARK_UNAVAILABLE",
+      );
+    }
+  });
+
   app.get("/markets/:market/orders", async (c) => {
     const engine = options.engines.tryGet(c.req.param("market"));
     if (!engine) return errorResponse(c, 404, "UNKNOWN_MARKET");

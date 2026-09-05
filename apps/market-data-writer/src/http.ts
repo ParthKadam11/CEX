@@ -1,10 +1,14 @@
 import { Hono, type Context } from "hono";
 import {
   isBoundedPositiveInteger,
+  isMarketSymbol,
   MAX_PAGE_LIMIT,
+  type MarketSymbol,
 } from "@cex/exchange-types";
 import type { Pool } from "pg";
 import { listBbo, listCandles, listTrades } from "./history.js";
+
+const MARKETS: MarketSymbol[] = ["SOL-USD", "SOL-USD-PERP"];
 
 export function createHistoryApp(
   pool: Pool,
@@ -26,21 +30,22 @@ export function createHistoryApp(
   app.get("/health", async (c) => {
     try {
       await pool.query("SELECT 1");
-      return c.json({ ok: true, service: "market-data-writer" });
+      return c.json({ ok: true, service: "market-data-writer", markets: MARKETS });
     } catch {
       return errorResponse(c, 503, "TIMESCALE_UNAVAILABLE");
     }
   });
 
+  app.get("/markets", (c) => c.json({ markets: MARKETS }));
+
   app.get("/markets/:market/trades", async (c) => {
-    if (c.req.param("market") !== "SOL-USD") {
-      return errorResponse(c, 404, "UNKNOWN_MARKET");
-    }
+    const market = parseMarket(c.req.param("market"));
+    if (!market) return errorResponse(c, 404, "UNKNOWN_MARKET");
     const limit = parseLimit(c);
     if (limit === null) return errorResponse(c, 400, "INVALID_LIMIT");
     try {
       return c.json({
-        trades: await listTrades(pool, "SOL-USD", limit),
+        trades: await listTrades(pool, market, limit),
       });
     } catch {
       return errorResponse(c, 503, "TIMESCALE_UNAVAILABLE");
@@ -48,14 +53,13 @@ export function createHistoryApp(
   });
 
   app.get("/markets/:market/bbo", async (c) => {
-    if (c.req.param("market") !== "SOL-USD") {
-      return errorResponse(c, 404, "UNKNOWN_MARKET");
-    }
+    const market = parseMarket(c.req.param("market"));
+    if (!market) return errorResponse(c, 404, "UNKNOWN_MARKET");
     const limit = parseLimit(c);
     if (limit === null) return errorResponse(c, 400, "INVALID_LIMIT");
     try {
       return c.json({
-        snapshots: await listBbo(pool, "SOL-USD", limit),
+        snapshots: await listBbo(pool, market, limit),
       });
     } catch {
       return errorResponse(c, 503, "TIMESCALE_UNAVAILABLE");
@@ -63,14 +67,13 @@ export function createHistoryApp(
   });
 
   app.get("/markets/:market/candles", async (c) => {
-    if (c.req.param("market") !== "SOL-USD") {
-      return errorResponse(c, 404, "UNKNOWN_MARKET");
-    }
+    const market = parseMarket(c.req.param("market"));
+    if (!market) return errorResponse(c, 404, "UNKNOWN_MARKET");
     const limit = parseLimit(c);
     if (limit === null) return errorResponse(c, 400, "INVALID_LIMIT");
     try {
       return c.json({
-        candles: await listCandles(pool, "SOL-USD", limit),
+        candles: await listCandles(pool, market, limit),
       });
     } catch {
       return errorResponse(c, 503, "TIMESCALE_UNAVAILABLE");
@@ -79,6 +82,10 @@ export function createHistoryApp(
 
   app.onError((_error, c) => errorResponse(c, 500, "INTERNAL_ERROR"));
   return app;
+}
+
+function parseMarket(value: string): MarketSymbol | null {
+  return isMarketSymbol(value) ? value : null;
 }
 
 function parseLimit(context: Context): number | null {

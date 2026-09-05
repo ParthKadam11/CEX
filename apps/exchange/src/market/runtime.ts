@@ -24,6 +24,7 @@ import {
 } from "../journal/snapshot.js";
 import type { EventBus } from "../api/eventBus.js";
 import { CommandQueue } from "./commandQueue.js";
+import { resolveMarkPrice, type MarkPriceSnapshot } from "../risk/markPrice.js";
 
 export type MarketRuntimeOptions = {
   /** Write a snapshot and truncate the WAL every N commands. 0 disables. */
@@ -114,6 +115,10 @@ export class MarketRuntime {
 
   get positions() {
     return this.placement.positions;
+  }
+
+  markPrice(): MarkPriceSnapshot {
+    return resolveMarkPrice(this.book, this.placement.getLastTradePrice());
   }
 
   credit(userId: string, asset: AssetId, amount: number) {

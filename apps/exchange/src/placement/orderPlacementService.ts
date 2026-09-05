@@ -97,6 +97,10 @@ export class OrderPlacementService {
     return this.positionStore;
   }
 
+  getLastTradePrice(): number | null {
+    return this.matcher.getLastTradePrice();
+  }
+
   onPositionUpdate(handler: (position: Position) => void): void {
     this.positionHandlers.push(handler);
   }
@@ -128,6 +132,8 @@ export class OrderPlacementService {
     this.money.ledger.replace(snapshot.ledger, snapshot.ledgerSeq);
     this.log.replace(snapshot.events, snapshot.eventSeq);
     this.matcher.setTradeSeq(snapshot.tradeSeq);
+    // Best-effort: no durable last-trade in v1 snapshots; leave null until next fill.
+    this.matcher.setLastTradePrice(null);
 
     for (const recorded of snapshot.orders) {
       const order = cloneOrder(recorded);

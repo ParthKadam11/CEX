@@ -5,28 +5,23 @@ CEX is a TypeScript monorepo for a centralized exchange prototype. The repositor
 ## Repository Overview
 
 - `apps/exchange`  
-  A single-market exchange process for `SOL-USD`. It maintains the order book, validates units, matches orders, locks and settles balances, writes a durable command WAL, checkpoints snapshots, and exposes an HTTP + SSE API.
-
+Single-writer matching engine process (one market per process). Supports spot `SOL-USD` and perpetual `SOL-USD-PERP` (USD margin + positions).
 - `apps/web`  
-  A Next.js application with Google sign-in, paper trading balances, and a dashboard for engine balances, orders, and the SOL-USD market.
-
+A Next.js application with Google sign-in, paper trading balances, and a dashboard for engine balances, orders, and the SOL-USD market.
 - `apps/market-data-writer`  
-  A separate Redis consumer that persists durable BBO and trade events into TimescaleDB and serves historical market-data queries.
-
+A separate Redis consumer that persists durable BBO and trade events into TimescaleDB and serves historical market-data queries.
 - `packages/exchange-types`  
-  Shared engine domain types such as orders, trades, balances, events, and engine commands.
-
+Shared engine domain types such as orders, trades, balances, events, and engine commands.
 - `packages/db`  
-  Prisma client and schema for user accounts and wallet data.
-
+Prisma client and schema for user accounts and wallet data.
 - `packages/solana`  
-  Shared Solana RPC helpers used by the web app.
-
+Shared Solana RPC helpers used by the web app.
 - `packages/app-contracts`  
-  Application-layer message contracts for Redis Streams, Redis pub/sub, and market-data payloads.
-
+Application-layer message contracts for Redis Streams, Redis pub/sub, and market-data payloads.
 - `infra`  
-  Local infrastructure for the application layer, currently Redis and TimescaleDB.
+Local infrastructure for the application layer, currently Redis and TimescaleDB.
+
+
 
 ## Current Architecture
 
@@ -44,6 +39,8 @@ Application layer
   └─ md:events → market-data-writer → TimescaleDB
 ```
 
+
+
 ### Exchange engine
 
 The exchange engine is intentionally single-writer per market. It keeps matching logic in memory and uses disk only for crash recovery.
@@ -54,6 +51,8 @@ The exchange engine is intentionally single-writer per market. It keeps matching
 - Snapshots shorten restart time by restoring state and replaying only the WAL tail.
 - `EventBus` publishes live `ORDER`, `BBO`, and `CREDIT` events for SSE consumers.
 
+
+
 ### Application layer direction
 
 The application layer wraps the engine with service boundaries:
@@ -63,6 +62,8 @@ The application layer wraps the engine with service boundaries:
 - Redis pub/sub for live best bid/ask and trade fan-out
 - The durable `md:events` stream and TimescaleDB for historical market data
 - The existing Postgres database for users, wallets, and OMS order state
+
+
 
 ## Monorepo Layout
 
@@ -83,6 +84,8 @@ CEX/
     └── typescript-config/
 ```
 
+
+
 ## Prerequisites
 
 - Node.js `>=20`
@@ -96,11 +99,15 @@ Enable Corepack if needed:
 corepack enable
 ```
 
+
+
 ## Installation
 
 ```bash
 pnpm install
 ```
+
+
 
 ## Environment
 
@@ -138,7 +145,11 @@ pnpm db:generate
 pnpm db:migrate
 ```
 
+
+
 ## Running the project
+
+
 
 ### Web app
 
@@ -154,14 +165,24 @@ Runs the Next.js app at `http://localhost:3000`.
 pnpm dev:exchange
 ```
 
-Runs the exchange service at `http://localhost:4010`.
+Runs the spot engine (`SOL-USD`) at `http://localhost:4010`.
+
+```bash
+pnpm dev:exchange:perp
+```
+
+Runs the perp engine (`SOL-USD-PERP`) at `http://localhost:4011` with its own WAL (`data/SOL-USD-PERP.jsonl`).
 
 Supported engine environment variables:
 
+- `EXCHANGE_MARKET`  
+`SOL-USD` (default) or `SOL-USD-PERP`.
 - `EXCHANGE_PORT`  
-  Port for the HTTP/SSE server. Defaults to `4010`.
+Port for the HTTP/SSE server. Defaults to `4010` (use `4011` for perps).
 - `EXCHANGE_WAL_PATH`  
-  Path to the market WAL file. Defaults to `apps/exchange/data/SOL-USD.jsonl` relative to the package working directory.
+Path to the market WAL file. Defaults to `apps/exchange/data/<market>.jsonl`.
+
+
 
 ### Application-layer infra
 
@@ -181,7 +202,7 @@ The engine gateway is the only application-layer service that talks to the excha
 pnpm dev:gateway
 ```
 
-It consumes commands from `orders:commands`, calls the exchange HTTP API, consumes exchange SSE events, and publishes order events to `orders:events`. It also publishes live BBO and trade data through Redis pub/sub.
+By default this wires spot (`EXCHANGE_URL=:4010`) and perps (`EXCHANGE_PERP_URL=:4011`). It consumes commands from `orders:commands`, routes by `market` to the correct engine, consumes exchange SSE, and publishes order events / live MD. Commands may include `leverage` (perps) and optional `market` on `CREDIT`.
 
 ### Order Management Service
 
@@ -211,30 +232,40 @@ the public BFF/internal service boundaries.
 
 ## Exchange API
 
-The exchange currently exposes one market, `SOL-USD`. Its command, balance, book, and stream APIs are internal gateway APIs and require `x-gateway-token`. Only `/health` is public.
+Each exchange process serves one market (`SOL-USD` or `SOL-USD-PERP`). Command, balance, book, and stream APIs require `x-gateway-token`. Only `/health` is public.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/health` | Process health and active market |
-| `POST` | `/v1/markets/:market/credit` | Internal gateway credit operation |
-| `POST` | `/v1/markets/:market/orders` | Place a limit or market order |
-| `DELETE` | `/v1/markets/:market/orders/:orderId` | Cancel an order |
-| `GET` | `/v1/markets/:market/orders/:orderId` | Fetch one order |
-| `GET` | `/v1/markets/:market/orders?userId=&openOnly=` | Fetch user orders |
-| `GET` | `/v1/markets/:market/balances/:userId` | Fetch engine balances |
-| `GET` | `/v1/markets/:market/book` | Fetch order book snapshot |
-| `GET` | `/v1/markets/:market/stream?userId=` | Subscribe to live SSE |
+
+| Method   | Path                                           | Purpose                                              |
+| -------- | ---------------------------------------------- | ---------------------------------------------------- |
+| `GET`    | `/health`                                      | Process health and active market                     |
+| `POST`   | `/v1/markets/:market/credit`                   | Internal gateway credit operation                    |
+| `POST`   | `/v1/markets/:market/orders`                   | Place a limit or market order (`leverage` for perps) |
+| `DELETE` | `/v1/markets/:market/orders/:orderId`          | Cancel an order                                      |
+| `GET`    | `/v1/markets/:market/orders/:orderId`          | Fetch one order                                      |
+| `GET`    | `/v1/markets/:market/orders?userId=&openOnly=` | Fetch user orders                                    |
+| `GET`    | `/v1/markets/:market/balances/:userId`         | Fetch engine balances                                |
+| `GET`    | `/v1/markets/:market/positions`                | List positions (perp)                                |
+| `GET`    | `/v1/markets/:market/positions/:userId`        | Fetch one user position                              |
+| `GET`    | `/v1/markets/:market/mark`                     | Mark price (BBO mid or last trade)                   |
+| `GET`    | `/v1/markets/:market/book`                     | Fetch order book snapshot                            |
+| `GET`    | `/v1/markets/:market/stream?userId=`           | Subscribe to live SSE                                |
+
 
 Notable engine rules:
 
 - Units are integer-only.
-- Market buys require `quoteBudget`.
+- Spot market buys require `quoteBudget`; perp MARKET orders require `quoteBudget` on both sides (notional cap for margin).
+- Perps lock USD margin (`ceil(notional / leverage)`); fills update positions and realize PnL — no SOL delivery.
 - `FOK_BUDGET` is a market-buy-only fill-or-kill order. It must fill the
-  requested quantity within `quoteBudget` or reject before matching.
+requested quantity within `quoteBudget` or reject before matching.
 - The exchange `BalanceStore` and its WAL are authoritative for trading balances.
 - Postgres `UsdWallet` is legacy onboarding data, not an execution balance.
 
+
+
 ## Testing
+
+
 
 ### Exchange test suite
 
@@ -249,6 +280,8 @@ pnpm test:exchange:e2e
 - Integration tests cover replay and durability behavior.
 - End-to-end tests cover the HTTP surface and restart behavior.
 
+
+
 ### OMS test suite
 
 ```bash
@@ -260,22 +293,27 @@ The integration test requires PostgreSQL, Redis, the exchange, the engine gatewa
 
 ## Project status
 
+
+
 ### Implemented
 
-- Single-market exchange engine for `SOL-USD`
-- Balance locking, settlement, and append-only ledger
-- WAL persistence with checkpoints and replay
-- HTTP commands and queries
-- SSE for live order, credit, and BBO events
-- Web app authentication, paper funding, and dashboard / trade UX
+- Spot exchange engine for `SOL-USD` and perp engine for `SOL-USD-PERP`
+- Spot balance locking / delivery settlement; perp USD margin + positions + PnL
+- WAL persistence with checkpoints and replay (positions in snapshot v2)
+- Mark price helper (BBO mid / last trade)
+- HTTP commands and queries (including positions + mark)
+- SSE for live order, credit, BBO, trade, and position events
+- Web app authentication, paper funding, and dashboard / trade UX (spot)
 - Application-layer infra bootstrap and shared message contracts
-- Engine gateway (Redis Streams ↔ exchange HTTP/SSE ↔ Redis pub/sub + `md:events`)
+- Engine gateway multi-market routing (spot + optional perp URL)
 - OMS order APIs, Postgres order state, transactional command outbox, and event-driven status updates
-- Market-data writer (TimescaleDB history for trades, BBO, and one-minute candles)
-- Authenticated web BFF routes for trading, balances, live market data, and historical queries
+- Market-data writer (TimescaleDB history for trades, BBO, and one-minute candles per market)
+
+
 
 ### In progress
 
-- Live chart UI wired to historical candle endpoints
+- Perp trading UI (market switcher, leverage, positions panel)
+- Liquidation engine and funding payments
 - Authenticated application gateway hardening for non-local deployments
-- Perpetual futures / leveraged products
+

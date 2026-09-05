@@ -14,6 +14,7 @@ import { remaining, updateStatus } from "../order/orderHelpers.js";
 
 export class MatchingEngine {
   private tradeSeq = 0;
+  private lastTradePrice: number | null = null;
 
   match(taker: Order, book: OrderBook): { trades: Trade[]; taker: Order } {
     const trades: Trade[] = [];
@@ -71,8 +72,17 @@ export class MatchingEngine {
     this.tradeSeq = seq;
   }
 
+  getLastTradePrice(): number | null {
+    return this.lastTradePrice;
+  }
+
+  setLastTradePrice(price: number | null): void {
+    this.lastTradePrice = price;
+  }
+
   private trade(buy: Order, sell: Order, price: number, quantity: number): Trade {
     this.tradeSeq += 1;
+    this.lastTradePrice = price;
     return {
       tradeId: `t-${this.tradeSeq}`,
       engineSequence: this.tradeSeq,

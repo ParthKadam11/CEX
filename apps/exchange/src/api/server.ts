@@ -411,7 +411,18 @@ export function createExchangeApp(
     return c.json(runtime.book.getSnapshot(depth));
   });
 
-  // Live stream for gateway: ORDER, TRADE, BBO, CREDIT
+  app.get("/v1/markets/:market/mark", (c) => {
+    const market = c.req.param("market");
+    if (!isMarket(market) || market !== runtime.market) {
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
+    }
+    return c.json({
+      market,
+      ...runtime.markPrice(),
+    });
+  });
+
+  // Live stream for gateway: ORDER, TRADE, BBO, CREDIT, POSITION
   app.get("/v1/markets/:market/stream", (c) => {
     const market = c.req.param("market");
     if (!isMarket(market) || market !== runtime.market) {

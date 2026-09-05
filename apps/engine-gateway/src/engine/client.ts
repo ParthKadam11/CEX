@@ -170,6 +170,35 @@ export class EngineClient {
     return (await res.json()) as OrderBookSnapshot;
   }
 
+  async mark(
+    signal?: AbortSignal,
+  ): Promise<{
+    market: MarketSymbol;
+    mark: number | null;
+    source: "mid" | "last" | null;
+    bestBid: number | null;
+    bestAsk: number | null;
+    lastTradePrice: number | null;
+    timestamp: number;
+  }> {
+    const res = await this.request(
+      `/v1/markets/${this.market}/mark`,
+      { headers: this.headers() },
+      true,
+      signal,
+    );
+    if (!res.ok) throw new Error(`mark failed: ${res.status}`);
+    return (await res.json()) as {
+      market: MarketSymbol;
+      mark: number | null;
+      source: "mid" | "last" | null;
+      bestBid: number | null;
+      bestAsk: number | null;
+      lastTradePrice: number | null;
+      timestamp: number;
+    };
+  }
+
   /** Dev hard-reset of exchange in-memory state + WAL. */
   async hardReset(signal?: AbortSignal): Promise<void> {
     const res = await this.request(

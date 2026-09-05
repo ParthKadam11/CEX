@@ -27,6 +27,48 @@ describe("application command validation", () => {
     expect(isAppCommand({ ...basePlace, timestamp: 1.5 })).toBe(false);
   });
 
+  it("accepts SOL-USD-PERP places with leverage", () => {
+    expect(
+      isAppCommand({
+        ...basePlace,
+        market: "SOL-USD-PERP",
+        leverage: 5,
+      }),
+    ).toBe(true);
+    expect(
+      isAppCommand({
+        ...basePlace,
+        market: "SOL-USD-PERP",
+        orderType: "MARKET",
+        price: 0,
+        side: "SELL",
+        quoteBudget: 500,
+        leverage: 10,
+      }),
+    ).toBe(true);
+    expect(
+      isAppCommand({
+        ...basePlace,
+        market: "SOL-USD-PERP",
+        leverage: 99,
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts CREDIT with an optional market", () => {
+    expect(
+      isAppCommand({
+        commandId: "c1",
+        type: "CREDIT",
+        userId: "user-1",
+        asset: "USD",
+        amount: 100,
+        market: "SOL-USD-PERP",
+        timestamp: Date.now(),
+      }),
+    ).toBe(true);
+  });
+
   it("only accepts FOK_BUDGET for market buys with a budget", () => {
     expect(
       isAppCommand({
