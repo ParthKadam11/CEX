@@ -3,11 +3,12 @@ import { bffError, getAuthenticatedUserId } from "@/lib/backend";
 import {
   getMarketMakerStatus,
   runMarketMakerTick,
+  type MarketMakerTickOptions,
 } from "@/lib/sim/market-maker";
 
 /**
  * Dev crowd / MM simulator — no extra process.
- * Client switch loops POST { action: "tick" }; each tick uses OMS + gateway CREDIT.
+ * Client switch loops POST { action: "tick", ...options }.
  */
 export async function GET(request: NextRequest) {
   const userId = await getAuthenticatedUserId();
@@ -26,13 +27,13 @@ export async function POST(request: NextRequest) {
     // empty body ok for tick
   }
 
+  const record =
+    typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>)
+      : {};
+
   const action =
-    typeof body === "object" &&
-    body !== null &&
-    "action" in body &&
-    typeof (body as { action: unknown }).action === "string"
-      ? (body as { action: string }).action
-      : "tick";
+    typeof record.action === "string" ? record.action : "tick";
 
   if (action === "status") {
     return NextResponse.json({ ok: true, ...getMarketMakerStatus() });
@@ -42,8 +43,23 @@ export async function POST(request: NextRequest) {
     return bffError(request, 400, "INVALID_ACTION");
   }
 
+  const options: MarketMakerTickOptions = {
+    placeQuotes: record.placeQuotes !== false,
+    placeTrades: record.placeTrades !== false,
+    intensity:
+      record.intensity === "low" ||
+      record.intensity === "medium" ||
+      record.intensity === "high"
+        ? record.intensity
+        : "medium",
+    spread:
+      typeof record.spread === "number" && Number.isFinite(record.spread)
+        ? record.spread
+        : undefined,
+  };
+
   try {
-    const result = await runMarketMakerTick();
+    const result = await runMarketMakerTick(options);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "SIM_FAILED";

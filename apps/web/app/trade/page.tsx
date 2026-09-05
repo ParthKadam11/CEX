@@ -9,7 +9,7 @@ export default async function TradePage() {
 
   return (
     <main className="min-h-[calc(100vh-3.5rem)] bg-background">
-      <section className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-4">
+      <section className="mx-auto w-full max-w-[1600px] px-3 py-3 sm:px-4">
         <TradingPanel />
       </section>
     </main>

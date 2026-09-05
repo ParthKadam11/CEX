@@ -98,8 +98,7 @@
 /* Order book — thin aesthetic vertical scroll rails */
 .ob-scroll {
   scrollbar-width: thin;
-  scrollbar-gutter: stable;
-  overflow-y: scroll;
+  overflow-y: auto;
   overscroll-behavior: contain;
 }
 

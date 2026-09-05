@@ -9,8 +9,6 @@ type ViewMode = "both" | "asks" | "bids";
 type PanelTab = "book" | "trades";
 
 const GROUP_OPTIONS = [1, 5, 10, 25] as const;
-const LEVELS_BOTH = 24;
-const LEVELS_SINGLE = 40;
 
 type OrderBookPanelProps = {
   book: OrderBookSnapshot;
@@ -39,24 +37,12 @@ export function OrderBookPanel({
   const group = GROUP_OPTIONS[groupIndex] ?? 1;
 
   const asks = useMemo(
-    () =>
-      buildSide(
-        book.asks,
-        group,
-        "ask",
-        view === "both" ? LEVELS_BOTH : LEVELS_SINGLE,
-      ),
-    [book.asks, group, view],
+    () => buildSide(book.asks, group, "ask"),
+    [book.asks, group],
   );
   const bids = useMemo(
-    () =>
-      buildSide(
-        book.bids,
-        group,
-        "bid",
-        view === "both" ? LEVELS_BOTH : LEVELS_SINGLE,
-      ),
-    [book.bids, group, view],
+    () => buildSide(book.bids, group, "bid"),
+    [book.bids, group],
   );
 
   const maxTotal = Math.max(
@@ -108,7 +94,7 @@ export function OrderBookPanel({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {tab === "book" ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center justify-between px-3 py-2">
+            <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2">
               <div className="flex items-center gap-1">
                 <ViewButton
                   active={view === "both"}
@@ -132,37 +118,42 @@ export function OrderBookPanel({
                   <ArrowDown className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                 </ViewButton>
               </div>
-              <div className="flex items-center gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-1 py-0.5 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-300">
-                <button
-                  type="button"
-                  className="px-1.5 py-0.5 text-zinc-400 hover:text-zinc-950 disabled:opacity-30 dark:hover:text-white"
-                  disabled={groupIndex === 0}
-                  onClick={() => setGroupIndex((i) => Math.max(0, i - 1))}
+              <div className="flex items-center gap-2">
+                <div
+                  className="flex items-center gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-1 py-0.5 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-300"
+                  title="Price grouping (zoom). 1 = every price level."
                 >
-                  −
-                </button>
-                <span className="min-w-[2.5rem] text-center tabular-nums">
-                  {group}
-                </span>
-                <button
-                  type="button"
-                  className="px-1.5 py-0.5 text-zinc-400 hover:text-zinc-950 disabled:opacity-30 dark:hover:text-white"
-                  disabled={groupIndex === GROUP_OPTIONS.length - 1}
-                  onClick={() =>
-                    setGroupIndex((i) =>
-                      Math.min(GROUP_OPTIONS.length - 1, i + 1),
-                    )
-                  }
-                >
-                  +
-                </button>
+                  <button
+                    type="button"
+                    className="px-1.5 py-0.5 text-zinc-400 hover:text-zinc-950 disabled:opacity-30 dark:hover:text-white"
+                    disabled={groupIndex === 0}
+                    onClick={() => setGroupIndex((i) => Math.max(0, i - 1))}
+                  >
+                    −
+                  </button>
+                  <span className="min-w-[2.5rem] text-center tabular-nums">
+                    {group}
+                  </span>
+                  <button
+                    type="button"
+                    className="px-1.5 py-0.5 text-zinc-400 hover:text-zinc-950 disabled:opacity-30 dark:hover:text-white"
+                    disabled={groupIndex === GROUP_OPTIONS.length - 1}
+                    onClick={() =>
+                      setGroupIndex((i) =>
+                        Math.min(GROUP_OPTIONS.length - 1, i + 1),
+                      )
+                    }
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             </div>
 
             <div className="grid shrink-0 grid-cols-3 px-3 pb-1 text-[11px] text-zinc-400 dark:text-zinc-500">
-              <span>Price (USD)</span>
-              <span className="text-right">Size (SOL)</span>
-              <span className="text-right">Total (SOL)</span>
+              <span>Price</span>
+              <span className="text-right">Size</span>
+              <span className="text-right">Total</span>
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden font-mono text-[12px] tabular-nums">
@@ -340,7 +331,7 @@ function DepthLevel({
     <button
       type="button"
       onClick={() => onSelect?.(row.price)}
-      className="relative grid w-full grid-cols-3 px-3 py-[3px] text-left hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+      className="relative grid w-full grid-cols-3 px-3 py-1 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
     >
       <div
         className={`pointer-events-none absolute inset-y-0 right-0 ${bar}`}
@@ -350,9 +341,7 @@ function DepthLevel({
       <span className="relative text-right text-zinc-700 dark:text-zinc-200">
         {row.size}
       </span>
-      <span className="relative text-right text-zinc-400 dark:text-zinc-400">
-        {row.total}
-      </span>
+      <span className="relative text-right text-zinc-400">{row.total}</span>
     </button>
   );
 }
@@ -408,7 +397,6 @@ function buildSide(
   levels: OrderBookSnapshot["bids"],
   group: number,
   side: "bid" | "ask",
-  limit: number,
 ): DepthRow[] {
   const buckets = new Map<number, number>();
   for (const level of levels) {
@@ -416,9 +404,11 @@ function buildSide(
     const rawSize = Number(level.quantity);
     if (!Number.isFinite(rawPrice) || !Number.isFinite(rawSize)) continue;
     const price =
-      side === "bid"
-        ? Math.floor(rawPrice / group) * group
-        : Math.ceil(rawPrice / group) * group;
+      group <= 1
+        ? rawPrice
+        : side === "bid"
+          ? Math.floor(rawPrice / group) * group
+          : Math.ceil(rawPrice / group) * group;
     buckets.set(price, (buckets.get(price) ?? 0) + rawSize);
   }
 
@@ -427,10 +417,11 @@ function buildSide(
   );
 
   let running = 0;
-  const rows = bestFirst.slice(0, limit).map(([price, size]) => {
+  const rows = bestFirst.map(([price, size]) => {
     running += size;
     return { price, size, total: running };
   });
 
+  // Asks rendered bottom→top near mid: reverse so best ask is closest to mid
   return side === "ask" ? [...rows].reverse() : rows;
 }

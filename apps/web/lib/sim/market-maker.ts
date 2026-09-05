@@ -166,7 +166,22 @@ function pickRetail(): string {
   return RETAIL_USERS[Math.floor(Math.random() * RETAIL_USERS.length)]!;
 }
 
-export async function runMarketMakerTick(): Promise<{
+export type MarketMakerTickOptions = {
+  placeQuotes?: boolean;
+  placeTrades?: boolean;
+  intensity?: "low" | "medium" | "high";
+  spread?: number;
+};
+
+function intensityTradeCount(intensity: "low" | "medium" | "high"): number {
+  if (intensity === "low") return Math.random() < 0.5 ? 1 : 0;
+  if (intensity === "high") return 2 + Math.floor(Math.random() * 3);
+  return 1 + Math.floor(Math.random() * 2);
+}
+
+export async function runMarketMakerTick(
+  options: MarketMakerTickOptions = {},
+): Promise<{
   mid: number;
   placed: number;
   seeded: boolean;
@@ -175,6 +190,11 @@ export async function runMarketMakerTick(): Promise<{
   book: OrderBookSnapshot | null;
   prints: { price: number; quantity: number }[];
 }> {
+  const placeQuotes = options.placeQuotes !== false;
+  const placeTrades = options.placeTrades !== false;
+  const intensity = options.intensity ?? "medium";
+  const spreadBase = Math.max(1, Math.min(10, options.spread ?? 2));
+
   await ensureFunded();
   const s = state();
   let book = await readBook();
@@ -205,45 +225,48 @@ export async function runMarketMakerTick(): Promise<{
     };
   }
 
-  const jitter = 1 + Math.floor(Math.random() * 3);
-  const qty = 1 + Math.floor(Math.random() * 4);
-  const jobs: Promise<boolean>[] = [
-    injectPlace({
-      userId: MM_BID_USER,
-      side: "BUY",
-      price: Math.max(1, mid - jitter),
-      quantity: qty,
-    }),
-    injectPlace({
-      userId: MM_ASK_USER,
-      side: "SELL",
-      price: mid + jitter,
-      quantity: qty,
-    }),
-  ];
+  const jobs: Promise<boolean>[] = [];
+  const prints: { price: number; quantity: number }[] = [];
 
-  if (Math.random() < 0.35) {
-    const deep = 4 + Math.floor(Math.random() * 5);
+  if (placeQuotes) {
+    const jitter = spreadBase + Math.floor(Math.random() * spreadBase);
+    const qty = 1 + Math.floor(Math.random() * 4);
     jobs.push(
       injectPlace({
         userId: MM_BID_USER,
         side: "BUY",
-        price: Math.max(1, mid - deep),
-        quantity: 2 + Math.floor(Math.random() * 3),
+        price: Math.max(1, mid - jitter),
+        quantity: qty,
       }),
       injectPlace({
         userId: MM_ASK_USER,
         side: "SELL",
-        price: mid + deep,
-        quantity: 2 + Math.floor(Math.random() * 3),
+        price: mid + jitter,
+        quantity: qty,
       }),
     );
+
+    if (intensity !== "low" && Math.random() < 0.4) {
+      const deep = spreadBase * 2 + Math.floor(Math.random() * 5);
+      jobs.push(
+        injectPlace({
+          userId: MM_BID_USER,
+          side: "BUY",
+          price: Math.max(1, mid - deep),
+          quantity: 2 + Math.floor(Math.random() * 3),
+        }),
+        injectPlace({
+          userId: MM_ASK_USER,
+          side: "SELL",
+          price: mid + deep,
+          quantity: 2 + Math.floor(Math.random() * 3),
+        }),
+      );
+    }
   }
 
-  // Retail IOC crosses so the tape prints
-  const prints: { price: number; quantity: number }[] = [];
-  if (bbo.bestAsk != null && bbo.bestBid != null) {
-    const tradeCount = 1 + Math.floor(Math.random() * 3);
+  if (placeTrades && bbo.bestAsk != null && bbo.bestBid != null) {
+    const tradeCount = intensityTradeCount(intensity);
     for (let i = 0; i < tradeCount; i += 1) {
       const buy = Math.random() < 0.5;
       const size = 1 + Math.floor(Math.random() * 2);
@@ -263,11 +286,13 @@ export async function runMarketMakerTick(): Promise<{
     }
   }
 
-  const results = await Promise.all(jobs);
-  placed += results.filter(Boolean).length;
+  if (jobs.length > 0) {
+    const results = await Promise.all(jobs);
+    placed += results.filter(Boolean).length;
+    await sleep(SETTLE_MS);
+    book = await readBook();
+  }
 
-  await sleep(SETTLE_MS);
-  book = await readBook();
   s.ticks += 1;
 
   return {

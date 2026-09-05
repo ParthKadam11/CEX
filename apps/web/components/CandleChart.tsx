@@ -34,14 +34,23 @@ function toUnix(bucket: string): UTCTimestamp {
 
 function candleRows(candles: Candle[]) {
   return [...candles]
-    .map((candle) => ({
-      time: toUnix(candle.bucket),
-      open: Number(candle.open),
-      high: Number(candle.high),
-      low: Number(candle.low),
-      close: Number(candle.close),
-      volume: Number(candle.volume) || 0,
-    }))
+    .map((candle) => {
+      const open = Number(candle.open);
+      const close = Number(candle.close);
+      const high = Number(candle.high);
+      const low = Number(candle.low);
+      // Wicks need high/low outside the body; clamp so bad data still draws.
+      const bodyTop = Math.max(open, close);
+      const bodyBottom = Math.min(open, close);
+      return {
+        time: toUnix(candle.bucket),
+        open,
+        close,
+        high: Math.max(high, bodyTop),
+        low: Math.min(low, bodyBottom),
+        volume: Number(candle.volume) || 0,
+      };
+    })
     .filter(
       (row) =>
         Number.isFinite(row.open) &&
@@ -138,10 +147,16 @@ export function CandleChart({
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: colors.up,
       downColor: colors.down,
+      borderVisible: true,
       borderUpColor: colors.up,
       borderDownColor: colors.down,
+      wickVisible: true,
       wickUpColor: colors.up,
       wickDownColor: colors.down,
+    });
+    chart.timeScale().applyOptions({
+      barSpacing: 10,
+      minBarSpacing: 4,
     });
     const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },

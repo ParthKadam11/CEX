@@ -21,8 +21,6 @@ import {
   type TradingOrder,
 } from "@/lib/trading";
 
-const PCT_STOPS = [0, 25, 50, 75, 100] as const;
-
 export function TradingPanel() {
   const [balances, setBalances] = useState<Balance[]>([]);
   const [orders, setOrders] = useState<TradingOrder[]>([]);
@@ -36,11 +34,9 @@ export function TradingPanel() {
   const [quoteBudget, setQuoteBudget] = useState("100");
   const [fromAsset, setFromAsset] = useState<"USD" | "SOL">("USD");
   const [swapAmount, setSwapAmount] = useState("100");
-  const [pct, setPct] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-  const [chartTab, setChartTab] = useState<"chart" | "depth">("chart");
 
   const { book, setBook, connected: streamConnected } = useMarketStream({
     onTrade: (trade: TradeTickMessage) => {
@@ -62,12 +58,21 @@ export function TradingPanel() {
   });
 
   const liveCandles = useMemo(
-    () => buildLiveCandles(tape, 5_000, 90),
+    () => buildLiveCandles(tape, 60_000, 90),
     [tape],
   );
-  const chartCandles =
-    liveCandles.length > 0 ? liveCandles : historyCandles;
-  const chartInterval = liveCandles.length > 0 ? "5s live" : "1m history";
+  const chartCandles = useMemo(() => {
+    if (liveCandles.length === 0) return historyCandles;
+    if (historyCandles.length === 0) return liveCandles;
+    const byBucket = new Map(
+      historyCandles.map((c) => [c.bucket, normalizeCandle(c)] as const),
+    );
+    for (const c of liveCandles) byBucket.set(c.bucket, normalizeCandle(c));
+    return [...byBucket.values()]
+      .sort((a, b) => b.bucket.localeCompare(a.bucket))
+      .slice(0, 90);
+  }, [historyCandles, liveCandles]);
+  const chartInterval = liveCandles.length > 0 ? "1m live" : "1m history";
 
   const lastPrice =
     tape[0]?.price ??
@@ -186,27 +191,6 @@ export function TradingPanel() {
       }
       return mapped;
     });
-  }
-
-  function applyPct(nextPct: number) {
-    setPct(nextPct);
-    const px =
-      Number(price) ||
-      Number(book.bbo.bestAsk) ||
-      Number(book.bbo.bestBid) ||
-      100;
-    if (side === "BUY") {
-      const budget = Math.max(1, Math.floor((usd.available * nextPct) / 100));
-      if (mode === "market") {
-        setQuoteBudget(String(budget));
-      } else {
-        const qty = Math.max(1, Math.floor(budget / Math.max(px, 1)));
-        setQuantity(String(qty));
-      }
-    } else {
-      const qty = Math.max(1, Math.floor((sol.available * nextPct) / 100));
-      setQuantity(String(qty));
-    }
   }
 
   function setMidPrice() {
@@ -338,18 +322,18 @@ export function TradingPanel() {
   return (
     <div className="animate-fade-up flex w-full flex-col">
       {/* Ticker */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-zinc-200 px-1 py-3 dark:border-zinc-800">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3 border-b border-zinc-200 px-1 py-3 dark:border-zinc-800">
+        <div className="flex items-end gap-3">
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
               Spot
             </p>
-            <h1 className="text-lg font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+            <h1 className="text-lg leading-none font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
               SOL/USD
             </h1>
           </div>
           <span
-            className={`text-2xl font-semibold tabular-nums ${
+            className={`pb-px text-2xl leading-none font-semibold tabular-nums ${
               priceUp
                 ? "text-emerald-600 dark:text-emerald-400"
                 : "text-red-600 dark:text-red-400"
@@ -384,7 +368,7 @@ export function TradingPanel() {
         <TickerStat label="Bid" value={fmtNum(book.bbo.bestBid)} tone="up" />
         <TickerStat label="Ask" value={fmtNum(book.bbo.bestAsk)} tone="down" />
 
-        <div className="ml-auto flex flex-wrap items-center gap-3">
+        <div className="ml-auto flex items-center gap-2">
           <span
             className={`rounded px-2 py-1 text-[11px] font-medium ${
               streamConnected
@@ -422,50 +406,40 @@ export function TradingPanel() {
       <div className="grid h-[min(720px,calc(100vh-12rem))] min-h-[560px] gap-px overflow-hidden bg-zinc-200 dark:bg-zinc-800 lg:grid-cols-[minmax(0,1fr)_280px_320px] lg:grid-rows-[minmax(0,1fr)]">
         {/* Chart */}
         <section className="flex min-h-0 flex-col overflow-hidden bg-white dark:bg-zinc-950">
-          <div className="flex items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800">
-            <div className="flex gap-1">
-              {(["chart", "depth"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setChartTab(tab)}
-                  className={`border-b-2 px-3 py-2.5 text-sm font-medium capitalize transition ${
-                    chartTab === tab
-                      ? "border-zinc-950 text-zinc-950 dark:border-zinc-50 dark:text-zinc-50"
-                      : "border-transparent text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
+          <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+                Chart
+              </h2>
+              <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                {chartInterval}
+              </p>
             </div>
-            <div className="flex gap-2 text-[11px]">
+            <div className="flex gap-1.5">
               <button
                 type="button"
+                title="Paper-credit engine USD balance (not on-chain)"
                 onClick={() => paperFund("USD", 10_000)}
-                className="rounded border border-zinc-200 px-2 py-1 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                className="rounded-md border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
               >
-                Fund USD
+                +USD
               </button>
               <button
                 type="button"
+                title="Paper-credit engine SOL balance (not on-chain)"
                 onClick={() => paperFund("SOL", 100)}
-                className="rounded border border-zinc-200 px-2 py-1 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                className="rounded-md border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
               >
-                Fund SOL
+                +SOL
               </button>
             </div>
           </div>
           <div className="min-h-0 flex-1">
-            {chartTab === "chart" ? (
-              <CandleChart
-                candles={chartCandles}
-                intervalLabel={chartInterval}
-                className="h-full"
-              />
-            ) : (
-              <DepthSketch book={book} />
-            )}
+            <CandleChart
+              candles={chartCandles}
+              intervalLabel={chartInterval}
+              className="h-full"
+            />
           </div>
         </section>
 
@@ -603,34 +577,6 @@ export function TradingPanel() {
                   onChange={setQuoteBudget}
                 />
               )}
-
-              <div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={25}
-                  value={pct}
-                  onChange={(e) => applyPct(Number(e.target.value))}
-                  className="w-full accent-emerald-500"
-                />
-                <div className="mt-1 flex justify-between text-[10px] text-zinc-400">
-                  {PCT_STOPS.map((stop) => (
-                    <button
-                      key={stop}
-                      type="button"
-                      onClick={() => applyPct(stop)}
-                      className={
-                        pct === stop
-                          ? "text-zinc-800 dark:text-zinc-200"
-                          : "hover:text-zinc-600"
-                      }
-                    >
-                      {stop}%
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               {mode === "limit" && (
                 <div className="flex flex-wrap gap-3 text-[11px]">
@@ -775,52 +721,6 @@ export function TradingPanel() {
   );
 }
 
-function DepthSketch({ book }: { book: OrderBookSnapshot }) {
-  const max = Math.max(
-    ...book.bids.slice(0, 12).map((l) => Number(l.quantity) || 0),
-    ...book.asks.slice(0, 12).map((l) => Number(l.quantity) || 0),
-    1,
-  );
-  return (
-    <div className="grid h-full grid-cols-2 gap-4 p-4">
-      <div>
-        <p className="mb-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-          Bids
-        </p>
-        <div className="flex h-[360px] items-end gap-1">
-          {book.bids.slice(0, 16).map((level) => (
-            <div
-              key={`b-${level.price}`}
-              className="flex-1 rounded-t bg-emerald-500/70 dark:bg-emerald-500/50"
-              style={{
-                height: `${Math.max(4, (Number(level.quantity) / max) * 100)}%`,
-              }}
-              title={`${level.price} · ${level.quantity}`}
-            />
-          ))}
-        </div>
-      </div>
-      <div>
-        <p className="mb-2 text-xs font-medium text-red-600 dark:text-red-400">
-          Asks
-        </p>
-        <div className="flex h-[360px] items-end gap-1">
-          {book.asks.slice(0, 16).map((level) => (
-            <div
-              key={`a-${level.price}`}
-              className="flex-1 rounded-t bg-red-500/70 dark:bg-red-500/50"
-              style={{
-                height: `${Math.max(4, (Number(level.quantity) / max) * 100)}%`,
-              }}
-              title={`${level.price} · ${level.quantity}`}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function OrderFills({
   orderId,
   fallback,
@@ -873,10 +773,12 @@ function TickerStat({
   tone?: "up" | "down";
 }) {
   return (
-    <div>
-      <p className="text-[11px] text-zinc-400 dark:text-zinc-500">{label}</p>
+    <div className="flex flex-col justify-end">
+      <p className="text-[11px] leading-none text-zinc-400 dark:text-zinc-500">
+        {label}
+      </p>
       <p
-        className={`text-sm font-medium tabular-nums ${
+        className={`mt-1 text-sm leading-none font-medium tabular-nums ${
           tone === "up"
             ? "text-emerald-600 dark:text-emerald-400"
             : tone === "down"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TradeTickMessage } from "@cex/app-contracts";
 import { CandleChart } from "@/components/CandleChart";
 import { useMarketStream } from "@/hooks/useMarketStream";
@@ -32,54 +32,7 @@ export function MarketExplorer() {
   const [historyTab, setHistoryTab] = useState<"trades" | "bbo">("trades");
   const [historyPage, setHistoryPage] = useState(0);
 
-  const { book, connected, lastTrade } = useMarketStream({
-    onTrade: (trade: TradeTickMessage) => {
-      setTape((current) =>
-        [
-          {
-            id: trade.tradeId,
-            price: Number(trade.price),
-            quantity: Number(trade.quantity),
-            at: Date.now(),
-          },
-          ...current.filter((row) => row.id !== trade.tradeId),
-        ].slice(0, 120),
-      );
-      void loadHistory();
-    },
-  });
-
-  const liveCandles = useMemo(
-    () => buildLiveCandles(tape, 5_000, 90),
-    [tape],
-  );
-  const chartCandles =
-    liveCandles.length > 0 ? liveCandles : historyCandles;
-  const chartInterval = liveCandles.length > 0 ? "5s live" : "1m history";
-
-  useEffect(() => {
-    void loadHistory();
-    const timer = window.setInterval(() => void loadHistory(), 5_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    if (!lastTrade) return;
-    setTape((current) => {
-      if (current.some((row) => row.id === lastTrade.tradeId)) return current;
-      return [
-        {
-          id: lastTrade.tradeId,
-          price: Number(lastTrade.price),
-          quantity: Number(lastTrade.quantity),
-          at: Date.now(),
-        },
-        ...current,
-      ].slice(0, 120);
-    });
-  }, [lastTrade]);
-
-  async function loadHistory() {
+  const loadHistory = useCallback(async () => {
     const [metaRes, candlesRes, tradesRes, bboRes] = await Promise.all([
       fetch("/api/market", { cache: "no-store" }),
       fetch("/api/market/history/candles?limit=60", { cache: "no-store" }),
@@ -114,7 +67,50 @@ export function MarketExplorer() {
       const body = (await bboRes.json()) as { snapshots?: BboSnapshot[] };
       setBboHistory(Array.isArray(body.snapshots) ? body.snapshots : []);
     }
-  }
+  }, []);
+
+  const { book, connected } = useMarketStream({
+    onTrade: (trade: TradeTickMessage) => {
+      setTape((current) =>
+        [
+          {
+            id: trade.tradeId,
+            price: Number(trade.price),
+            quantity: Number(trade.quantity),
+            at: Date.now(),
+          },
+          ...current.filter((row) => row.id !== trade.tradeId),
+        ].slice(0, 120),
+      );
+      void loadHistory();
+    },
+  });
+
+  const liveCandles = useMemo(
+    () => buildLiveCandles(tape, 60_000, 90),
+    [tape],
+  );
+  const chartCandles = useMemo(() => {
+    if (liveCandles.length === 0) return historyCandles;
+    if (historyCandles.length === 0) return liveCandles;
+    const byBucket = new Map(
+      historyCandles.map((c) => [c.bucket, normalizeCandle(c)] as const),
+    );
+    for (const c of liveCandles) byBucket.set(c.bucket, normalizeCandle(c));
+    return [...byBucket.values()]
+      .sort((a, b) => b.bucket.localeCompare(a.bucket))
+      .slice(0, 90);
+  }, [historyCandles, liveCandles]);
+  const chartInterval = liveCandles.length > 0 ? "1m live" : "1m history";
+
+  useEffect(() => {
+    const initial = window.setTimeout(() => void loadHistory(), 0);
+    const timer = window.setInterval(() => void loadHistory(), 5_000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
+  }, [loadHistory]);
 
   // Bids: best (highest) first — descending price
   const bids = useMemo(

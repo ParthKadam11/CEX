@@ -322,7 +322,16 @@ export function createExchangeApp(
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
 
-    return c.json(runtime.book.getSnapshot());
+    const raw = c.req.query("depth");
+    const depth =
+      raw === undefined || raw === ""
+        ? 0
+        : Number(raw);
+    if (!Number.isFinite(depth) || depth < 0 || !Number.isInteger(depth)) {
+      return errorResponse(c, 400, "INVALID_DEPTH");
+    }
+
+    return c.json(runtime.book.getSnapshot(depth));
   });
 
   // Live stream for gateway: ORDER, TRADE, BBO, CREDIT

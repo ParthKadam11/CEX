@@ -144,9 +144,10 @@ export class EngineClient {
     return body;
   }
 
-  async book(signal?: AbortSignal): Promise<OrderBookSnapshot> {
+  async book(depth = 0, signal?: AbortSignal): Promise<OrderBookSnapshot> {
+    const query = depth > 0 ? `?depth=${depth}` : "?depth=0";
     const res = await this.request(
-      `/v1/markets/${this.market}/book`,
+      `/v1/markets/${this.market}/book${query}`,
       { headers: this.headers() },
       true,
       signal,

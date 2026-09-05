@@ -110,8 +110,8 @@ export class OrderBook {
     };
   }
 
-  // top N levels for UI / debugging
-  getSnapshot(depth = 10): OrderBookSnapshot {
+  // top N levels for UI; depth <= 0 returns the full book
+  getSnapshot(depth = 0): OrderBookSnapshot {
     return {
       market: this.symbol,
       bids: this.levelsSnapshot(this.bidPrices, this.bids, depth),
@@ -151,7 +151,8 @@ export class OrderBook {
     depth: number,
   ): BookLevel[] {
     const out: BookLevel[] = [];
-    for (let i = 0; i < prices.length && i < depth; i++) {
+    const limit = depth > 0 ? Math.min(prices.length, depth) : prices.length;
+    for (let i = 0; i < limit; i++) {
       const level = map.get(prices[i]!)!;
       out.push({
         price: level.price,
