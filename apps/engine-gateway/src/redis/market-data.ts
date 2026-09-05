@@ -6,7 +6,12 @@ import {
   type TradeTickMessage,
 } from "@cex/app-contracts";
 import type { MarketSymbol } from "@cex/exchange-types";
-import { isIdentifier, isSafePositiveInteger, isTimestamp } from "@cex/exchange-types";
+import {
+  isIdentifier,
+  isMarketSymbol,
+  isSafePositiveInteger,
+  isTimestamp,
+} from "@cex/exchange-types";
 import { log } from "../logger.js";
 
 export type MarketDataMessage = BboMessage | TradeTickMessage;
@@ -25,15 +30,19 @@ export class MarketDataHub {
 
   constructor(
     private readonly redis: Redis,
-    market: MarketSymbol,
+    markets: readonly MarketSymbol[],
   ) {
-    this.channels = [mdBboChannel(market), mdTradeChannel(market)];
+    this.channels = markets.flatMap((market) => [
+      mdBboChannel(market),
+      mdTradeChannel(market),
+    ]);
     this.redis.on("message", (channel, rawPayload) => {
       this.dispatch(channel, rawPayload);
     });
   }
 
   async start(): Promise<void> {
+    if (this.channels.length === 0) return;
     await this.redis.subscribe(...this.channels);
   }
 
@@ -43,7 +52,9 @@ export class MarketDataHub {
   }
 
   async close(): Promise<void> {
-    await this.redis.unsubscribe(...this.channels);
+    if (this.channels.length > 0) {
+      await this.redis.unsubscribe(...this.channels);
+    }
     this.redis.disconnect();
   }
 
@@ -80,7 +91,7 @@ function parseMessage(
 function isBboMessage(value: unknown): value is BboMessage {
   if (!isRecord(value)) return false;
   return (
-    value.market === "SOL-USD" &&
+    isMarketSymbol(value.market) &&
     isNullableNumber(value.bestBid) &&
     isNullableNumber(value.bestAsk) &&
     isSafePositiveInteger(value.engineSequence) &&
@@ -91,7 +102,7 @@ function isBboMessage(value: unknown): value is BboMessage {
 function isTradeTickMessage(value: unknown): value is TradeTickMessage {
   if (!isRecord(value)) return false;
   return (
-    value.market === "SOL-USD" &&
+    isMarketSymbol(value.market) &&
     isIdentifier(value.tradeId) &&
     isSafePositiveInteger(value.engineSequence) &&
     isSafePositiveInteger(value.price) &&

@@ -3,6 +3,7 @@ import type {
   PlaceCommand,
 } from "@cex/app-contracts";
 import { OmsOrderStatus } from "@cex/db/enums";
+import { isMarketSymbol, type MarketSymbol } from "@cex/exchange-types";
 import type Redis from "ioredis";
 import {
   publishCancelCommand,
@@ -116,7 +117,7 @@ export class OrderService {
     const order = await this.repository.findByEngineOrderId(engineOrderId);
     if (!order) throw new OrderNotFoundError();
     if (order.userId !== userId) throw new OrderOwnershipError();
-    if (order.market !== "SOL-USD") {
+    if (!isMarketSymbol(order.market)) {
       throw new Error("UNSUPPORTED_MARKET");
     }
     if (TERMINAL_STATUSES.has(order.status)) {
@@ -188,7 +189,7 @@ function cancelCommandFromOrder(
     userId,
     clientOrderId,
     orderId: order.engineOrderId,
-    market: order.market as "SOL-USD",
+    market: order.market as MarketSymbol,
     timestamp: Date.now(),
   };
 }

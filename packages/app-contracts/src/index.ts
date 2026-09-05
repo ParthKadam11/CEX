@@ -1,6 +1,7 @@
 import {
   isBoundedPositiveInteger,
   isIdentifier,
+  isMarketSymbol,
   isTimestamp,
   MAX_ORDER_PRICE,
   MAX_ORDER_QUANTITY,
@@ -68,12 +69,14 @@ export type PlaceCommand = {
   side: Side;
   orderType: OrderType;
   timeInForce: TimeInForce;
-  // Integer ticks; 0 for MARKET. 
+  // Integer ticks; 0 for MARKET.
   price: number;
-  // Integer lots. 
+  // Integer lots.
   quantity: number;
   quoteBudget?: number;
-  // Optional engine order id; otherwise XPG/engine may assign. 
+  /** Perp only: integer leverage. */
+  leverage?: number;
+  // Optional engine order id; otherwise XPG/engine may assign.
   orderId?: string;
   timestamp: number;
 };
@@ -93,8 +96,10 @@ export type CreditCommand = {
   type: "CREDIT";
   userId: string;
   asset: AssetId;
-  // Integer asset units. 
+  // Integer asset units.
   amount: number;
+  /** Target engine market; defaults to SOL-USD when omitted. */
+  market?: MarketSymbol;
   timestamp: number;
 };
 
@@ -113,6 +118,7 @@ export function isAppCommand(value: unknown): value is AppCommand {
     return (
       (value.asset === "SOL" || value.asset === "USD") &&
       isBoundedPositiveInteger(value.amount, MAX_QUOTE_BUDGET) &&
+      (value.market === undefined || isMarketSymbol(value.market)) &&
       isTimestamp(value.timestamp)
     );
   }
@@ -120,7 +126,7 @@ export function isAppCommand(value: unknown): value is AppCommand {
   if (value.type === "CANCEL") {
     return (
       isIdentifier(value.orderId) &&
-      value.market === "SOL-USD" &&
+      isMarketSymbol(value.market) &&
       (value.clientOrderId === undefined ||
         isIdentifier(value.clientOrderId)) &&
       isTimestamp(value.timestamp)
@@ -132,11 +138,16 @@ export function isAppCommand(value: unknown): value is AppCommand {
     const hasBudget =
       value.quoteBudget === undefined ||
       isBoundedPositiveInteger(value.quoteBudget, MAX_QUOTE_BUDGET);
-    const budgetRequired = isMarket && value.side === "BUY";
+    const budgetRequired =
+      isMarket &&
+      (value.side === "BUY" || value.market === "SOL-USD-PERP");
+    const leverageOk =
+      value.leverage === undefined ||
+      (isSafePositiveInteger(value.leverage) && value.leverage <= 20);
 
     return (
       isIdentifier(value.clientOrderId) &&
-      value.market === "SOL-USD" &&
+      isMarketSymbol(value.market) &&
       (value.side === "BUY" || value.side === "SELL") &&
       (value.orderType === "LIMIT" || value.orderType === "MARKET") &&
       (value.timeInForce === "GTC" ||
@@ -149,6 +160,7 @@ export function isAppCommand(value: unknown): value is AppCommand {
       isBoundedPositiveInteger(value.quantity, MAX_ORDER_QUANTITY) &&
       hasBudget &&
       (!budgetRequired || isSafePositiveInteger(value.quoteBudget)) &&
+      leverageOk &&
       (value.timeInForce !== "FOK_BUDGET" ||
         (isMarket &&
           value.side === "BUY" &&
@@ -169,7 +181,8 @@ export type AppOrderEventType =
   | "CANCELLED"
   | "CREDIT_OK"
   | "CREDIT_FAILED"
-  | "COMMAND_FAILED";
+  | "COMMAND_FAILED"
+  | "POSITION";
 
 export type AppOrderEvent = {
   eventId: string;
@@ -180,7 +193,7 @@ export type AppOrderEvent = {
   orderId?: string;
   clientOrderId?: string;
   status?: OrderStatus;
-  // Engine order event when applicable. 
+  // Engine order event when applicable.
   engineEvent?: OrderEvent;
   // Engine order snapshot after place/cancel when available.
   order?: Order;
@@ -190,6 +203,14 @@ export type AppOrderEvent = {
     price: number;
     quantity: number;
   }>;
+  /** Perp position snapshot when type is POSITION. */
+  position?: {
+    size: number;
+    entryPrice: number;
+    margin: number;
+    leverage: number;
+    updatedAt: number;
+  };
   /** Monotonic engine event sequence when sourced from exchange SSE. */
   engineSequence?: number;
   timestamp: number;
@@ -232,7 +253,7 @@ export function isMarketDataEvent(value: unknown): value is MarketDataEvent {
     const payload = value.payload;
     return (
       isRecord(payload) &&
-      payload.market === "SOL-USD" &&
+      isMarketSymbol(payload.market) &&
       isTimestamp(payload.timestamp) &&
       isSafePositiveInteger(payload.engineSequence) &&
       isNullableUnit(payload.bestBid) &&
@@ -243,7 +264,7 @@ export function isMarketDataEvent(value: unknown): value is MarketDataEvent {
     const payload = value.payload;
     return (
       isRecord(payload) &&
-      payload.market === "SOL-USD" &&
+      isMarketSymbol(payload.market) &&
       isIdentifier(payload.tradeId) &&
       isIdentifier(payload.buyOrderId) &&
       isIdentifier(payload.sellOrderId) &&

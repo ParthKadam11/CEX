@@ -6,7 +6,7 @@ import {
   ORDERS_EVENTS_STREAM,
   type AppOrderEvent,
 } from "@cex/app-contracts";
-import { isIdentifier, isTimestamp } from "@cex/exchange-types";
+import { isIdentifier, isMarketSymbol, isTimestamp } from "@cex/exchange-types";
 
 export type EventMessage = {
   id: string;
@@ -148,6 +148,7 @@ function isAppOrderEvent(value: unknown): value is AppOrderEvent {
     "CREDIT_OK",
     "CREDIT_FAILED",
     "COMMAND_FAILED",
+    "POSITION",
   ];
 
   return (
@@ -155,7 +156,7 @@ function isAppOrderEvent(value: unknown): value is AppOrderEvent {
     typeof value.type === "string" &&
     eventTypes.includes(value.type) &&
     isIdentifier(value.userId) &&
-    value.market === "SOL-USD" &&
+    isMarketSymbol(value.market) &&
     isTimestamp(value.timestamp) &&
     (value.commandId === undefined || isIdentifier(value.commandId)) &&
     (value.orderId === undefined || isIdentifier(value.orderId)) &&

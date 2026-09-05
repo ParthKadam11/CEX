@@ -7,6 +7,7 @@ import type {
   Order,
   OrderBookSnapshot,
   PlacementResult,
+  Position,
 } from "@cex/exchange-types";
 
 export type EngineClientOptions = {
@@ -102,6 +103,7 @@ export class EngineClient {
           price: order.price,
           quantity: order.quantity,
           quoteBudget: order.quoteBudget,
+          leverage: order.leverage,
         }),
       },
       false,
@@ -189,6 +191,39 @@ export class EngineClient {
     if (!res.ok) throw new Error(`balances failed: ${res.status}`);
     const body = (await res.json()) as { balances: Balance[] };
     return body.balances;
+  }
+
+  async position(
+    userId: string,
+    signal?: AbortSignal,
+  ): Promise<Position> {
+    const res = await this.request(
+      `/v1/markets/${this.market}/positions/${encodeURIComponent(userId)}`,
+      { headers: this.headers() },
+      true,
+      signal,
+    );
+    if (!res.ok) throw new Error(`position failed: ${res.status}`);
+    const body = (await res.json()) as { position: Position };
+    return body.position;
+  }
+
+  async positions(
+    userId?: string,
+    signal?: AbortSignal,
+  ): Promise<Position[]> {
+    const query = userId
+      ? `?userId=${encodeURIComponent(userId)}`
+      : "";
+    const res = await this.request(
+      `/v1/markets/${this.market}/positions${query}`,
+      { headers: this.headers() },
+      true,
+      signal,
+    );
+    if (!res.ok) throw new Error(`positions failed: ${res.status}`);
+    const body = (await res.json()) as { positions: Position[] };
+    return body.positions ?? [];
   }
 
   // SSE endpoint URL for the live engine feed.

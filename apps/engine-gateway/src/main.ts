@@ -1,10 +1,10 @@
 import { serve } from "@hono/node-server";
 import type { AppOrderEvent } from "@cex/app-contracts";
-import type { OrderEvent } from "@cex/exchange-types";
+import type { OrderEvent, Position } from "@cex/exchange-types";
 import { loadConfig } from "./config.js";
 import { CommandDedupe } from "./dedupe.js";
 import { CommandHandler } from "./commands/handler.js";
-import { EngineClient } from "./engine/client.js";
+import { EngineRegistry } from "./engine/registry.js";
 import { EngineSseClient } from "./engine/sse.js";
 import { createGatewayApp } from "./http/server.js";
 import { log } from "./logger.js";
@@ -15,6 +15,7 @@ import {
   MarketDataHub,
 } from "./redis/market-data.js";
 import { LiveBookHub } from "./redis/live-book.js";
+import { PositionHub } from "./redis/position-hub.js";
 import {
   ackCommand,
   createRedis,
@@ -29,93 +30,136 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const redis = createRedis(config.redisUrl);
   const marketDataRedis = createRedisSubscriber(config.redisUrl);
-  const marketData = new MarketDataHub(marketDataRedis, config.market);
-  const engine = new EngineClient(
-    config.exchangeUrl,
-    config.market,
+  const markets = config.engines.map((e) => e.market);
+  const marketData = new MarketDataHub(marketDataRedis, markets);
+  const engines = new EngineRegistry(
+    config.engines,
     config.exchangeToken,
   );
-  const liveBook = new LiveBookHub(engine, marketData);
+  const liveBook = new LiveBookHub(engines, marketData);
+  const positions = new PositionHub();
   const metrics = new GatewayMetrics();
   const dedupe = new CommandDedupe(redis);
-  const handler = new CommandHandler(engine, redis, dedupe, metrics);
+  const handler = new CommandHandler(
+    engines,
+    config.primaryMarket,
+    redis,
+    dedupe,
+    metrics,
+  );
 
   await ensureCommandGroup(redis);
   await marketData.start();
   liveBook.start();
-  log("info", "redis command group ready");
+  log("info", "redis command group ready", {
+    markets,
+    primaryMarket: config.primaryMarket,
+  });
 
-  try {
-    const health = await engine.health();
-    log("info", "exchange reachable", health);
-  } catch (err) {
-    log("warn", "exchange not reachable yet", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+  for (const engine of engines.all()) {
+    try {
+      const health = await engine.health();
+      log("info", "exchange reachable", health);
+    } catch (err) {
+      log("warn", "exchange not reachable yet", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
-  const sse = new EngineSseClient(engine.streamUrl(), async (event) => {
-    if (
-      event.kind === "BBO" ||
-      event.kind === "TRADE" ||
-      event.kind === "ORDER"
-    ) {
-      liveBook.notify();
-    }
+  const sseClients: EngineSseClient[] = [];
+  let connectedCount = 0;
+  const refreshSseMetric = () =>
+    metrics.setSseConnected(connectedCount === engines.all().length);
 
-    if (event.kind === "BBO") {
-      try {
-        await publishBboSnapshot(redis, metrics, {
-          market: event.market,
-          bestBid: event.bestBid,
-          bestAsk: event.bestAsk,
-          engineSequence: event.engineSequence,
-          timestamp: event.timestamp,
-        });
-      } catch (err) {
-        log("error", "BBO publish failed", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-      return;
-    }
-
-    if (event.kind === "TRADE") {
-      try {
-        await publishTradeTick(redis, metrics, event.trade);
-      } catch (err) {
-        log("error", "trade publish failed", {
-          tradeId: event.trade.tradeId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-      return;
-    }
-
-    if (event.kind === "ORDER") {
-      const appEvent = toAppOrderEvent(event.event);
-      if (appEvent) {
-        try {
-          await publishOrderEvent(redis, appEvent);
-          metrics.increment("eventsPublished");
-        } catch (err) {
-          log("error", "exchange order event publish failed", {
-            orderId: event.event.orderId,
-            sequence: event.event.seq,
-            error: err instanceof Error ? err.message : String(err),
-          });
+  for (const engine of engines.all()) {
+    const sse = new EngineSseClient(
+      engine.streamUrl(),
+      async (event) => {
+        if (
+          event.kind === "BBO" ||
+          event.kind === "TRADE" ||
+          event.kind === "ORDER" ||
+          event.kind === "POSITION"
+        ) {
+          liveBook.notify(event.market);
         }
-      }
-      return;
-    }
 
-    log("info", "SSE event received", { kind: event.kind });
-  }, {
-    onConnectionChange: (connected) => metrics.setSseConnected(connected),
-    onReconnect: () => metrics.increment("sseReconnects"),
-    headers: engine.streamHeaders(),
-  });
-  sse.start();
+        if (event.kind === "BBO") {
+          try {
+            await publishBboSnapshot(redis, metrics, {
+              market: event.market,
+              bestBid: event.bestBid,
+              bestAsk: event.bestAsk,
+              engineSequence: event.engineSequence,
+              timestamp: event.timestamp,
+            });
+          } catch (err) {
+            log("error", "BBO publish failed", {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+          return;
+        }
+
+        if (event.kind === "TRADE") {
+          try {
+            await publishTradeTick(redis, metrics, event.trade);
+          } catch (err) {
+            log("error", "trade publish failed", {
+              tradeId: event.trade.tradeId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+          return;
+        }
+
+        if (event.kind === "ORDER") {
+          const appEvent = toAppOrderEvent(event.event);
+          if (appEvent) {
+            try {
+              await publishOrderEvent(redis, appEvent);
+              metrics.increment("eventsPublished");
+            } catch (err) {
+              log("error", "exchange order event publish failed", {
+                orderId: event.event.orderId,
+                sequence: event.event.seq,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          return;
+        }
+
+        if (event.kind === "POSITION") {
+          positions.publish(event.position);
+          try {
+            await publishOrderEvent(redis, toAppPositionEvent(event.position));
+            metrics.increment("eventsPublished");
+          } catch (err) {
+            log("error", "position event publish failed", {
+              userId: event.position.userId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+          return;
+        }
+
+        log("info", "SSE event received", { kind: event.kind });
+      },
+      {
+        onConnectionChange: (connected) => {
+          connectedCount += connected ? 1 : -1;
+          if (connectedCount < 0) connectedCount = 0;
+          refreshSseMetric();
+        },
+        onReconnect: () => metrics.increment("sseReconnects"),
+        headers: engine.streamHeaders(),
+      },
+    );
+    sse.start();
+    sseClients.push(sse);
+  }
 
   let commandsRunning = true;
   const commandLoop = (async () => {
@@ -156,25 +200,26 @@ async function main(): Promise<void> {
 
   const app = createGatewayApp({
     redis,
-    engine,
-    market: config.market,
+    engines,
+    primaryMarket: config.primaryMarket,
     metrics,
     isSseConnected: () => metrics.snapshot().sseConnected === true,
     marketData,
     liveBook,
+    positions,
     internalToken: config.internalToken,
   });
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     log("info", "HTTP server listening", {
       port: info.port,
-      exchangeUrl: config.exchangeUrl,
+      engines: config.engines,
     });
   });
 
   const shutdown = async () => {
     log("info", "shutting down");
     commandsRunning = false;
-    sse.stop();
+    for (const sse of sseClients) sse.stop();
     server.close();
     await commandLoop.catch(() => undefined);
     await liveBook.close();
@@ -220,5 +265,22 @@ function toAppOrderEvent(event: OrderEvent): AppOrderEvent | null {
           ]
         : undefined,
     timestamp: event.timestamp,
+  };
+}
+
+function toAppPositionEvent(position: Position): AppOrderEvent {
+  return {
+    eventId: `position-${position.userId}-${position.market}-${position.updatedAt}`,
+    type: "POSITION",
+    userId: position.userId,
+    market: position.market,
+    position: {
+      size: position.size,
+      entryPrice: position.entryPrice,
+      margin: position.margin,
+      leverage: position.leverage,
+      updatedAt: position.updatedAt,
+    },
+    timestamp: position.updatedAt || Date.now(),
   };
 }

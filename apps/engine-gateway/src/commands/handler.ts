@@ -9,10 +9,11 @@ import type {
 import {
   OrderType,
   TimeInForce,
+  type MarketSymbol,
   type Order,
   type PlacementResult,
 } from "@cex/exchange-types";
-import type { EngineClient } from "../engine/client.js";
+import type { EngineRegistry } from "../engine/registry.js";
 import type { CommandDedupe } from "../dedupe.js";
 import { log } from "../logger.js";
 import type { GatewayMetrics } from "../metrics.js";
@@ -23,7 +24,8 @@ import { publishOrderEvent } from "../redis/streams.js";
 
 export class CommandHandler {
   constructor(
-    private readonly engine: EngineClient,
+    private readonly engines: EngineRegistry,
+    private readonly primaryMarket: MarketSymbol,
     private readonly redis: Redis,
     private readonly dedupe: CommandDedupe,
     private readonly metrics: GatewayMetrics,
@@ -64,7 +66,7 @@ export class CommandHandler {
         commandId: command.commandId,
         type: "COMMAND_FAILED",
         userId: command.userId,
-        market: "market" in command ? command.market : "SOL-USD",
+        market: this.marketOf(command),
         orderId: command.type === "CANCEL" ? command.orderId : undefined,
         clientOrderId:
           command.type === "PLACE" || command.type === "CANCEL"
@@ -76,15 +78,24 @@ export class CommandHandler {
     }
   }
 
+  private marketOf(command: AppCommand): MarketSymbol {
+    if (command.type === "CREDIT") {
+      return command.market ?? this.primaryMarket;
+    }
+    return command.market;
+  }
+
   private async handleCredit(command: CreditCommand): Promise<void> {
+    const market = command.market ?? this.primaryMarket;
     try {
-      await this.engine.credit(command.userId, command.asset, command.amount);
+      const engine = this.engines.get(market);
+      await engine.credit(command.userId, command.asset, command.amount);
       await this.emit({
         eventId: crypto.randomUUID(),
         commandId: command.commandId,
         type: "CREDIT_OK",
         userId: command.userId,
-        market: "SOL-USD",
+        market,
         timestamp: Date.now(),
       });
     } catch (err) {
@@ -94,7 +105,7 @@ export class CommandHandler {
         commandId: command.commandId,
         type: "CREDIT_FAILED",
         userId: command.userId,
-        market: "SOL-USD",
+        market,
         reason: err instanceof Error ? err.message : String(err),
         timestamp: Date.now(),
       });
@@ -102,13 +113,15 @@ export class CommandHandler {
   }
 
   private async handlePlace(command: PlaceCommand): Promise<void> {
+    const engine = this.engines.get(command.market);
     const order = toEngineOrder(command);
-    const result = await this.engine.place(order);
+    const result = await engine.place(order);
     await this.emitPlaceEvents(command, result);
   }
 
   private async handleCancel(command: CancelCommand): Promise<void> {
-    const result = await this.engine.cancel(command.orderId);
+    const engine = this.engines.get(command.market);
+    const result = await engine.cancel(command.orderId);
     if (result.cancelled) {
       await this.emit({
         eventId: crypto.randomUUID(),
@@ -189,6 +202,24 @@ export class CommandHandler {
         timestamp: Date.now(),
       });
     }
+
+    for (const position of result.positions ?? []) {
+      await this.emit({
+        eventId: crypto.randomUUID(),
+        commandId: command.commandId,
+        type: "POSITION",
+        userId: position.userId,
+        market: position.market,
+        position: {
+          size: position.size,
+          entryPrice: position.entryPrice,
+          margin: position.margin,
+          leverage: position.leverage,
+          updatedAt: position.updatedAt,
+        },
+        timestamp: Date.now(),
+      });
+    }
   }
 
   private async emit(event: AppOrderEvent): Promise<void> {
@@ -214,7 +245,7 @@ function toEngineOrder(command: PlaceCommand): Order {
         ? TimeInForce.FOK
         : command.timeInForce === TimeInForce.FOK_BUDGET
           ? TimeInForce.FOK_BUDGET
-        : TimeInForce.GTC;
+          : TimeInForce.GTC;
 
   return {
     orderId: command.orderId ?? crypto.randomUUID(),
@@ -226,6 +257,7 @@ function toEngineOrder(command: PlaceCommand): Order {
     price: type === OrderType.MARKET ? 0 : command.price,
     quantity: command.quantity,
     quoteBudget: command.quoteBudget,
+    leverage: command.leverage,
     filledQuantity: 0,
     status: "NEW",
     timestamp: command.timestamp || Date.now(),

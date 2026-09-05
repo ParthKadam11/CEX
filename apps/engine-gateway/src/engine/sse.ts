@@ -3,10 +3,12 @@ import type {
   ExchangeStreamEvent,
   MarketSymbol,
   OrderEvent,
+  Position,
   Trade,
 } from "@cex/exchange-types";
 import {
   isIdentifier,
+  isMarketSymbol,
   isSafePositiveInteger,
   isTimestamp,
 } from "@cex/exchange-types";
@@ -233,6 +235,14 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
             trade: value.trade,
           }
         : null;
+    case "POSITION":
+      return isPosition(value.position)
+        ? {
+            kind: "POSITION",
+            market: value.market,
+            position: value.position,
+          }
+        : null;
     default:
       return null;
   }
@@ -243,7 +253,7 @@ function isTrade(value: unknown): value is Trade {
     isRecord(value) &&
     isIdentifier(value.tradeId) &&
     isSafePositiveInteger(value.engineSequence) &&
-    value.market === "SOL-USD" &&
+    isMarketSymbol(value.market) &&
     isSafePositiveInteger(value.price) &&
     isSafePositiveInteger(value.quantity) &&
     isIdentifier(value.buyOrderId) &&
@@ -251,6 +261,22 @@ function isTrade(value: unknown): value is Trade {
     isIdentifier(value.buyerUserId) &&
     isIdentifier(value.sellerUserId) &&
     isTimestamp(value.timestamp)
+  );
+}
+
+function isPosition(value: unknown): value is Position {
+  return (
+    isRecord(value) &&
+    isIdentifier(value.userId) &&
+    isMarketSymbol(value.market) &&
+    typeof value.size === "number" &&
+    Number.isSafeInteger(value.size) &&
+    (value.entryPrice === 0 || isSafePositiveInteger(value.entryPrice)) &&
+    typeof value.margin === "number" &&
+    Number.isSafeInteger(value.margin) &&
+    value.margin >= 0 &&
+    isSafePositiveInteger(value.leverage) &&
+    typeof value.updatedAt === "number"
   );
 }
 
@@ -264,10 +290,6 @@ function isOrderEvent(value: unknown): value is OrderEvent {
     isMarketSymbol(value.market) &&
     typeof value.timestamp === "number"
   );
-}
-
-function isMarketSymbol(value: unknown): value is MarketSymbol {
-  return value === "SOL-USD" || value === "SOL-USD-PERP";
 }
 
 function isAssetId(value: unknown): value is AssetId {
