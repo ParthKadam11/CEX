@@ -1,6 +1,6 @@
 # CEX
 
-CEX is a TypeScript monorepo for a centralized exchange prototype. The repository currently contains a working exchange engine and a custodial Solana web application, with the application layer being built around them.
+CEX is a TypeScript monorepo for a centralized exchange prototype. The repository currently contains a working exchange engine and a Next.js trading web app, with the application layer being built around them.
 
 ## Repository Overview
 
@@ -8,7 +8,7 @@ CEX is a TypeScript monorepo for a centralized exchange prototype. The repositor
   A single-market exchange process for `SOL-USD`. It maintains the order book, validates units, matches orders, locks and settles balances, writes a durable command WAL, checkpoints snapshots, and exposes an HTTP + SSE API.
 
 - `apps/web`  
-  A Next.js application with Google sign-in, custodial Solana wallets, simulated USD balances, deposit and withdraw flows, and a dashboard for wallet state and recent activity.
+  A Next.js application with Google sign-in, paper trading balances, and a dashboard for engine balances, orders, and the SOL-USD market.
 
 - `apps/market-data-writer`  
   A separate Redis consumer that persists durable BBO and trade events into TimescaleDB and serves historical market-data queries.
@@ -32,7 +32,7 @@ CEX is a TypeScript monorepo for a centralized exchange prototype. The repositor
 
 ```text
 apps/web
-  └─ user auth + custodial wallet UX
+  └─ user auth + trading UX
 
 apps/exchange
   └─ matching engine + balances + WAL + snapshots + HTTP/SSE
@@ -260,13 +260,12 @@ The integration test requires PostgreSQL, Redis, the exchange, the engine gatewa
 - WAL persistence with checkpoints and replay
 - HTTP commands and queries
 - SSE for live order, credit, and BBO events
-- Web app authentication, custodial wallet setup, deposit, withdraw, and dashboard UX
+- Web app authentication, paper funding, and dashboard / trade UX
 - Application-layer infra bootstrap and shared message contracts
 - Engine gateway (Redis Streams ↔ exchange HTTP/SSE ↔ Redis pub/sub + `md:events`)
 - OMS order APIs, Postgres order state, transactional command outbox, and event-driven status updates
 - Market-data writer (TimescaleDB history for trades, BBO, and one-minute candles)
 - Authenticated web BFF routes for trading, balances, live market data, and historical queries
-- Spot convert/swap (`POST /api/swap`) mapped to marketable SOL-USD orders
 
 ### In progress
 

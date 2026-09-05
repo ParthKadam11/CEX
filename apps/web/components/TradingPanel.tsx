@@ -26,14 +26,12 @@ export function TradingPanel() {
   const [orders, setOrders] = useState<TradingOrder[]>([]);
   const [historyCandles, setHistoryCandles] = useState<Candle[]>([]);
   const [tape, setTape] = useState<LiveTapeTrade[]>([]);
-  const [mode, setMode] = useState<"limit" | "market" | "swap">("limit");
+  const [mode, setMode] = useState<"limit" | "market">("limit");
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [tif, setTif] = useState<"GTC" | "IOC" | "FOK">("GTC");
   const [price, setPrice] = useState("100");
   const [quantity, setQuantity] = useState("1");
   const [quoteBudget, setQuoteBudget] = useState("100");
-  const [fromAsset, setFromAsset] = useState<"USD" | "SOL">("USD");
-  const [swapAmount, setSwapAmount] = useState("100");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
@@ -251,38 +249,6 @@ export function TradingPanel() {
     await Promise.all([loadOrders(), loadBalances(), loadBook()]);
   }
 
-  async function placeSwap(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitting(true);
-    setMessage("");
-
-    const toAsset = fromAsset === "USD" ? "SOL" : "USD";
-    const response = await fetch("/api/swap", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        fromAsset,
-        toAsset,
-        amount: Number(swapAmount),
-        fillMode: "IOC",
-      }),
-    });
-    const body = (await response.json()) as {
-      order?: TradingOrder;
-      error?: { code?: string; message?: string } | string;
-    };
-    setSubmitting(false);
-
-    if (!response.ok) {
-      setMessage(errorMessage(body) ?? "Swap rejected");
-      return;
-    }
-    setMessage(
-      `Swap ${fromAsset}→${toAsset}: ${body.order?.engineOrderId ?? "submitted"}`,
-    );
-    await Promise.all([loadOrders(), loadBalances(), loadBook()]);
-  }
-
   async function cancelOrder(orderId: string) {
     const response = await fetch(`/api/orders/${orderId}`, {
       method: "DELETE",
@@ -477,7 +443,7 @@ export function TradingPanel() {
           </div>
 
           <div className="mb-4 flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
-            {(["limit", "market", "swap"] as const).map((option) => (
+            {(["limit", "market"] as const).map((option) => (
               <button
                 key={option}
                 type="button"
@@ -488,50 +454,12 @@ export function TradingPanel() {
                     : "border-transparent text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
                 }`}
               >
-                {option === "swap" ? "Convert" : option}
+                {option}
               </button>
             ))}
           </div>
 
-          {mode === "swap" ? (
-            <form className="flex flex-1 flex-col gap-3" onSubmit={placeSwap}>
-              <div className="grid grid-cols-2 gap-2">
-                {(["USD", "SOL"] as const).map((asset) => (
-                  <button
-                    key={asset}
-                    type="button"
-                    onClick={() => setFromAsset(asset)}
-                    className={`h-9 rounded-md text-xs font-medium ${
-                      fromAsset === asset
-                        ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                        : "border border-zinc-200 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
-                    }`}
-                  >
-                    {asset} → {asset === "USD" ? "SOL" : "USD"}
-                  </button>
-                ))}
-              </div>
-              <TicketField
-                label={fromAsset === "USD" ? "Spend USD" : "Sell SOL"}
-                value={swapAmount}
-                onChange={setSwapAmount}
-              />
-              <p className="text-[11px] text-zinc-400">
-                Available {fromAsset}:{" "}
-                {fromAsset === "USD" ? usd.available : sol.available}
-              </p>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="mt-auto h-11 w-full rounded-md bg-zinc-950 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
-              >
-                {submitting
-                  ? "Converting…"
-                  : `Convert ${fromAsset} → ${fromAsset === "USD" ? "SOL" : "USD"}`}
-              </button>
-            </form>
-          ) : (
-            <form className="flex flex-1 flex-col gap-3" onSubmit={placeOrder}>
+          <form className="flex flex-1 flex-col gap-3" onSubmit={placeOrder}>
               <div className="flex items-center justify-between text-[11px] text-zinc-400">
                 <span>Available</span>
                 <span className="tabular-nums text-zinc-700 dark:text-zinc-200">
@@ -626,7 +554,6 @@ export function TradingPanel() {
                   : `${side === "BUY" ? "Buy" : "Sell"} SOL`}
               </button>
             </form>
-          )}
 
           {message && (
             <p className="mt-3 text-center text-[11px] text-zinc-500 dark:text-zinc-400">

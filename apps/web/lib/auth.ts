@@ -1,8 +1,6 @@
 import { type NextAuthOptions } from "next-auth"
 import GoogleProvider, { type GoogleProfile } from "next-auth/providers/google"
-import { Keypair } from "@solana/web3.js"
 import { Provider, prisma as db } from "@cex/db"
-import { serializeSecretKey } from "@/lib/solana-keypair"
 import { STARTING_USD_BALANCE } from "@/lib/constants"
 
 export const authOptions: NextAuthOptions = {
@@ -40,8 +38,6 @@ export const authOptions: NextAuthOptions = {
           return true
         }
 
-        const keypair = Keypair.generate()
-
         await db.user.create({
           data: {
             username: email,
@@ -49,12 +45,6 @@ export const authOptions: NextAuthOptions = {
             name: googleProfile?.name,
             profilePic: googleProfile?.picture,
             provider: Provider.Google,
-            solwallet: {
-              create: {
-                publicKey: keypair.publicKey.toBase58(),
-                privateKey: serializeSecretKey(keypair.secretKey),
-              },
-            },
             // Simulated USD quote currency (UsdWallet — DB only)
             usdWallet: {
               create: { balance: STARTING_USD_BALANCE },

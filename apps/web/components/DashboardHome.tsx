@@ -5,7 +5,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import type { Balance } from "@cex/exchange-types";
-import { WalletCard } from "@/components/WalletCard";
 import { useMarketStream } from "@/hooks/useMarketStream";
 import {
   balanceFor,
@@ -14,11 +13,7 @@ import {
   type TradingOrder,
 } from "@/lib/trading";
 
-type DashboardHomeProps = {
-  publicKey: string | null;
-};
-
-export function DashboardHome({ publicKey }: DashboardHomeProps) {
+export function DashboardHome() {
   const { data: session } = useSession();
   const { book, connected } = useMarketStream();
   const [balances, setBalances] = useState<Balance[]>([]);
@@ -121,7 +116,7 @@ export function DashboardHome({ publicKey }: DashboardHomeProps) {
               Trading balances
             </h2>
             <p className="mt-1 text-xs text-zinc-400">
-              Engine ledger used for SOL-USD orders. On-chain wallet is separate.
+              Paper balances on the SOL-USD engine ledger. Use +USD / +SOL to fund.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -154,12 +149,7 @@ export function DashboardHome({ publicKey }: DashboardHomeProps) {
         )}
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
-          <WalletCard publicKey={publicKey} showWelcome={false} />
-        </div>
-
-        <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+      <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
               Recent orders
@@ -200,7 +190,6 @@ export function DashboardHome({ publicKey }: DashboardHomeProps) {
             </div>
           )}
         </section>
-      </div>
     </div>
   );
 }

@@ -10,7 +10,7 @@ const MAX_PAPER_CREDIT = 1_000_000;
 
 /**
  * Paper-fund the authenticated user's engine ledger via gateway CREDIT inject.
- * On-chain deposits do not credit trading balances; this bridges that gap for local/dev.
+ * Demo funding path for local/dev trading balances.
  */
 export async function POST(request: NextRequest) {
   const userId = await getAuthenticatedUserId();

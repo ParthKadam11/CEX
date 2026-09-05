@@ -55,16 +55,16 @@ export function Hero() {
         <div className="mx-auto grid max-w-3xl gap-8 px-1 py-16 sm:grid-cols-3 sm:px-2">
           {[
             {
-              title: "Wallet",
-              body: "Custodial Solana wallet with deposit and withdraw.",
+              title: "Balances",
+              body: "Paper SOL and USD on the engine ledger — fund and trade.",
             },
             {
               title: "Trade",
-              body: "Limit orders and instant convert on SOL-USD.",
+              body: "Limit and market orders on SOL-USD with a live book.",
             },
             {
               title: "History",
-              body: "Live book, balances, and durable market data.",
+              body: "Live tape, fills, and durable market data.",
             },
           ].map((item) => (
             <div key={item.title}>
