@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bffError, getAuthenticatedUserId } from "@/lib/backend";
 import {
+  clearSimOrderBook,
   getMarketMakerStatus,
   runMarketMakerTick,
   type MarketMakerTickOptions,
@@ -37,6 +38,19 @@ export async function POST(request: NextRequest) {
 
   if (action === "status") {
     return NextResponse.json({ ok: true, ...getMarketMakerStatus() });
+  }
+
+  if (action === "clear") {
+    try {
+      const result = await clearSimOrderBook();
+      return NextResponse.json({ ok: true, ...result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "SIM_CLEAR_FAILED";
+      return NextResponse.json(
+        { error: { code: "SIM_CLEAR_FAILED", message } },
+        { status: 502 },
+      );
+    }
   }
 
   if (action !== "tick" && action !== "seed") {

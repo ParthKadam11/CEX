@@ -97,6 +97,31 @@ async function injectPlace(options: {
   });
 }
 
+async function injectCancel(userId: string, orderId: string): Promise<boolean> {
+  return inject({
+    commandId: `sim-cancel-${crypto.randomUUID()}`,
+    type: "CANCEL",
+    userId,
+    orderId,
+    market: "SOL-USD",
+    timestamp: Date.now(),
+  });
+}
+
+async function listOpenOrders(
+  userId: string,
+): Promise<{ orderId: string; userId: string }[]> {
+  const response = await fetch(
+    `${engineGatewayUrl}/markets/SOL-USD/orders?userId=${encodeURIComponent(userId)}`,
+    { cache: "no-store", headers: engineGatewayHeaders() },
+  );
+  if (!response.ok) return [];
+  const body = (await response.json()) as {
+    orders?: { orderId: string; userId: string }[];
+  };
+  return Array.isArray(body.orders) ? body.orders : [];
+}
+
 async function readBook(): Promise<OrderBookSnapshot | null> {
   const response = await fetch(`${engineGatewayUrl}/markets/SOL-USD/book`, {
     cache: "no-store",
@@ -314,6 +339,29 @@ export function getMarketMakerStatus() {
     lastMid: s.lastMid,
     users: [...ALL_USERS],
   };
+}
+
+/** Cancel every resting order owned by sim users and reset tick state. */
+export async function clearSimOrderBook(): Promise<{
+  cancelled: number;
+  book: OrderBookSnapshot | null;
+}> {
+  const jobs: Promise<boolean>[] = [];
+  for (const userId of ALL_USERS) {
+    const orders = await listOpenOrders(userId);
+    for (const order of orders) {
+      jobs.push(injectCancel(userId, order.orderId));
+    }
+  }
+
+  const results = await Promise.all(jobs);
+  const cancelled = results.filter(Boolean).length;
+  await sleep(SETTLE_MS * 4);
+
+  const s = state();
+  s.ticks = 0;
+
+  return { cancelled, book: await readBook() };
 }
 
 function sleep(ms: number) {

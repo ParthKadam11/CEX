@@ -144,6 +144,18 @@ export class EngineClient {
     return body;
   }
 
+  async openOrders(userId: string, signal?: AbortSignal): Promise<Order[]> {
+    const res = await this.request(
+      `/v1/markets/${this.market}/orders?userId=${encodeURIComponent(userId)}&openOnly=true`,
+      { headers: this.headers() },
+      true,
+      signal,
+    );
+    if (!res.ok) throw new Error(`orders failed: ${res.status}`);
+    const body = (await res.json()) as { orders: Order[] };
+    return body.orders ?? [];
+  }
+
   async book(depth = 0, signal?: AbortSignal): Promise<OrderBookSnapshot> {
     const query = depth > 0 ? `?depth=${depth}` : "?depth=0";
     const res = await this.request(

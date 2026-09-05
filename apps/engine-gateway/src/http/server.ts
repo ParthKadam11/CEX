@@ -86,6 +86,30 @@ export function createGatewayApp(options: GatewayAppOptions) {
     }
   });
 
+  app.get("/markets/:market/orders", async (c) => {
+    if (c.req.param("market") !== options.market) {
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
+    }
+
+    const userId = c.req.query("userId");
+    if (!isIdentifier(userId)) {
+      return errorResponse(c, 400, "INVALID_USER_ID");
+    }
+
+    try {
+      return c.json({
+        orders: await options.engine.openOrders(userId),
+      });
+    } catch (error) {
+      return errorResponse(
+        c,
+        502,
+        "ORDERS_UNAVAILABLE",
+        error instanceof Error ? error.message : "ORDERS_UNAVAILABLE",
+      );
+    }
+  });
+
   app.get("/markets/:market/balances", async (c) => {
     if (c.req.param("market") !== options.market) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");

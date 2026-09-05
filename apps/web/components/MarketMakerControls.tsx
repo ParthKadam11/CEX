@@ -20,6 +20,7 @@ type TickResult = {
   traded?: boolean;
   seeded?: boolean;
   ticks?: number;
+  cancelled?: number;
   book?: OrderBookSnapshot | null;
   prints?: { price: number; quantity: number }[];
   error?: { message?: string };
@@ -185,6 +186,31 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
     await tick();
   }
 
+  async function clearBook() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/sim/market-maker", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "clear" }),
+      });
+      const body = (await response.json()) as TickResult;
+      if (!response.ok) {
+        pushEvent(body.error?.message ?? "Clear book failed", "err");
+        return;
+      }
+      onTickRef.current?.(body);
+      pushEvent(
+        `Cleared order book · ${body.cancelled ?? 0} cancelled`,
+        "warn",
+      );
+    } catch {
+      pushEvent("Clear unavailable — is gateway up?", "err");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div ref={rootRef} className="relative flex items-center gap-2">
       {running && (
@@ -310,14 +336,24 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
               </label>
             </div>
 
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runOnce()}
-              className="h-8 w-full rounded-md border border-zinc-200 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
-            >
-              Run one tick
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void runOnce()}
+                className="h-8 rounded-md border border-zinc-200 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+              >
+                Run one tick
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void clearBook()}
+                className="h-8 rounded-md border border-red-200 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40"
+              >
+                Clear order book
+              </button>
+            </div>
           </div>
 
           <div className="px-3 py-2">
