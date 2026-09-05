@@ -29,7 +29,7 @@ export const Appbar = () => {
 
   return (
     <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/90">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-5 sm:px-8">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-3 sm:px-4">
         <Link
           href={session.data?.user ? "/dashboard" : "/"}
           className="font-display text-xl tracking-tight text-zinc-950 dark:text-zinc-50"

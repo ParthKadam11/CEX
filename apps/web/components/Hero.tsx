@@ -11,7 +11,7 @@ export function Hero() {
 
   return (
     <main className="flex min-h-[calc(100vh-3.5rem)] flex-col">
-      <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-5 py-20 sm:px-8">
+      <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-3 py-20 sm:px-4">
         <p className="animate-fade-up text-sm font-medium tracking-wide text-zinc-500 dark:text-zinc-400">
           Spot exchange
         </p>
@@ -52,7 +52,7 @@ export function Hero() {
         id="product"
         className="border-t border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-900/50"
       >
-        <div className="mx-auto grid max-w-3xl gap-8 px-5 py-16 sm:grid-cols-3 sm:px-8">
+        <div className="mx-auto grid max-w-3xl gap-8 px-3 py-16 sm:grid-cols-3 sm:px-4">
           {[
             {
               title: "Wallet",

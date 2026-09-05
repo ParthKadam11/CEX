@@ -94,3 +94,92 @@
 @utility delay-200 {
   animation-delay: 200ms;
 }
+
+/* Order book — thin aesthetic vertical scroll rails */
+.ob-scroll {
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+}
+
+.ob-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.ob-scroll::-webkit-scrollbar-track {
+  margin: 4px 0;
+  background: transparent;
+  border-radius: 999px;
+}
+
+.ob-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+}
+
+.ob-scroll-ask {
+  scrollbar-color: rgb(239 68 68 / 0.45) rgb(239 68 68 / 0.08);
+}
+
+.ob-scroll-ask::-webkit-scrollbar-track {
+  background: rgb(239 68 68 / 0.08);
+}
+
+.ob-scroll-ask::-webkit-scrollbar-thumb {
+  background: rgb(239 68 68 / 0.45);
+}
+
+.ob-scroll-ask::-webkit-scrollbar-thumb:hover {
+  background: rgb(239 68 68 / 0.7);
+}
+
+.ob-scroll-bid {
+  scrollbar-color: rgb(16 185 129 / 0.45) rgb(16 185 129 / 0.08);
+}
+
+.ob-scroll-bid::-webkit-scrollbar-track {
+  background: rgb(16 185 129 / 0.08);
+}
+
+.ob-scroll-bid::-webkit-scrollbar-thumb {
+  background: rgb(16 185 129 / 0.45);
+}
+
+.ob-scroll-bid::-webkit-scrollbar-thumb:hover {
+  background: rgb(16 185 129 / 0.7);
+}
+
+.dark .ob-scroll-ask {
+  scrollbar-color: rgb(248 113 113 / 0.5) rgb(248 113 113 / 0.12);
+}
+
+.dark .ob-scroll-ask::-webkit-scrollbar-track {
+  background: rgb(248 113 113 / 0.12);
+}
+
+.dark .ob-scroll-ask::-webkit-scrollbar-thumb {
+  background: rgb(248 113 113 / 0.5);
+}
+
+.dark .ob-scroll-ask::-webkit-scrollbar-thumb:hover {
+  background: rgb(248 113 113 / 0.75);
+}
+
+.dark .ob-scroll-bid {
+  scrollbar-color: rgb(52 211 153 / 0.5) rgb(52 211 153 / 0.12);
+}
+
+.dark .ob-scroll-bid::-webkit-scrollbar-track {
+  background: rgb(52 211 153 / 0.12);
+}
+
+.dark .ob-scroll-bid::-webkit-scrollbar-thumb {
+  background: rgb(52 211 153 / 0.5);
+}
+
+.dark .ob-scroll-bid::-webkit-scrollbar-thumb:hover {
+  background: rgb(52 211 153 / 0.75);
+}
+

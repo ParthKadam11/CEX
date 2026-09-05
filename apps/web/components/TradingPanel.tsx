@@ -21,6 +21,8 @@ import {
   type TradingOrder,
 } from "@/lib/trading";
 
+const PCT_STOPS = [0, 25, 50, 75, 100] as const;
+
 export function TradingPanel() {
   const [balances, setBalances] = useState<Balance[]>([]);
   const [orders, setOrders] = useState<TradingOrder[]>([]);
@@ -34,9 +36,11 @@ export function TradingPanel() {
   const [quoteBudget, setQuoteBudget] = useState("100");
   const [fromAsset, setFromAsset] = useState<"USD" | "SOL">("USD");
   const [swapAmount, setSwapAmount] = useState("100");
+  const [pct, setPct] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [chartTab, setChartTab] = useState<"chart" | "depth">("chart");
 
   const { book, setBook, connected: streamConnected } = useMarketStream({
     onTrade: (trade: TradeTickMessage) => {
@@ -58,12 +62,42 @@ export function TradingPanel() {
   });
 
   const liveCandles = useMemo(
-    () => buildLiveCandles(tape, 5_000, 60),
+    () => buildLiveCandles(tape, 5_000, 90),
     [tape],
   );
   const chartCandles =
     liveCandles.length > 0 ? liveCandles : historyCandles;
   const chartInterval = liveCandles.length > 0 ? "5s live" : "1m history";
+
+  const lastPrice =
+    tape[0]?.price ??
+    (book.bbo.bestBid != null && book.bbo.bestAsk != null
+      ? (Number(book.bbo.bestBid) + Number(book.bbo.bestAsk)) / 2
+      : (book.bbo.bestBid ?? book.bbo.bestAsk));
+  const prevPrice = tape[1]?.price ?? null;
+  const priceUp =
+    lastPrice == null || prevPrice == null
+      ? true
+      : Number(lastPrice) >= Number(prevPrice);
+
+  const stats = useMemo(() => {
+    const prices = tape.map((t) => Number(t.price)).filter(Number.isFinite);
+    const volumes = tape.map((t) => Number(t.quantity)).filter(Number.isFinite);
+    const high = prices.length ? Math.max(...prices) : null;
+    const low = prices.length ? Math.min(...prices) : null;
+    const vol = volumes.reduce((sum, v) => sum + v, 0);
+    const first = prices.at(-1) ?? null;
+    const last = prices[0] ?? null;
+    const change =
+      first != null && last != null && first !== 0
+        ? last - first
+        : null;
+    const changePct =
+      change != null && first != null && first !== 0
+        ? (change / first) * 100
+        : null;
+    return { high, low, vol, change, changePct };
+  }, [tape]);
 
   useEffect(() => {
     async function bootstrap() {
@@ -90,6 +124,10 @@ export function TradingPanel() {
 
   const usd = balanceFor(balances, "USD");
   const sol = balanceFor(balances, "SOL");
+  const orderValue =
+    mode === "market" && side === "BUY"
+      ? Number(quoteBudget) || 0
+      : (Number(price) || 0) * (Number(quantity) || 0);
 
   async function loadBook() {
     const response = await fetch("/api/market/book", { cache: "no-store" });
@@ -144,12 +182,51 @@ export function TradingPanel() {
           ...current,
           ...mapped.filter((row) => !seen.has(row.id)),
         ];
-        return merged
-          .sort((a, b) => b.at - a.at)
-          .slice(0, 120);
+        return merged.sort((a, b) => b.at - a.at).slice(0, 120);
       }
       return mapped;
     });
+  }
+
+  function applyPct(nextPct: number) {
+    setPct(nextPct);
+    const px =
+      Number(price) ||
+      Number(book.bbo.bestAsk) ||
+      Number(book.bbo.bestBid) ||
+      100;
+    if (side === "BUY") {
+      const budget = Math.max(1, Math.floor((usd.available * nextPct) / 100));
+      if (mode === "market") {
+        setQuoteBudget(String(budget));
+      } else {
+        const qty = Math.max(1, Math.floor(budget / Math.max(px, 1)));
+        setQuantity(String(qty));
+      }
+    } else {
+      const qty = Math.max(1, Math.floor((sol.available * nextPct) / 100));
+      setQuantity(String(qty));
+    }
+  }
+
+  function setMidPrice() {
+    if (book.bbo.bestBid != null && book.bbo.bestAsk != null) {
+      setPrice(
+        String(
+          Math.round(
+            (Number(book.bbo.bestBid) + Number(book.bbo.bestAsk)) / 2,
+          ),
+        ),
+      );
+      return;
+    }
+    if (lastPrice != null) setPrice(String(Math.round(Number(lastPrice))));
+  }
+
+  function setBboPrice() {
+    const next =
+      side === "BUY" ? book.bbo.bestAsk : book.bbo.bestBid;
+    if (next != null) setPrice(String(next));
   }
 
   async function placeOrder(event: React.FormEvent<HTMLFormElement>) {
@@ -259,23 +336,59 @@ export function TradingPanel() {
   }
 
   return (
-    <div className="animate-fade-up w-full max-w-6xl space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 pb-5 dark:border-zinc-800">
-        <div>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">Spot</p>
-          <h1 className="font-display text-3xl tracking-tight text-zinc-950 dark:text-zinc-50">
-            SOL / USD
-          </h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-5 text-sm">
-          <Metric label="Bid" value={book.bbo.bestBid} tone="bid" />
-          <Metric label="Ask" value={book.bbo.bestAsk} tone="ask" />
-          <Metric label="USD avail" value={usd.available} />
-          <Metric label="SOL avail" value={sol.available} />
+    <div className="animate-fade-up flex w-full flex-col">
+      {/* Ticker */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-zinc-200 px-1 py-3 dark:border-zinc-800">
+        <div className="flex items-center gap-3">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+              Spot
+            </p>
+            <h1 className="text-lg font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+              SOL/USD
+            </h1>
+          </div>
           <span
-            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+            className={`text-2xl font-semibold tabular-nums ${
+              priceUp
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-red-600 dark:text-red-400"
+            }`}
+          >
+            {fmtNum(lastPrice)}
+          </span>
+        </div>
+
+        <TickerStat
+          label="24h Change"
+          value={
+            stats.change == null
+              ? "—"
+              : `${stats.change >= 0 ? "+" : ""}${fmtNum(stats.change)} ${
+                  stats.changePct == null
+                    ? ""
+                    : `(${stats.changePct >= 0 ? "+" : ""}${stats.changePct.toFixed(2)}%)`
+                }`
+          }
+          tone={
+            stats.change == null
+              ? undefined
+              : stats.change >= 0
+                ? "up"
+                : "down"
+          }
+        />
+        <TickerStat label="24h High" value={fmtNum(stats.high)} />
+        <TickerStat label="24h Low" value={fmtNum(stats.low)} />
+        <TickerStat label="Volume" value={fmtNum(stats.vol)} />
+        <TickerStat label="Bid" value={fmtNum(book.bbo.bestBid)} tone="up" />
+        <TickerStat label="Ask" value={fmtNum(book.bbo.bestAsk)} tone="down" />
+
+        <div className="ml-auto flex flex-wrap items-center gap-3">
+          <span
+            className={`rounded px-2 py-1 text-[11px] font-medium ${
               streamConnected
-                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
                 : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
             }`}
           >
@@ -305,204 +418,283 @@ export function TradingPanel() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <BalanceBar
-          asset="USD"
-          available={usd.available}
-          locked={usd.locked}
-          onFund={() => paperFund("USD", 10_000)}
-        />
-        <BalanceBar
-          asset="SOL"
-          available={sol.available}
-          locked={sol.locked}
-          onFund={() => paperFund("SOL", 100)}
-        />
-      </div>
+      {/* Main workspace */}
+      <div className="grid h-[min(720px,calc(100vh-12rem))] min-h-[560px] gap-px overflow-hidden bg-zinc-200 dark:bg-zinc-800 lg:grid-cols-[minmax(0,1fr)_280px_320px] lg:grid-rows-[minmax(0,1fr)]">
+        {/* Chart */}
+        <section className="flex min-h-0 flex-col overflow-hidden bg-white dark:bg-zinc-950">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800">
+            <div className="flex gap-1">
+              {(["chart", "depth"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setChartTab(tab)}
+                  className={`border-b-2 px-3 py-2.5 text-sm font-medium capitalize transition ${
+                    chartTab === tab
+                      ? "border-zinc-950 text-zinc-950 dark:border-zinc-50 dark:text-zinc-50"
+                      : "border-transparent text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 text-[11px]">
+              <button
+                type="button"
+                onClick={() => paperFund("USD", 10_000)}
+                className="rounded border border-zinc-200 px-2 py-1 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              >
+                Fund USD
+              </button>
+              <button
+                type="button"
+                onClick={() => paperFund("SOL", 100)}
+                className="rounded border border-zinc-200 px-2 py-1 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              >
+                Fund SOL
+              </button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1">
+            {chartTab === "chart" ? (
+              <CandleChart
+                candles={chartCandles}
+                intervalLabel={chartInterval}
+                className="h-full"
+              />
+            ) : (
+              <DepthSketch book={book} />
+            )}
+          </div>
+        </section>
 
-      <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-            Chart
-          </h2>
-          <span className="text-xs text-zinc-400 dark:text-zinc-500">
-            {chartInterval} candles
-          </span>
-        </div>
-        <CandleChart candles={chartCandles} intervalLabel={chartInterval} />
-      </section>
-
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(280px,0.95fr)_minmax(300px,1fr)]">
+        {/* Order book */}
         <OrderBookPanel
           book={book}
           trades={tape}
           lastTradePrice={tape[0]?.price ?? null}
+          className="min-h-0 overflow-hidden rounded-none border-0 bg-white dark:bg-zinc-950"
           onSelectPrice={(next) => {
             setPrice(String(next));
             setMode("limit");
           }}
         />
 
-        <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              Trade
-            </h2>
-            <div className="flex rounded-md border border-zinc-200 p-0.5 text-xs dark:border-zinc-700">
-              {(["limit", "market", "swap"] as const).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setMode(option)}
-                  className={`rounded px-2.5 py-1 font-medium capitalize ${
-                    mode === option
-                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                      : "text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
-                  }`}
-                >
-                  {option === "swap" ? "Convert" : option}
-                </button>
-              ))}
-            </div>
+        {/* Trade ticket */}
+        <section className="flex min-h-0 flex-col overflow-y-auto bg-white p-4 dark:bg-zinc-950">
+          <div className="mb-3 grid grid-cols-2 gap-1 rounded-md bg-zinc-100 p-1 dark:bg-zinc-900">
+            {(["BUY", "SELL"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setSide(option)}
+                className={`h-9 rounded text-sm font-semibold transition ${
+                  side === option
+                    ? option === "BUY"
+                      ? "bg-emerald-500 text-white shadow-sm"
+                      : "bg-red-500 text-white shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                }`}
+              >
+                {option === "BUY" ? "Buy" : "Sell"}
+              </button>
+            ))}
+          </div>
+
+          <div className="mb-4 flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
+            {(["limit", "market", "swap"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setMode(option)}
+                className={`border-b-2 px-2.5 py-2 text-xs font-medium capitalize ${
+                  mode === option
+                    ? "border-zinc-950 text-zinc-950 dark:border-zinc-50 dark:text-zinc-50"
+                    : "border-transparent text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                }`}
+              >
+                {option === "swap" ? "Convert" : option}
+              </button>
+            ))}
           </div>
 
           {mode === "swap" ? (
-            <>
-              <p className="mb-3 text-xs text-zinc-400 dark:text-zinc-500">
-                Market convert against the live book (IOC).
-              </p>
-              <div className="mb-3 grid grid-cols-2 gap-2">
+            <form className="flex flex-1 flex-col gap-3" onSubmit={placeSwap}>
+              <div className="grid grid-cols-2 gap-2">
                 {(["USD", "SOL"] as const).map((asset) => (
                   <button
                     key={asset}
                     type="button"
                     onClick={() => setFromAsset(asset)}
-                    className={`h-9 rounded-md text-sm font-medium ${
+                    className={`h-9 rounded-md text-xs font-medium ${
                       fromAsset === asset
                         ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                        : "border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                        : "border border-zinc-200 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
                     }`}
                   >
                     {asset} → {asset === "USD" ? "SOL" : "USD"}
                   </button>
                 ))}
               </div>
-              <form className="space-y-3" onSubmit={placeSwap}>
-                <Field
-                  label={
-                    fromAsset === "USD" ? "Spend (USD)" : "Sell amount (SOL)"
-                  }
-                  value={swapAmount}
-                  onChange={setSwapAmount}
-                />
-                <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                  Available {fromAsset}:{" "}
-                  {fromAsset === "USD" ? usd.available : sol.available}
-                </p>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="h-10 w-full rounded-md bg-zinc-950 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
-                >
-                  {submitting
-                    ? "Converting…"
-                    : `Convert ${fromAsset} → ${fromAsset === "USD" ? "SOL" : "USD"}`}
-                </button>
-              </form>
-            </>
+              <TicketField
+                label={fromAsset === "USD" ? "Spend USD" : "Sell SOL"}
+                value={swapAmount}
+                onChange={setSwapAmount}
+              />
+              <p className="text-[11px] text-zinc-400">
+                Available {fromAsset}:{" "}
+                {fromAsset === "USD" ? usd.available : sol.available}
+              </p>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="mt-auto h-11 w-full rounded-md bg-zinc-950 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+              >
+                {submitting
+                  ? "Converting…"
+                  : `Convert ${fromAsset} → ${fromAsset === "USD" ? "SOL" : "USD"}`}
+              </button>
+            </form>
           ) : (
-            <>
-              <div className="mb-3 grid grid-cols-2 gap-2">
-                {(["BUY", "SELL"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setSide(option)}
-                    className={`h-9 rounded-md text-sm font-medium ${
-                      side === option
-                        ? option === "BUY"
-                          ? "bg-emerald-600 text-white"
-                          : "bg-red-600 text-white"
-                        : "border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-                    }`}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-              <form className="space-y-3" onSubmit={placeOrder}>
-                {mode === "limit" && (
-                  <>
-                    <Field
-                      label="Price (USD)"
-                      value={price}
-                      onChange={setPrice}
-                    />
-                    <div>
-                      <span className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                        Time in force
-                      </span>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {(["GTC", "IOC", "FOK"] as const).map((option) => (
-                          <button
-                            key={option}
-                            type="button"
-                            onClick={() => setTif(option)}
-                            className={`h-8 rounded-md text-xs font-medium ${
-                              tif === option
-                                ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                                : "border border-zinc-200 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
-                            }`}
-                          >
-                            {option}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-                <Field
-                  label="Quantity (SOL)"
-                  value={quantity}
-                  onChange={setQuantity}
-                />
-                {mode === "market" && side === "BUY" && (
-                  <Field
-                    label="Quote budget (USD)"
-                    value={quoteBudget}
-                    onChange={setQuoteBudget}
-                  />
-                )}
-                <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                  Need{" "}
+            <form className="flex flex-1 flex-col gap-3" onSubmit={placeOrder}>
+              <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                <span>Available</span>
+                <span className="tabular-nums text-zinc-700 dark:text-zinc-200">
                   {side === "BUY"
-                    ? `USD (avail ${usd.available})`
-                    : `SOL (avail ${sol.available})`}
-                </p>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="h-10 w-full rounded-md bg-zinc-950 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
-                >
-                  {submitting
-                    ? "Submitting…"
-                    : `${side} ${mode === "market" ? "market" : "limit"}`}
-                </button>
-              </form>
-            </>
+                    ? `${usd.available.toLocaleString()} USD`
+                    : `${sol.available.toLocaleString()} SOL`}
+                </span>
+              </div>
+
+              {mode === "limit" && (
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+                      Price (USD)
+                    </span>
+                    <div className="flex gap-1">
+                      <QuickChip label="Mid" onClick={setMidPrice} />
+                      <QuickChip label="BBO" onClick={setBboPrice} />
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    className="h-10 w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 font-mono text-sm text-zinc-950 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-500"
+                    required
+                  />
+                </div>
+              )}
+
+              <TicketField
+                label="Quantity (SOL)"
+                value={quantity}
+                onChange={setQuantity}
+              />
+
+              {mode === "market" && side === "BUY" && (
+                <TicketField
+                  label="Quote budget (USD)"
+                  value={quoteBudget}
+                  onChange={setQuoteBudget}
+                />
+              )}
+
+              <div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={25}
+                  value={pct}
+                  onChange={(e) => applyPct(Number(e.target.value))}
+                  className="w-full accent-emerald-500"
+                />
+                <div className="mt-1 flex justify-between text-[10px] text-zinc-400">
+                  {PCT_STOPS.map((stop) => (
+                    <button
+                      key={stop}
+                      type="button"
+                      onClick={() => applyPct(stop)}
+                      className={
+                        pct === stop
+                          ? "text-zinc-800 dark:text-zinc-200"
+                          : "hover:text-zinc-600"
+                      }
+                    >
+                      {stop}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {mode === "limit" && (
+                <div className="flex flex-wrap gap-3 text-[11px]">
+                  <label className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={tif === "IOC"}
+                      onChange={(e) =>
+                        setTif(e.target.checked ? "IOC" : "GTC")
+                      }
+                      className="rounded border-zinc-300 dark:border-zinc-600"
+                    />
+                    IOC
+                  </label>
+                  <label className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={tif === "FOK"}
+                      onChange={(e) =>
+                        setTif(e.target.checked ? "FOK" : "GTC")
+                      }
+                      className="rounded border-zinc-300 dark:border-zinc-600"
+                    />
+                    FOK
+                  </label>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                <span>Order value</span>
+                <span className="tabular-nums text-zinc-700 dark:text-zinc-200">
+                  {fmtNum(orderValue)} USD
+                </span>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className={`mt-auto h-11 w-full rounded-md text-sm font-semibold text-white transition disabled:opacity-50 ${
+                  side === "BUY"
+                    ? "bg-emerald-500 hover:bg-emerald-400"
+                    : "bg-red-500 hover:bg-red-400"
+                }`}
+              >
+                {submitting
+                  ? "Submitting…"
+                  : `${side === "BUY" ? "Buy" : "Sell"} SOL`}
+              </button>
+            </form>
           )}
+
           {message && (
-            <p className="mt-3 text-center text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="mt-3 text-center text-[11px] text-zinc-500 dark:text-zinc-400">
               {message}
             </p>
           )}
         </section>
       </div>
 
-      <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
-        <div className="mb-4 flex items-center justify-between">
+      {/* Orders */}
+      <section className="border-t border-zinc-200 bg-white px-1 py-4 dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-            Your orders
+            Open / recent orders
           </h2>
           <Link
             href="/dashboard/orders"
@@ -512,18 +704,18 @@ export function TradingPanel() {
           </Link>
         </div>
         {orders.length === 0 ? (
-          <p className="py-8 text-center text-sm text-zinc-400 dark:text-zinc-500">
+          <p className="py-6 text-center text-sm text-zinc-400 dark:text-zinc-500">
             No SOL-USD orders yet.
           </p>
         ) : (
-          <div className="max-h-[320px] divide-y divide-zinc-100 overflow-y-auto overscroll-contain dark:divide-zinc-800">
+          <div className="max-h-[240px] divide-y divide-zinc-100 overflow-y-auto dark:divide-zinc-800">
             {orders.map((order) => {
               const open = OPEN_ORDER_STATUSES.includes(
                 order.status as (typeof OPEN_ORDER_STATUSES)[number],
               );
               const expanded = expandedOrderId === order.id;
               return (
-                <div key={order.id} className="py-3 text-sm">
+                <div key={order.id} className="py-2.5 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <button
                       type="button"
@@ -533,7 +725,16 @@ export function TradingPanel() {
                       }
                     >
                       <p className="font-medium text-zinc-950 dark:text-zinc-50">
-                        {order.side} {order.type} {order.quantity} SOL @{" "}
+                        <span
+                          className={
+                            order.side === "BUY"
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-red-600 dark:text-red-400"
+                          }
+                        >
+                          {order.side}
+                        </span>{" "}
+                        {order.type} {order.quantity} SOL @{" "}
                         {order.price || "mkt"}
                       </p>
                       <p className="text-xs text-zinc-400 dark:text-zinc-500">
@@ -544,7 +745,7 @@ export function TradingPanel() {
                       </p>
                     </button>
                     <div className="flex items-center gap-3">
-                      <span className="text-zinc-500 dark:text-zinc-400">
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
                         {order.status}
                       </span>
                       {open && (
@@ -570,6 +771,52 @@ export function TradingPanel() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function DepthSketch({ book }: { book: OrderBookSnapshot }) {
+  const max = Math.max(
+    ...book.bids.slice(0, 12).map((l) => Number(l.quantity) || 0),
+    ...book.asks.slice(0, 12).map((l) => Number(l.quantity) || 0),
+    1,
+  );
+  return (
+    <div className="grid h-full grid-cols-2 gap-4 p-4">
+      <div>
+        <p className="mb-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          Bids
+        </p>
+        <div className="flex h-[360px] items-end gap-1">
+          {book.bids.slice(0, 16).map((level) => (
+            <div
+              key={`b-${level.price}`}
+              className="flex-1 rounded-t bg-emerald-500/70 dark:bg-emerald-500/50"
+              style={{
+                height: `${Math.max(4, (Number(level.quantity) / max) * 100)}%`,
+              }}
+              title={`${level.price} · ${level.quantity}`}
+            />
+          ))}
+        </div>
+      </div>
+      <div>
+        <p className="mb-2 text-xs font-medium text-red-600 dark:text-red-400">
+          Asks
+        </p>
+        <div className="flex h-[360px] items-end gap-1">
+          {book.asks.slice(0, 16).map((level) => (
+            <div
+              key={`a-${level.price}`}
+              className="flex-1 rounded-t bg-red-500/70 dark:bg-red-500/50"
+              style={{
+                height: `${Math.max(4, (Number(level.quantity) / max) * 100)}%`,
+              }}
+              title={`${level.price} · ${level.quantity}`}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -616,67 +863,34 @@ function OrderFills({
   );
 }
 
-function BalanceBar({
-  asset,
-  available,
-  locked,
-  onFund,
-}: {
-  asset: string;
-  available: number;
-  locked: number;
-  onFund: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between rounded-lg border border-zinc-200 px-4 py-3 text-sm dark:border-zinc-800">
-      <div>
-        <p className="text-xs text-zinc-400 dark:text-zinc-500">{asset} trading</p>
-        <p className="font-semibold text-zinc-950 dark:text-zinc-50">
-          {available.toLocaleString()} avail
-          <span className="ml-2 font-normal text-zinc-400 dark:text-zinc-500">
-            {locked.toLocaleString()} locked
-          </span>
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={onFund}
-        className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-      >
-        Paper fund
-      </button>
-    </div>
-  );
-}
-
-function Metric({
+function TickerStat({
   label,
   value,
   tone,
 }: {
   label: string;
-  value: number | null;
-  tone?: "bid" | "ask";
+  value: string;
+  tone?: "up" | "down";
 }) {
   return (
-    <div className="text-right">
-      <p className="text-xs text-zinc-400 dark:text-zinc-500">{label}</p>
+    <div>
+      <p className="text-[11px] text-zinc-400 dark:text-zinc-500">{label}</p>
       <p
-        className={`font-semibold ${
-          tone === "bid"
+        className={`text-sm font-medium tabular-nums ${
+          tone === "up"
             ? "text-emerald-600 dark:text-emerald-400"
-            : tone === "ask"
+            : tone === "down"
               ? "text-red-600 dark:text-red-400"
-              : "text-zinc-950 dark:text-zinc-50"
+              : "text-zinc-900 dark:text-zinc-100"
         }`}
       >
-        {value ?? "—"}
+        {value}
       </p>
     </div>
   );
 }
 
-function Field({
+function TicketField({
   label,
   value,
   onChange,
@@ -687,7 +901,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+      <span className="mb-1.5 block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
         {label}
       </span>
       <input
@@ -696,9 +910,36 @@ function Field({
         step="1"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-950 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:border-zinc-500"
+        className="h-10 w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 font-mono text-sm text-zinc-950 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-500"
         required
       />
     </label>
   );
+}
+
+function QuickChip({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+    >
+      {label}
+    </button>
+  );
+}
+
+function fmtNum(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  const n = Number(value);
+  if (Number.isInteger(n)) return n.toLocaleString();
+  return n.toLocaleString(undefined, {
+    maximumFractionDigits: n < 10 ? 4 : 2,
+  });
 }

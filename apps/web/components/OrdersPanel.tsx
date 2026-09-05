@@ -91,7 +91,7 @@ export function OrdersPanel() {
   }
 
   return (
-    <div className="animate-fade-up w-full max-w-6xl space-y-6">
+    <div className="animate-fade-up w-full space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 pb-5 dark:border-zinc-800">
         <div>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">OMS</p>

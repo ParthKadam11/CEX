@@ -74,7 +74,7 @@ export function DashboardHome({ publicKey }: DashboardHomeProps) {
   const image = session?.user?.image;
 
   return (
-    <div className="animate-fade-up w-full max-w-6xl space-y-8">
+    <div className="animate-fade-up w-full space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           {image ? (
