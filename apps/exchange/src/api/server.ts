@@ -16,7 +16,7 @@ import {
   type Order,
 } from "@cex/exchange-types";
 import type { EventBus } from "./eventBus.js";
-import type { MarketRuntime } from "../market/runtime.js";
+import { MarketRuntime } from "../market/runtime.js";
 import { isPositiveUnit, isUnit, marketSpec } from "../market/units.js";
 
 function isMarket(value: string): value is MarketSymbol {
@@ -57,14 +57,27 @@ function parseNonNegativeUnit(value: unknown): number | null {
 /*
   REST = commands + queries (this is your request/response "RPC").
   SSE  = live ORDER / BBO / CREDIT events for the gateway.
+
+  Host one or many MarketRuntime instances (spot + perps) behind one HTTP port.
+  Pass a single runtime (tests) or a Map keyed by market symbol.
 */
 
 export function createExchangeApp(
-  runtime: MarketRuntime,
+  runtimeOrRuntimes: MarketRuntime | ReadonlyMap<MarketSymbol, MarketRuntime>,
   bus: EventBus,
   options: { gatewayToken?: string } = {},
 ) {
+  const runtimes = resolveRuntimes(runtimeOrRuntimes);
   const app = new Hono();
+
+  function runtimeFor(
+    raw: string,
+  ): { market: MarketSymbol; runtime: MarketRuntime } | null {
+    if (!isMarket(raw)) return null;
+    const runtime = runtimes.get(raw);
+    if (!runtime) return null;
+    return { market: raw, runtime };
+  }
 
   app.use("*", async (c, next) => {
     const requestId = c.req.header("x-request-id");
@@ -93,26 +106,50 @@ export function createExchangeApp(
     ),
   );
 
-  app.get("/health", (c) => c.json({ ok: true, market: runtime.market }));
+  app.get("/health", (c) => {
+    const markets = [...runtimes.keys()];
+    return c.json({
+      ok: true,
+      markets,
+      market: markets[0] ?? null,
+    });
+  });
 
   // Dev hard-reset: empty book + balances + WAL (not for production).
+  // Optional ?market= resets one venue; otherwise resets all hosted markets.
   app.post("/v1/dev/reset", async (c) => {
     if (process.env.NODE_ENV === "production") {
       return errorResponse(c, 404, "NOT_FOUND");
     }
-    await runtime.hardReset();
+    const marketQ = c.req.query("market");
+    if (marketQ) {
+      const resolved = runtimeFor(marketQ);
+      if (!resolved) return errorResponse(c, 404, "UNKNOWN_MARKET");
+      await resolved.runtime.hardReset();
+      return c.json({
+        ok: true,
+        market: resolved.market,
+        book: resolved.runtime.book.getSnapshot(0),
+      });
+    }
+    const books: Record<string, unknown> = {};
+    for (const runtime of runtimes.values()) {
+      await runtime.hardReset();
+      books[runtime.market] = runtime.book.getSnapshot(0);
+    }
     return c.json({
       ok: true,
-      market: runtime.market,
-      book: runtime.book.getSnapshot(0),
+      markets: [...runtimes.keys()],
+      books,
     });
   });
 
   app.post("/v1/markets/:market/credit", async (c) => {
-    const market = c.req.param("market");
-    if (!isMarket(market) || market !== runtime.market) {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+    const { market, runtime } = resolved;
 
     let body: {
       userId?: string;
@@ -145,10 +182,11 @@ export function createExchangeApp(
   });
 
   app.post("/v1/markets/:market/orders", async (c) => {
-    const market = c.req.param("market");
-    if (!isMarket(market) || market !== runtime.market) {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+    const { market, runtime } = resolved;
 
     let body: Record<string, unknown>;
     try {
@@ -279,10 +317,11 @@ export function createExchangeApp(
   });
 
   app.delete("/v1/markets/:market/orders/:orderId", async (c) => {
-    const market = c.req.param("market");
-    if (!isMarket(market) || market !== runtime.market) {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+    const { market, runtime } = resolved;
 
     const orderId = c.req.param("orderId");
     if (!isIdentifier(orderId)) {
@@ -296,10 +335,11 @@ export function createExchangeApp(
   });
 
   app.get("/v1/markets/:market/orders/:orderId", (c) => {
-    const market = c.req.param("market");
-    if (!isMarket(market) || market !== runtime.market) {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+    const { market, runtime } = resolved;
 
     const orderId = c.req.param("orderId");
     if (!isIdentifier(orderId)) {
@@ -311,10 +351,11 @@ export function createExchangeApp(
   });
 
   app.get("/v1/markets/:market/orders", (c) => {
-    const market = c.req.param("market");
-    if (!isMarket(market) || market !== runtime.market) {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+    const { market, runtime } = resolved;
 
     const userId = c.req.query("userId");
     if (!isIdentifier(userId)) {
@@ -336,10 +377,11 @@ export function createExchangeApp(
   });
 
   app.get("/v1/markets/:market/balances/:userId", (c) => {
-    const market = c.req.param("market");
-    if (!isMarket(market) || market !== runtime.market) {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+    const { market, runtime } = resolved;
 
     const userId = c.req.param("userId");
     if (!isIdentifier(userId)) {
@@ -351,10 +393,11 @@ export function createExchangeApp(
   });
 
   app.get("/v1/markets/:market/positions", (c) => {
-    const market = c.req.param("market");
-    if (!isMarket(market) || market !== runtime.market) {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+    const { market, runtime } = resolved;
 
     const userId = c.req.query("userId");
     if (userId !== undefined && !isIdentifier(userId)) {
@@ -368,10 +411,11 @@ export function createExchangeApp(
   });
 
   app.get("/v1/markets/:market/positions/:userId", (c) => {
-    const market = c.req.param("market");
-    if (!isMarket(market) || market !== runtime.market) {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+    const { market, runtime } = resolved;
 
     const userId = c.req.param("userId");
     if (!isIdentifier(userId)) {
@@ -394,10 +438,11 @@ export function createExchangeApp(
   });
 
   app.get("/v1/markets/:market/book", (c) => {
-    const market = c.req.param("market");
-    if (!isMarket(market) || market !== runtime.market) {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+    const { market, runtime } = resolved;
 
     const raw = c.req.query("depth");
     const depth =
@@ -412,10 +457,11 @@ export function createExchangeApp(
   });
 
   app.get("/v1/markets/:market/mark", (c) => {
-    const market = c.req.param("market");
-    if (!isMarket(market) || market !== runtime.market) {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+    const { market, runtime } = resolved;
     return c.json({
       market,
       ...runtime.markPrice(),
@@ -424,10 +470,11 @@ export function createExchangeApp(
 
   // Live stream for gateway: ORDER, TRADE, BBO, CREDIT, POSITION
   app.get("/v1/markets/:market/stream", (c) => {
-    const market = c.req.param("market");
-    if (!isMarket(market) || market !== runtime.market) {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+    const { market, runtime } = resolved;
 
     const userId = c.req.query("userId");
     if (userId !== undefined && !isIdentifier(userId)) {
@@ -481,6 +528,15 @@ export function createExchangeApp(
   });
 
   return app;
+}
+
+function resolveRuntimes(
+  input: MarketRuntime | ReadonlyMap<MarketSymbol, MarketRuntime>,
+): ReadonlyMap<MarketSymbol, MarketRuntime> {
+  if (input instanceof MarketRuntime) {
+    return new Map([[input.market, input]]);
+  }
+  return input;
 }
 
 function errorBody(

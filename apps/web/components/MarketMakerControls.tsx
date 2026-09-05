@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Activity, Settings2, X } from "lucide-react";
-import type { OrderBookSnapshot } from "@cex/exchange-types";
+import type { MarketSymbol, OrderBookSnapshot } from "@cex/exchange-types";
 
 const MAX_EVENTS = 40;
 
@@ -51,13 +51,18 @@ type SimEvent = {
 };
 
 type MarketMakerControlsProps = {
+  /** Spot or perp venue the controls should drive. */
+  market: MarketSymbol;
   onTickAction?: (result: StatusBody) => void;
 };
 
 /**
  * MM menu: server heartbeat switch + speed/intensity/spread/mode + wipe.
  */
-export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) {
+export function MarketMakerControls({
+  market,
+  onTickAction,
+}: MarketMakerControlsProps) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<HeartbeatInfo | null>(null);
@@ -86,7 +91,8 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
 
   async function refreshStatus() {
     try {
-      const response = await fetch("/api/sim/market-maker", {
+      const qs = new URLSearchParams({ market });
+      const response = await fetch(`/api/sim/market-maker?${qs}`, {
         cache: "no-store",
       });
       if (!response.ok) return;
@@ -117,7 +123,8 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
     void refreshStatus();
     const timer = window.setInterval(() => void refreshStatus(), 4_000);
     return () => window.clearInterval(timer);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when market changes
+  }, [market]);
 
   useEffect(() => {
     if (!open) return;
@@ -141,7 +148,7 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
       const response = await fetch("/api/sim/market-maker", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, ...extra }),
+        body: JSON.stringify({ action, market, ...extra }),
       });
       const body = (await response.json()) as StatusBody;
       if (!response.ok) {
@@ -238,7 +245,7 @@ export function MarketMakerControls({ onTickAction }: MarketMakerControlsProps) 
       onTickRef.current?.({
         wiped: true,
         book: {
-          market: "SOL-USD",
+          market,
           bids: [],
           asks: [],
           bbo: { bestBid: null, bestAsk: null },

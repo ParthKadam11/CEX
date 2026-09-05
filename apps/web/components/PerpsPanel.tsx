@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { TradeTickMessage } from "@cex/app-contracts";
-import type { Balance, OrderBookSnapshot } from "@cex/exchange-types";
+import type { Balance, OrderBookSnapshot, Position } from "@cex/exchange-types";
 import { CandleChart } from "@/components/CandleChart";
 import { MarketMakerControls } from "@/components/MarketMakerControls";
 import { OrderBookPanel } from "@/components/OrderBookPanel";
 import { useMarketStream } from "@/hooks/useMarketStream";
-import { SPOT_VENUE } from "@/lib/markets";
+import { PERP_VENUE } from "@/lib/markets";
 import {
   balanceFor,
   buildLiveCandles,
@@ -22,8 +22,8 @@ import {
   type TradingOrder,
 } from "@/lib/trading";
 
-export function TradingPanel() {
-  const market = SPOT_VENUE.symbol;
+export function PerpsPanel() {
+  const market = PERP_VENUE.symbol;
   const marketQs = `market=${encodeURIComponent(market)}`;
 
   const [balances, setBalances] = useState<Balance[]>([]);
@@ -39,9 +39,15 @@ export function TradingPanel() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [position, setPosition] = useState<Position | null>(null);
+  const [markPrice, setMarkPrice] = useState<number | null>(null);
+  const [leverage, setLeverage] = useState("5");
 
   const { book, setBook, connected: streamConnected } = useMarketStream({
     market,
+    onPosition: (next) => {
+      setPosition(next.size === 0 ? null : next);
+    },
     onTrade: (trade: TradeTickMessage) => {
       setMessage(`Trade ${trade.quantity} SOL @ ${trade.price} USD`);
       setTape((current) =>
@@ -57,6 +63,8 @@ export function TradingPanel() {
       );
       void loadBalances();
       void loadOrders();
+      void loadPositions();
+      void loadMark();
     },
   });
 
@@ -115,6 +123,8 @@ export function TradingPanel() {
         loadOrders(),
         loadCandles(),
         loadTradeHistory(true),
+        loadPositions(),
+        loadMark(),
       ]);
     }
     void bootstrap();
@@ -122,6 +132,8 @@ export function TradingPanel() {
     const refreshTimer = window.setInterval(() => {
       void loadOrders();
       void loadBalances();
+      void loadPositions();
+      void loadMark();
     }, 1_000);
 
     return () => {
@@ -158,11 +170,18 @@ export function TradingPanel() {
   }, [market]);
 
   const usd = balanceFor(balances, "USD");
-  const sol = balanceFor(balances, "SOL");
   const orderValue =
     mode === "market" && side === "BUY"
       ? Number(quoteBudget) || 0
       : (Number(price) || 0) * (Number(quantity) || 0);
+  const estMargin =
+    Number(leverage) > 0 ? Math.ceil(orderValue / Number(leverage)) : null;
+  const displayMark =
+    markPrice ?? (lastPrice != null ? Number(lastPrice) : null);
+  const upnl =
+    position && displayMark != null
+      ? position.size * (displayMark - position.entryPrice)
+      : null;
 
   async function loadBook() {
     const response = await fetch(`/api/market/book?${marketQs}`, { cache: "no-store" });
@@ -186,6 +205,25 @@ export function TradingPanel() {
     if (!response.ok) return;
     const body = (await response.json()) as { balances: Balance[] };
     setBalances(body.balances ?? []);
+  }
+
+  async function loadPositions() {
+    const response = await fetch(`/api/market/positions?${marketQs}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    const body = (await response.json()) as { positions?: Position[] };
+    const rows = Array.isArray(body.positions) ? body.positions : [];
+    setPosition(rows.find((row) => row.size !== 0) ?? null);
+  }
+
+  async function loadMark() {
+    const response = await fetch(`/api/market/mark?${marketQs}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    const body = (await response.json()) as { mark?: number | null };
+    setMarkPrice(body.mark ?? null);
   }
 
   async function loadCandles() {
@@ -254,16 +292,21 @@ export function TradingPanel() {
 
     const isMarket = mode === "market";
     const payload: Record<string, unknown> = {
-      clientOrderId: `web-${crypto.randomUUID()}`,
+      clientOrderId: `perp-${crypto.randomUUID()}`,
       market,
       side,
       orderType: isMarket ? "MARKET" : "LIMIT",
       timeInForce: isMarket ? "IOC" : tif,
       price: isMarket ? 0 : Number(price),
       quantity: Number(quantity),
+      leverage: Number(leverage),
     };
-    if (isMarket && side === "BUY") {
-      payload.quoteBudget = Number(quoteBudget);
+    if (isMarket) {
+      const px = (displayMark ?? Number(price)) || 1;
+      payload.quoteBudget =
+        side === "BUY"
+          ? Number(quoteBudget)
+          : Math.max(1, Math.ceil(Number(quantity) * px));
     }
 
     const response = await fetch("/api/orders", {
@@ -282,7 +325,13 @@ export function TradingPanel() {
       return;
     }
     setMessage(`Order ${body.order?.engineOrderId ?? "submitted"}`);
-    await Promise.all([loadOrders(), loadBalances(), loadBook()]);
+    await Promise.all([
+      loadOrders(),
+      loadBalances(),
+      loadBook(),
+      loadPositions(),
+      loadMark(),
+    ]);
   }
 
   async function cancelOrder(orderId: string) {
@@ -299,14 +348,20 @@ export function TradingPanel() {
       return;
     }
     setMessage("Cancel requested");
-    await Promise.all([loadOrders(), loadBalances(), loadBook()]);
+    await Promise.all([
+      loadOrders(),
+      loadBalances(),
+      loadBook(),
+      loadPositions(),
+      loadMark(),
+    ]);
   }
 
-  async function paperFund(asset: "USD" | "SOL", amount: number) {
+  async function paperFund(amount = 10_000) {
     const response = await fetch("/api/market/credit", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ asset, amount, market }),
+      body: JSON.stringify({ asset: "USD", amount, market }),
     });
     if (!response.ok) {
       const body = (await response.json()) as {
@@ -315,7 +370,7 @@ export function TradingPanel() {
       setMessage(errorMessage(body) ?? "Credit failed");
       return;
     }
-    setMessage(`Credited ${amount} ${asset}`);
+    setMessage(`Credited ${amount} USD margin`);
     window.setTimeout(() => {
       void loadBalances();
     }, 500);
@@ -328,10 +383,10 @@ export function TradingPanel() {
         <div className="flex items-end gap-3">
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-              Spot
+              Perpetual
             </p>
-            <h1 className="text-lg leading-none font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-              SOL/USD
+            <h1 className="text-balance text-lg leading-none font-semibold text-zinc-950 dark:text-zinc-50">
+              SOL-USD-PERP
             </h1>
           </div>
           <span
@@ -369,6 +424,7 @@ export function TradingPanel() {
         <TickerStat label="Volume" value={fmtNum(stats.vol)} />
         <TickerStat label="Bid" value={fmtNum(book.bbo.bestBid)} tone="up" />
         <TickerStat label="Ask" value={fmtNum(book.bbo.bestAsk)} tone="down" />
+        <TickerStat label="Mark" value={fmtNum(displayMark)} />
 
         <div className="ml-auto flex items-center gap-2">
           <span
@@ -434,19 +490,11 @@ export function TradingPanel() {
             <div className="flex gap-1.5">
               <button
                 type="button"
-                title="Paper-credit engine USD balance (not on-chain)"
-                onClick={() => paperFund("USD", 10_000)}
+                title="Paper-credit USD margin (not on-chain)"
+                onClick={() => paperFund(10_000)}
                 className="rounded-md border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
               >
-                +USD
-              </button>
-              <button
-                type="button"
-                title="Paper-credit engine SOL balance (not on-chain)"
-                onClick={() => paperFund("SOL", 100)}
-                className="rounded-md border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-              >
-                +SOL
+                +USD margin
               </button>
             </div>
           </div>
@@ -487,7 +535,7 @@ export function TradingPanel() {
                     : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
                 }`}
               >
-                {option === "BUY" ? "Buy" : "Sell"}
+                {option === "BUY" ? "Long" : "Short"}
               </button>
             ))}
           </div>
@@ -511,11 +559,9 @@ export function TradingPanel() {
 
           <form className="flex flex-1 flex-col gap-3" onSubmit={placeOrder}>
               <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                <span>Available</span>
+                <span>Margin available</span>
                 <span className="tabular-nums text-zinc-700 dark:text-zinc-200">
-                  {side === "BUY"
-                    ? `${usd.available.toLocaleString()} USD`
-                    : `${sol.available.toLocaleString()} SOL`}
+                  {usd.available.toLocaleString()} USD
                 </span>
               </div>
 
@@ -543,10 +589,42 @@ export function TradingPanel() {
               )}
 
               <TicketField
-                label="Quantity (SOL)"
+                label="Size (SOL)"
                 value={quantity}
                 onChange={setQuantity}
               />
+
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+                    Leverage
+                  </span>
+                  <span className="tabular-nums text-[11px] text-zinc-500">
+                    {leverage}x
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="20"
+                  step="1"
+                  value={leverage}
+                  onChange={(e) => setLeverage(e.target.value)}
+                  aria-label="Leverage"
+                  className="w-full accent-zinc-900 dark:accent-zinc-100"
+                />
+                <div className="mt-1 flex justify-between text-[10px] text-zinc-400">
+                  {(["1", "5", "10", "20"] as const).map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setLeverage(n)}
+                    >
+                      {n}x
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {mode === "market" && side === "BUY" && (
                 <TicketField
@@ -584,11 +662,19 @@ export function TradingPanel() {
               )}
 
               <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                <span>Order value</span>
+                <span>Notional</span>
                 <span className="tabular-nums text-zinc-700 dark:text-zinc-200">
                   {fmtNum(orderValue)} USD
                 </span>
               </div>
+              {estMargin != null && (
+                <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                  <span>Est. margin</span>
+                  <span className="tabular-nums text-zinc-700 dark:text-zinc-200">
+                    {fmtNum(estMargin)} USD
+                  </span>
+                </div>
+              )}
 
               <button
                 type="submit"
@@ -601,7 +687,7 @@ export function TradingPanel() {
               >
                 {submitting
                   ? "Submitting…"
-                  : `${side === "BUY" ? "Buy" : "Sell"} SOL`}
+                  : `${side === "BUY" ? "Long" : "Short"} ${leverage}x`}
               </button>
             </form>
 
@@ -613,11 +699,47 @@ export function TradingPanel() {
         </section>
       </div>
 
+
+      {/* Position */}
+      <section className="border-t border-zinc-200 bg-white px-1 py-4 dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+            Position
+          </h2>
+          <span className="text-xs text-zinc-400">Mark {fmtNum(displayMark)}</span>
+        </div>
+        {!position ? (
+          <p className="py-4 text-center text-sm text-zinc-400 dark:text-zinc-500">
+            No open position. Long or short to open one.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <TickerStat
+              label="Side"
+              value={position.size > 0 ? "Long" : "Short"}
+              tone={position.size > 0 ? "up" : "down"}
+            />
+            <TickerStat label="Size" value={fmtNum(Math.abs(position.size))} />
+            <TickerStat label="Entry" value={fmtNum(position.entryPrice)} />
+            <TickerStat label="Margin" value={fmtNum(position.margin)} />
+            <TickerStat
+              label="uPnL"
+              value={
+                upnl == null
+                  ? "—"
+                  : `${upnl >= 0 ? "+" : ""}${fmtNum(upnl)}`
+              }
+              tone={upnl == null ? undefined : upnl >= 0 ? "up" : "down"}
+            />
+          </div>
+        )}
+      </section>
+
       {/* Orders */}
       <section className="border-t border-zinc-200 bg-white px-1 py-4 dark:border-zinc-800 dark:bg-zinc-950">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-            Open / recent orders
+            Open / recent perp orders
           </h2>
           <Link
             href="/dashboard/orders"
@@ -628,7 +750,7 @@ export function TradingPanel() {
         </div>
         {orders.length === 0 ? (
           <p className="py-6 text-center text-sm text-zinc-400 dark:text-zinc-500">
-            No SOL-USD orders yet.
+            No SOL-USD-PERP orders yet.
           </p>
         ) : (
           <div className="max-h-[240px] divide-y divide-zinc-100 overflow-y-auto dark:divide-zinc-800">
@@ -655,7 +777,7 @@ export function TradingPanel() {
                               : "text-red-600 dark:text-red-400"
                           }
                         >
-                          {order.side}
+                          {order.side === "BUY" ? "Long" : "Short"}
                         </span>{" "}
                         {order.type} {order.quantity} SOL @{" "}
                         {order.price || "mkt"}

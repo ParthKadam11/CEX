@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TradeTickMessage } from "@cex/app-contracts";
 import { CandleChart } from "@/components/CandleChart";
 import { useMarketStream } from "@/hooks/useMarketStream";
+import { SPOT_VENUE } from "@/lib/markets";
 import {
   buildLiveCandles,
   formatTime,
@@ -33,11 +34,12 @@ export function MarketExplorer() {
   const [historyPage, setHistoryPage] = useState(0);
 
   const loadHistory = useCallback(async () => {
+    const q = `market=${encodeURIComponent(SPOT_VENUE.symbol)}`;
     const [metaRes, candlesRes, tradesRes, bboRes] = await Promise.all([
-      fetch("/api/market", { cache: "no-store" }),
-      fetch("/api/market/history/candles?limit=60", { cache: "no-store" }),
-      fetch("/api/market/history/trades?limit=100", { cache: "no-store" }),
-      fetch("/api/market/history/bbo?limit=100", { cache: "no-store" }),
+      fetch(`/api/market?${q}`, { cache: "no-store" }),
+      fetch(`/api/market/history/candles?${q}&limit=60`, { cache: "no-store" }),
+      fetch(`/api/market/history/trades?${q}&limit=100`, { cache: "no-store" }),
+      fetch(`/api/market/history/bbo?${q}&limit=100`, { cache: "no-store" }),
     ]);
 
     if (metaRes.ok) setMeta((await metaRes.json()) as MarketMeta);
@@ -70,6 +72,7 @@ export function MarketExplorer() {
   }, []);
 
   const { book, connected } = useMarketStream({
+    market: SPOT_VENUE.symbol,
     onTrade: (trade: TradeTickMessage) => {
       setTape((current) =>
         [

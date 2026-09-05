@@ -237,4 +237,75 @@ describe("exchange HTTP + SSE", () => {
     expect(runtime.book.getOrder("same-id")?.userId).toBe("u1");
     await runtime.close();
   });
+
+  it("hosts spot and perps in one app with separate books", async () => {
+    const bus = new EventBus();
+    const spot = MarketRuntime.open("SOL-USD", tempWal(), bus);
+    const perpWal = path.join(path.dirname(tempWal()), "SOL-USD-PERP.jsonl");
+    const perp = MarketRuntime.open("SOL-USD-PERP", perpWal, bus);
+    const app = createExchangeApp(
+      new Map([
+        ["SOL-USD", spot],
+        ["SOL-USD-PERP", perp],
+      ]),
+      bus,
+    );
+
+    const health = await (await app.request("/health")).json();
+    expect(health).toEqual({
+      ok: true,
+      markets: ["SOL-USD", "SOL-USD-PERP"],
+      market: "SOL-USD",
+    });
+
+    const headers = { "content-type": "application/json" };
+    await app.request("/v1/markets/SOL-USD/credit", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ userId: "u1", asset: "SOL", amount: 2 }),
+    });
+    await app.request("/v1/markets/SOL-USD-PERP/credit", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ userId: "u1", asset: "USD", amount: 10_000 }),
+    });
+
+    await app.request("/v1/markets/SOL-USD/orders", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        orderId: "spot-ask",
+        userId: "u1",
+        side: "SELL",
+        type: "LIMIT",
+        price: 100,
+        quantity: 1,
+      }),
+    });
+    await app.request("/v1/markets/SOL-USD-PERP/orders", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        orderId: "perp-bid",
+        userId: "u1",
+        side: "BUY",
+        type: "LIMIT",
+        price: 99,
+        quantity: 1,
+        leverage: 5,
+      }),
+    });
+
+    const spotBook = await (await app.request("/v1/markets/SOL-USD/book")).json();
+    const perpBook = await (
+      await app.request("/v1/markets/SOL-USD-PERP/book")
+    ).json();
+    expect(spotBook.asks).toEqual([{ price: 100, quantity: 1, count: 1 }]);
+    expect(perpBook.bids).toEqual([{ price: 99, quantity: 1, count: 1 }]);
+    expect(spotBook.bids).toEqual([]);
+    expect(perpBook.asks).toEqual([]);
+
+    await spot.close();
+    await perp.close();
+  });
 });

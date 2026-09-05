@@ -165,22 +165,30 @@ Runs the Next.js app at `http://localhost:3000`.
 pnpm dev:exchange
 ```
 
-Runs the spot engine (`SOL-USD`) at `http://localhost:4010`.
+Runs **one** exchange process on `http://localhost:4010` hosting both `SOL-USD` (spot) and `SOL-USD-PERP` (perps). Each market still has its own WAL under `apps/exchange/data/<market>.jsonl`.
+
+Optional single-market / split-process overrides:
 
 ```bash
+# Spot only
+cross-env EXCHANGE_MARKET=SOL-USD pnpm dev:exchange
+
+# Legacy separate perp process on :4011 (optional)
 pnpm dev:exchange:perp
 ```
 
-Runs the perp engine (`SOL-USD-PERP`) at `http://localhost:4011` with its own WAL (`data/SOL-USD-PERP.jsonl`).
-
 Supported engine environment variables:
 
+- `EXCHANGE_MARKETS`  
+Comma list, default `SOL-USD,SOL-USD-PERP`.
 - `EXCHANGE_MARKET`  
-`SOL-USD` (default) or `SOL-USD-PERP`.
+Single-market override (skips the default pair).
 - `EXCHANGE_PORT`  
-Port for the HTTP/SSE server. Defaults to `4010` (use `4011` for perps).
+HTTP/SSE port. Defaults to `4010`.
 - `EXCHANGE_WAL_PATH`  
-Path to the market WAL file. Defaults to `apps/exchange/data/<market>.jsonl`.
+Only when hosting a single market. Otherwise WALs are `data/<market>.jsonl`.
+- `EXCHANGE_DATA_DIR`  
+Directory for per-market WAL files. Defaults to `apps/exchange/data`.
 
 
 
@@ -202,7 +210,7 @@ The engine gateway is the only application-layer service that talks to the excha
 pnpm dev:gateway
 ```
 
-By default this wires spot (`EXCHANGE_URL=:4010`) and perps (`EXCHANGE_PERP_URL=:4011`). It consumes commands from `orders:commands`, routes by `market` to the correct engine, consumes exchange SSE, and publishes order events / live MD. Commands may include `leverage` (perps) and optional `market` on `CREDIT`.
+By default this wires both markets to the same exchange URL (`EXCHANGE_URL` / `EXCHANGE_PERP_URL` → `:4010`). It consumes commands from `orders:commands`, routes by `market`, consumes exchange SSE, and publishes order events / live MD. Commands may include `leverage` (perps) and optional `market` on `CREDIT`.
 
 ### Order Management Service
 

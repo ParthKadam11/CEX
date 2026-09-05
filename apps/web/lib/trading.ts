@@ -12,6 +12,7 @@ export type TradingOrder = {
   id: string;
   engineOrderId: string;
   clientOrderId: string;
+  market?: string;
   side: "BUY" | "SELL";
   type: "LIMIT" | "MARKET";
   timeInForce?: string;

@@ -10,16 +10,16 @@ export function Hero() {
   const router = useRouter();
 
   return (
-    <main className="flex min-h-[calc(100vh-3.5rem)] flex-col">
+    <main className="flex min-h-[calc(100dvh-3.5rem)] flex-col">
       <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-1 py-20 sm:px-2">
-        <p className="animate-fade-up text-sm font-medium tracking-wide text-zinc-500 dark:text-zinc-400">
-          Spot exchange
+        <p className="animate-fade-up text-sm font-medium text-zinc-500 dark:text-zinc-400">
+          Spot & perps
         </p>
-        <h1 className="animate-fade-up mt-4 font-display text-6xl leading-[0.95] tracking-tight text-zinc-950 sm:text-7xl dark:text-zinc-50">
+        <h1 className="animate-fade-up mt-4 font-display text-balance text-6xl leading-[0.95] text-zinc-950 sm:text-7xl dark:text-zinc-50">
           CEX
         </h1>
-        <p className="animate-fade-up delay-100 mt-6 max-w-md text-lg leading-relaxed text-zinc-500 dark:text-zinc-400">
-          Clear markets. Simple balances. Trade SOL-USD without the noise.
+        <p className="animate-fade-up delay-100 mt-6 max-w-md text-pretty text-lg leading-relaxed text-zinc-500 dark:text-zinc-400">
+          Clear markets. Simple balances. Spot and perpetual SOL-USD without the noise.
         </p>
 
         <div className="animate-fade-up delay-200 mt-10 flex flex-wrap items-center gap-3">
@@ -59,8 +59,8 @@ export function Hero() {
               body: "Paper SOL and USD on the engine ledger — fund and trade.",
             },
             {
-              title: "Trade",
-              body: "Limit and market orders on SOL-USD with a live book.",
+              title: "Spot & Perps",
+              body: "Limit and market orders on SOL-USD spot, or leveraged perps.",
             },
             {
               title: "History",

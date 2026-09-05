@@ -5,12 +5,13 @@ import {
   engineGatewayUrl,
   getAuthenticatedUserId,
 } from "@/lib/backend";
+import { parseMarketParam } from "@/lib/markets";
 
 const MAX_PAPER_CREDIT = 1_000_000;
 
 /**
  * Paper-fund the authenticated user's engine ledger via gateway CREDIT inject.
- * Demo funding path for local/dev trading balances.
+ * Pass `market` to credit the spot or perp engine (separate ledgers).
  */
 export async function POST(request: NextRequest) {
   const userId = await getAuthenticatedUserId();
@@ -31,8 +32,14 @@ export async function POST(request: NextRequest) {
 
   const asset = body.asset;
   const amount = Number(body.amount);
+  const market = parseMarketParam(
+    typeof body.market === "string" ? body.market : null,
+  );
   if (asset !== "SOL" && asset !== "USD") {
     return bffError(request, 400, "INVALID_ASSET");
+  }
+  if (market === "SOL-USD-PERP" && asset !== "USD") {
+    return bffError(request, 400, "PERP_USD_ONLY");
   }
   if (!Number.isInteger(amount) || amount < 1 || amount > MAX_PAPER_CREDIT) {
     return bffError(request, 400, "INVALID_AMOUNT");
@@ -44,6 +51,7 @@ export async function POST(request: NextRequest) {
     userId,
     asset,
     amount,
+    market,
     timestamp: Date.now(),
   };
 
@@ -63,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { commandId: command.commandId, asset, amount, ...payload },
+      { commandId: command.commandId, asset, amount, market, ...payload },
       { status: 202 },
     );
   } catch {

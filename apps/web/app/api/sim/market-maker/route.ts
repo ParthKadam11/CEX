@@ -4,7 +4,9 @@ import {
   clearSimOrderBook,
   configureSimOptions,
   getMarketMakerStatus,
+  parseSimMarket,
   runMarketMakerTick,
+  setSimMarket,
   startSimHeartbeat,
   stopSimHeartbeat,
   touchSimPresence,
@@ -14,16 +16,17 @@ import {
 /**
  * Dev / demo market ambience.
  * - Heartbeat runs in the Next.js Node process (see instrumentation.ts).
- * - Clients on /trade POST { action: "presence" } to raise intensity.
+ * - Clients POST { action: "presence", market } while watching Spot/Perps.
  */
 export async function GET(request: NextRequest) {
   const userId = await getAuthenticatedUserId();
   if (!userId) return bffError(request, 401, "UNAUTHORIZED");
-  // Ensure heartbeat lives in the same Node isolate as API routes.
+  const market = parseSimMarket(request.nextUrl.searchParams.get("market"));
+  setSimMarket(market);
   if (process.env.SIM_HEARTBEAT !== "false") {
     startSimHeartbeat();
   }
-  return NextResponse.json({ ok: true, ...getMarketMakerStatus() });
+  return NextResponse.json({ ok: true, market, ...getMarketMakerStatus() });
 }
 
 export async function POST(request: NextRequest) {
@@ -42,11 +45,14 @@ export async function POST(request: NextRequest) {
       ? (body as Record<string, unknown>)
       : {};
 
+  const market = parseSimMarket(record.market);
+  setSimMarket(market);
+
   const action =
     typeof record.action === "string" ? record.action : "tick";
 
   if (action === "status") {
-    return NextResponse.json({ ok: true, ...getMarketMakerStatus() });
+    return NextResponse.json({ ok: true, market, ...getMarketMakerStatus() });
   }
 
   if (action === "presence") {
@@ -57,10 +63,10 @@ export async function POST(request: NextRequest) {
         ? record.boost
         : undefined;
     const result = touchSimPresence(boost ? { boost } : undefined);
-    // Ensure heartbeat is on when a real user is watching.
     startSimHeartbeat();
     return NextResponse.json({
       ok: true,
+      market,
       ...result,
       ...getMarketMakerStatus(),
     });
@@ -91,23 +97,33 @@ export async function POST(request: NextRequest) {
           ? record.spread
           : undefined,
     });
-    return NextResponse.json({ ok: true, ...status });
+    return NextResponse.json({ ok: true, market, ...status });
   }
 
   if (action === "start") {
     const result = startSimHeartbeat();
-    return NextResponse.json({ ok: true, ...result, ...getMarketMakerStatus() });
+    return NextResponse.json({
+      ok: true,
+      market,
+      ...result,
+      ...getMarketMakerStatus(),
+    });
   }
 
   if (action === "stop") {
     const result = stopSimHeartbeat();
-    return NextResponse.json({ ok: true, ...result, ...getMarketMakerStatus() });
+    return NextResponse.json({
+      ok: true,
+      market,
+      ...result,
+      ...getMarketMakerStatus(),
+    });
   }
 
   if (action === "clear") {
     try {
-      const result = await clearSimOrderBook();
-      return NextResponse.json({ ok: true, ...result });
+      const result = await clearSimOrderBook(market);
+      return NextResponse.json({ ok: true, market, ...result });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "SIM_CLEAR_FAILED";
@@ -123,6 +139,7 @@ export async function POST(request: NextRequest) {
   }
 
   const options: MarketMakerTickOptions = {
+    market,
     placeQuotes: record.placeQuotes !== false,
     placeTrades: record.placeTrades === true,
     intensity:
@@ -139,7 +156,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await runMarketMakerTick(options);
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({ ok: true, market, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "SIM_FAILED";
     return NextResponse.json(
@@ -148,3 +165,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

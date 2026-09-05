@@ -5,6 +5,7 @@ import {
   engineGatewayUrl,
   getAuthenticatedUserId,
 } from "@/lib/backend";
+import { parseMarketParam } from "@/lib/markets";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,9 +16,11 @@ export async function GET(request: NextRequest) {
     return bffError(request, 401, "UNAUTHORIZED");
   }
 
+  const market = parseMarketParam(request.nextUrl.searchParams.get("market"));
+
   try {
     const response = await fetch(
-      `${engineGatewayUrl}/markets/SOL-USD/stream`,
+      `${engineGatewayUrl}/markets/${market}/stream`,
       {
         cache: "no-store",
         headers: {

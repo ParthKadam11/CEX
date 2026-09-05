@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import type { Balance } from "@cex/exchange-types";
 import { useMarketStream } from "@/hooks/useMarketStream";
+import { SPOT_VENUE } from "@/lib/markets";
 import {
   balanceFor,
   errorMessage,
@@ -15,7 +16,7 @@ import {
 
 export function DashboardHome() {
   const { data: session } = useSession();
-  const { book, connected } = useMarketStream();
+  const { book, connected } = useMarketStream({ market: SPOT_VENUE.symbol });
   const [balances, setBalances] = useState<Balance[]>([]);
   const [orders, setOrders] = useState<TradingOrder[]>([]);
   const [funding, setFunding] = useState(false);
@@ -29,7 +30,9 @@ export function DashboardHome() {
 
   async function refresh() {
     const [balancesRes, ordersRes] = await Promise.all([
-      fetch("/api/market/balances", { cache: "no-store" }),
+      fetch(`/api/market/balances?market=${encodeURIComponent(SPOT_VENUE.symbol)}`, {
+        cache: "no-store",
+      }),
       fetch("/api/orders?limit=8", { cache: "no-store" }),
     ]);
 
@@ -49,7 +52,7 @@ export function DashboardHome() {
     const response = await fetch("/api/market/credit", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ asset, amount }),
+      body: JSON.stringify({ asset, amount, market: SPOT_VENUE.symbol }),
     });
     const body = (await response.json()) as {
       error?: { code?: string; message?: string } | string;
@@ -95,6 +98,18 @@ export function DashboardHome() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-6 text-sm">
+          <Link
+            href="/spot"
+            className="rounded-md bg-zinc-950 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+          >
+            Spot
+          </Link>
+          <Link
+            href="/perps"
+            className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+          >
+            Perps
+          </Link>
           <Stat label="Best bid" value={book.bbo.bestBid} tone="bid" />
           <Stat label="Best ask" value={book.bbo.bestAsk} tone="ask" />
           <span
@@ -164,8 +179,8 @@ export function DashboardHome() {
           {orders.length === 0 ? (
             <p className="py-6 text-center text-sm text-zinc-400">
               No orders yet.{" "}
-              <Link href="/trade" className="text-zinc-700 underline dark:text-zinc-300">
-                Place one on Trade
+              <Link href="/spot" className="text-zinc-700 underline dark:text-zinc-300">
+                Place one on Spot
               </Link>
             </p>
           ) : (

@@ -2,29 +2,39 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { BboMessage, TradeTickMessage } from "@cex/app-contracts";
-import type { OrderBookSnapshot } from "@cex/exchange-types";
+import type { MarketSymbol, OrderBookSnapshot, Position } from "@cex/exchange-types";
 import { parseEvent } from "@/lib/trading";
 
-const emptyBook: OrderBookSnapshot = {
-  market: "SOL-USD",
-  bids: [],
-  asks: [],
-  bbo: { bestBid: null, bestAsk: null },
-};
+function emptyBook(market: MarketSymbol): OrderBookSnapshot {
+  return {
+    market,
+    bids: [],
+    asks: [],
+    bbo: { bestBid: null, bestAsk: null },
+  };
+}
 
 type UseMarketStreamOptions = {
+  market: MarketSymbol;
   onTrade?: (trade: TradeTickMessage) => void;
   onBook?: (book: OrderBookSnapshot) => void;
+  onPosition?: (position: Position) => void;
 };
 
-export function useMarketStream(options: UseMarketStreamOptions = {}) {
-  const [book, setBook] = useState<OrderBookSnapshot>(emptyBook);
+export function useMarketStream(options: UseMarketStreamOptions) {
+  const [book, setBook] = useState<OrderBookSnapshot>(() =>
+    emptyBook(options.market),
+  );
   const [connected, setConnected] = useState(false);
   const [lastTrade, setLastTrade] = useState<TradeTickMessage | null>(null);
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
   useEffect(() => {
+    setBook(emptyBook(options.market));
+    setLastTrade(null);
+    setConnected(false);
+
     let source: EventSource | null = null;
     let closed = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -33,7 +43,8 @@ export function useMarketStream(options: UseMarketStreamOptions = {}) {
     function connect() {
       if (closed) return;
       source?.close();
-      source = new EventSource("/api/market/stream");
+      const qs = new URLSearchParams({ market: options.market });
+      source = new EventSource(`/api/market/stream?${qs}`);
 
       source.onopen = () => {
         attempt = 0;
@@ -49,22 +60,28 @@ export function useMarketStream(options: UseMarketStreamOptions = {}) {
 
       source.addEventListener("book", (event) => {
         const next = parseEvent<OrderBookSnapshot>(event);
-        if (!next) return;
+        if (!next || next.market !== optionsRef.current.market) return;
         setBook(next);
         optionsRef.current.onBook?.(next);
       });
 
       source.addEventListener("bbo", (event) => {
         const bbo = parseEvent<BboMessage>(event);
-        if (!bbo) return;
+        if (!bbo || bbo.market !== optionsRef.current.market) return;
         setBook((current) => ({ ...current, bbo }));
       });
 
       source.addEventListener("trade", (event) => {
         const trade = parseEvent<TradeTickMessage>(event);
-        if (!trade) return;
+        if (!trade || trade.market !== optionsRef.current.market) return;
         setLastTrade(trade);
         optionsRef.current.onTrade?.(trade);
+      });
+
+      source.addEventListener("position", (event) => {
+        const position = parseEvent<Position>(event);
+        if (!position || position.market !== optionsRef.current.market) return;
+        optionsRef.current.onPosition?.(position);
       });
     }
 
@@ -75,7 +92,7 @@ export function useMarketStream(options: UseMarketStreamOptions = {}) {
       if (retryTimer) clearTimeout(retryTimer);
       source?.close();
     };
-  }, []);
+  }, [options.market]);
 
   return { book, setBook, connected, lastTrade };
 }

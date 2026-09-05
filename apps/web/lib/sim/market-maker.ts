@@ -8,6 +8,13 @@ import {
   engineGatewayHeaders,
   engineGatewayUrl,
 } from "@/lib/backend";
+import {
+  getSimMarket,
+  isPerpMarket,
+  parseSimMarket,
+  setSimMarket,
+  SIM_MARKETS,
+} from "@/lib/sim/sim-market";
 
 export const MM_BID_USER = "sim-mm-bid";
 export const MM_ASK_USER = "sim-mm-ask";
@@ -68,21 +75,26 @@ type HeartbeatState = {
 
 const globalSim = globalThis as unknown as {
   __cexMmSim?: SimState;
+  __cexMmSimByMarket?: Map<string, SimState>;
   __cexMmHeartbeat?: HeartbeatState;
 };
 
 function state(): SimState {
-  if (!globalSim.__cexMmSim) {
-    globalSim.__cexMmSim = {
+  const market = getSimMarket();
+  const bag = (globalSim.__cexMmSimByMarket ??= new Map<string, SimState>());
+  let row = bag.get(market);
+  if (!row) {
+    row = {
       funded: false,
       fundEpoch: 0,
       ticks: 0,
       lastMid: DEFAULT_MID,
     };
-  } else if (typeof globalSim.__cexMmSim.fundEpoch !== "number") {
-    globalSim.__cexMmSim.fundEpoch = 0;
+    bag.set(market, row);
+  } else if (typeof row.fundEpoch !== "number") {
+    row.fundEpoch = 0;
   }
-  return globalSim.__cexMmSim;
+  return row;
 }
 
 function heartbeat(): HeartbeatState {
@@ -179,6 +191,7 @@ async function injectCredit(
     userId,
     asset,
     amount,
+    market: getSimMarket(),
     timestamp: Date.now(),
   });
 }
@@ -190,12 +203,13 @@ async function injectPlace(options: {
   quantity: number;
   timeInForce?: "GTC" | "IOC";
 }): Promise<boolean> {
-  return inject({
+  const market = getSimMarket();
+  const payload: Record<string, unknown> = {
     commandId: `sim-place-${crypto.randomUUID()}`,
     type: "PLACE",
     userId: options.userId,
     clientOrderId: `sim-${crypto.randomUUID()}`,
-    market: "SOL-USD",
+    market,
     side: options.side,
     orderType: "LIMIT",
     timeInForce: options.timeInForce ?? "GTC",
@@ -203,7 +217,9 @@ async function injectPlace(options: {
     quantity: options.quantity,
     orderId: crypto.randomUUID(),
     timestamp: Date.now(),
-  });
+  };
+  if (isPerpMarket(market)) payload.leverage = 5;
+  return inject(payload);
 }
 
 async function injectCancel(userId: string, orderId: string): Promise<boolean> {
@@ -212,7 +228,7 @@ async function injectCancel(userId: string, orderId: string): Promise<boolean> {
     type: "CANCEL",
     userId,
     orderId,
-    market: "SOL-USD",
+    market: getSimMarket(),
     timestamp: Date.now(),
   });
 }
@@ -221,7 +237,7 @@ async function listOpenOrders(
   userId: string,
 ): Promise<{ orderId: string; userId: string }[]> {
   const response = await fetch(
-    `${engineGatewayUrl}/markets/SOL-USD/orders?userId=${encodeURIComponent(userId)}`,
+    `${engineGatewayUrl}/markets/${getSimMarket()}/orders?userId=${encodeURIComponent(userId)}`,
     { cache: "no-store", headers: engineGatewayHeaders() },
   );
   if (!response.ok) return [];
@@ -232,7 +248,7 @@ async function listOpenOrders(
 }
 
 async function readBook(): Promise<OrderBookSnapshot | null> {
-  const response = await fetch(`${engineGatewayUrl}/markets/SOL-USD/book`, {
+  const response = await fetch(`${engineGatewayUrl}/markets/${getSimMarket()}/book`, {
     cache: "no-store",
     headers: engineGatewayHeaders(),
   });
@@ -253,20 +269,26 @@ async function ensureFunded(): Promise<void> {
   const s = state();
   if (s.funded && s.fundEpoch === FUND_EPOCH) return;
 
-  await Promise.all([
-    ...MM_BID_USERS.flatMap((user) => [
-      injectCredit(user, "USD", 10_000_000),
-      injectCredit(user, "SOL", 10_000),
-    ]),
-    ...MM_ASK_USERS.flatMap((user) => [
-      injectCredit(user, "SOL", 100_000),
-      injectCredit(user, "USD", 1_000_000),
-    ]),
-    ...RETAIL_USERS.flatMap((user) => [
-      injectCredit(user, "USD", 250_000),
-      injectCredit(user, "SOL", 2_500),
-    ]),
-  ]);
+  if (isPerpMarket()) {
+    await Promise.all(
+      ALL_USERS.map((user) => injectCredit(user, "USD", 10_000_000)),
+    );
+  } else {
+    await Promise.all([
+      ...MM_BID_USERS.flatMap((user) => [
+        injectCredit(user, "USD", 10_000_000),
+        injectCredit(user, "SOL", 10_000),
+      ]),
+      ...MM_ASK_USERS.flatMap((user) => [
+        injectCredit(user, "SOL", 100_000),
+        injectCredit(user, "USD", 1_000_000),
+      ]),
+      ...RETAIL_USERS.flatMap((user) => [
+        injectCredit(user, "USD", 250_000),
+        injectCredit(user, "SOL", 2_500),
+      ]),
+    ]);
+  }
 
   await sleep(SETTLE_MS * 3);
   s.funded = true;
@@ -418,11 +440,14 @@ function pickRetail(): string {
 }
 
 export type MarketMakerTickOptions = {
+  market?: string;
   placeQuotes?: boolean;
   placeTrades?: boolean;
   intensity?: "low" | "medium" | "high";
   spread?: number;
 };
+
+export { parseSimMarket, setSimMarket, getSimMarket, SIM_MARKETS } from "@/lib/sim/sim-market";
 
 function intensityTradeCount(intensity: "low" | "medium" | "high"): number {
   if (intensity === "low") return Math.random() < 0.5 ? 1 : 0;
@@ -445,6 +470,7 @@ export async function runMarketMakerTick(
   book: OrderBookSnapshot | null;
   prints: { price: number; quantity: number }[];
 }> {
+  if (options.market) setSimMarket(parseSimMarket(options.market));
   const placeQuotes = options.placeQuotes !== false;
   const placeTrades = options.placeTrades === true;
   const intensity = options.intensity ?? "medium";
@@ -655,7 +681,10 @@ async function loopOnce(): Promise<void> {
   // round-trips don't stack on top of the interval.
   const dueAt = Date.now() + intervalFor(resolveEffectiveIntensity());
   try {
-    await runHeartbeatTick();
+    for (const market of SIM_MARKETS) {
+      setSimMarket(market);
+      await runHeartbeatTick();
+    }
   } catch (error) {
     hb.lastError = error instanceof Error ? error.message : String(error);
   } finally {
@@ -793,26 +822,31 @@ export function resetSimRuntimeState(): void {
 }
 
 /** Cancel every resting order owned by sim users and reset tick state. */
-export async function clearSimOrderBook(): Promise<{
+export async function clearSimOrderBook(market?: string): Promise<{
   cancelled: number;
   book: OrderBookSnapshot | null;
 }> {
-  const jobs: Promise<boolean>[] = [];
-  for (const userId of ALL_USERS) {
-    const orders = await listOpenOrders(userId);
-    for (const order of orders) {
-      jobs.push(injectCancel(userId, order.orderId));
+  if (market) setSimMarket(parseSimMarket(market));
+  const targets = market ? [getSimMarket()] : [...SIM_MARKETS];
+  let cancelled = 0;
+  let book: OrderBookSnapshot | null = null;
+  for (const m of targets) {
+    setSimMarket(m);
+    const jobs: Promise<boolean>[] = [];
+    for (const userId of ALL_USERS) {
+      const orders = await listOpenOrders(userId);
+      for (const order of orders) {
+        jobs.push(injectCancel(userId, order.orderId));
+      }
     }
+    const results = await Promise.all(jobs);
+    cancelled += results.filter(Boolean).length;
+    await sleep(SETTLE_MS * 4);
+    const s = state();
+    s.ticks = 0;
+    book = await readBook();
   }
-
-  const results = await Promise.all(jobs);
-  const cancelled = results.filter(Boolean).length;
-  await sleep(SETTLE_MS * 4);
-
-  const s = state();
-  s.ticks = 0;
-
-  return { cancelled, book: await readBook() };
+  return { cancelled, book };
 }
 
 function sleep(ms: number) {

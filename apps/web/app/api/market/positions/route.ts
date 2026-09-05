@@ -15,10 +15,14 @@ export async function GET(request: NextRequest) {
   }
 
   const market = parseMarketParam(request.nextUrl.searchParams.get("market"));
+  const queryUser = request.nextUrl.searchParams.get("userId");
+  const query = queryUser
+    ? `?userId=${encodeURIComponent(queryUser)}`
+    : `?userId=${encodeURIComponent(userId)}`;
 
   try {
     const response = await fetch(
-      `${engineGatewayUrl}/markets/${market}/balances`,
+      `${engineGatewayUrl}/markets/${market}/positions${query}`,
       {
         cache: "no-store",
         headers: engineGatewayHeaders(

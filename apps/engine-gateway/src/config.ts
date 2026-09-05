@@ -58,8 +58,8 @@ export function loadConfig(): GatewayConfig {
 }
 
 /**
- * Spot: EXCHANGE_URL (default :4010)
- * Perp: set EXCHANGE_PERP_URL (e.g. :4011) to enable SOL-USD-PERP routing
+ * Spot + perps default to the same exchange URL (one multi-market process on :4010).
+ * Override EXCHANGE_PERP_URL only if you still run a separate perp process.
  * Or: EXCHANGE_URLS=SOL-USD=http://...,SOL-USD-PERP=http://...
  */
 function resolveEngines(): EngineEndpoint[] {
@@ -91,7 +91,11 @@ function resolveEngines(): EngineEndpoint[] {
   ).replace(/\/$/, "");
   const engines: EngineEndpoint[] = [{ market: "SOL-USD", url: spotUrl }];
 
-  const perpUrl = process.env.EXCHANGE_PERP_URL?.trim().replace(/\/$/, "");
+  // Same host as spot by default (single exchange process hosts both markets).
+  const perpRaw = process.env.EXCHANGE_PERP_URL;
+  const perpUrl = (perpRaw === undefined ? spotUrl : perpRaw)
+    .trim()
+    .replace(/\/$/, "");
   if (perpUrl) {
     engines.push({ market: "SOL-USD-PERP", url: perpUrl });
   }

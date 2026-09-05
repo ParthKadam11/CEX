@@ -64,7 +64,11 @@ describe("Exchange E2E — feature checklist", () => {
       const { app } = createExchange();
       const res = await app.request("/health");
       expect(res.status).toBe(200);
-      expect(await body(res)).toEqual({ ok: true, market: "SOL-USD" });
+      expect(await body(res)).toEqual({
+        ok: true,
+        markets: ["SOL-USD"],
+        market: "SOL-USD",
+      });
     });
   });
 

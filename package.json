@@ -12,8 +12,8 @@
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "infra:logs": "docker compose -f infra/docker-compose.yml logs -f",
     "dev:exchange": "pnpm --filter @cex/exchange dev",
-    "dev:exchange:perp": "EXCHANGE_MARKET=SOL-USD-PERP EXCHANGE_PORT=4011 pnpm --filter @cex/exchange dev",
-    "dev:gateway": "EXCHANGE_URL=http://127.0.0.1:4010 EXCHANGE_PERP_URL=http://127.0.0.1:4011 pnpm --filter @cex/engine-gateway dev",
+    "dev:exchange:perp": "cross-env EXCHANGE_MARKET=SOL-USD-PERP EXCHANGE_PORT=4011 pnpm --filter @cex/exchange dev",
+    "dev:gateway": "cross-env EXCHANGE_URL=http://127.0.0.1:4010 EXCHANGE_PERP_URL=http://127.0.0.1:4010 pnpm --filter @cex/engine-gateway dev",
     "dev:market-data": "pnpm --filter @cex/market-data-writer dev",
     "dev:oms": "pnpm --filter @cex/oms dev",
     "test:oms": "pnpm --filter @cex/oms test",
@@ -25,6 +25,7 @@
     "test:market-data": "pnpm --filter @cex/market-data-writer test"
   },
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "turbo": "^2.5.4",
     "typescript": "^5"
   },
