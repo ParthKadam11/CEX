@@ -1,7 +1,9 @@
 /**
- * Local crowd / MM simulator — no separate process.
- * Places via gateway `/dev/inject-command` (engine path) so synthetic
- * users do not need Postgres User rows (OMS FK would reject them).
+ * Low-load market ambience for demos/prod.
+ * Places via gateway `/dev/inject-command` (synthetic users, no OMS User FK).
+ *
+ * Idle: slow cancel+requote + rare prints.
+ * Presence (logged-in client on /trade): faster ticks + more prints.
  */
 
 import type { OrderBookSnapshot } from "@cex/exchange-types";
@@ -20,10 +22,15 @@ export const RETAIL_USERS = [
 ] as const;
 
 const ALL_USERS = [MM_BID_USER, MM_ASK_USER, ...RETAIL_USERS] as const;
+const MM_USERS = [MM_BID_USER, MM_ASK_USER] as const;
 
 const DEFAULT_MID = 100;
+/** Tight ladder — enough to look like MMs without book bloat. */
 const LADDER = [1, 2, 3, 5, 8] as const;
-const SETTLE_MS = 80;
+const SETTLE_MS = 60;
+const PRESENCE_TTL_MS = 45_000;
+
+export type SimIntensity = "idle" | "medium" | "high";
 
 type BookBbo = {
   bestBid: number | null;
@@ -36,8 +43,21 @@ type SimState = {
   lastMid: number;
 };
 
+type HeartbeatState = {
+  enabled: boolean;
+  /** Preferred intensity while viewers are present. */
+  boost: "medium" | "high";
+  lastPresenceAt: number;
+  viewers: number;
+  timer: ReturnType<typeof setTimeout> | null;
+  inFlight: boolean;
+  lastError: string | null;
+  lastTickAt: number | null;
+};
+
 const globalSim = globalThis as unknown as {
   __cexMmSim?: SimState;
+  __cexMmHeartbeat?: HeartbeatState;
 };
 
 function state(): SimState {
@@ -45,6 +65,45 @@ function state(): SimState {
     globalSim.__cexMmSim = { funded: false, ticks: 0, lastMid: DEFAULT_MID };
   }
   return globalSim.__cexMmSim;
+}
+
+function heartbeat(): HeartbeatState {
+  if (!globalSim.__cexMmHeartbeat) {
+    globalSim.__cexMmHeartbeat = {
+      enabled: false,
+      boost: "medium",
+      lastPresenceAt: 0,
+      viewers: 0,
+      timer: null,
+      inFlight: false,
+      lastError: null,
+      lastTickAt: null,
+    };
+  }
+  return globalSim.__cexMmHeartbeat;
+}
+
+function hasActivePresence(hb: HeartbeatState): boolean {
+  return Date.now() - hb.lastPresenceAt < PRESENCE_TTL_MS;
+}
+
+/** Effective intensity for the next tick. */
+export function resolveEffectiveIntensity(): SimIntensity {
+  const hb = heartbeat();
+  if (!hasActivePresence(hb)) return "idle";
+  return hb.boost;
+}
+
+function intervalFor(intensity: SimIntensity): number {
+  if (intensity === "high") return 900;
+  if (intensity === "medium") return 1_800;
+  return 4_500;
+}
+
+function tradeChance(intensity: SimIntensity): number {
+  if (intensity === "high") return 0.85;
+  if (intensity === "medium") return 0.55;
+  return 0.22;
 }
 
 async function inject(command: Record<string, unknown>): Promise<boolean> {
@@ -187,6 +246,21 @@ async function seedLadder(mid: number): Promise<number> {
   return results.filter(Boolean).length;
 }
 
+/** Cancel only MM quotes so the book stays capped. */
+async function cancelMmQuotes(): Promise<number> {
+  const jobs: Promise<boolean>[] = [];
+  for (const userId of MM_USERS) {
+    const orders = await listOpenOrders(userId);
+    for (const order of orders) {
+      jobs.push(injectCancel(userId, order.orderId));
+    }
+  }
+  if (jobs.length === 0) return 0;
+  const results = await Promise.all(jobs);
+  await sleep(SETTLE_MS);
+  return results.filter(Boolean).length;
+}
+
 function pickRetail(): string {
   return RETAIL_USERS[Math.floor(Math.random() * RETAIL_USERS.length)]!;
 }
@@ -204,6 +278,10 @@ function intensityTradeCount(intensity: "low" | "medium" | "high"): number {
   return 1 + Math.floor(Math.random() * 2);
 }
 
+/**
+ * Legacy/manual tick used by the admin menu "Run one tick".
+ * Prefer the heartbeat for continuous ambience.
+ */
 export async function runMarketMakerTick(
   options: MarketMakerTickOptions = {},
 ): Promise<{
@@ -230,73 +308,30 @@ export async function runMarketMakerTick(
   let placed = 0;
   let seeded = false;
   let traded = false;
+  const prints: { price: number; quantity: number }[] = [];
 
-  const empty =
-    (bbo.bestBid == null && bbo.bestAsk == null) || s.ticks === 0;
-  if (empty) {
+  const empty = bbo.bestBid == null && bbo.bestAsk == null;
+  if (empty || placeQuotes) {
+    await cancelMmQuotes();
     placed += await seedLadder(mid);
     seeded = true;
     await sleep(SETTLE_MS);
     book = await readBook();
-    s.ticks += 1;
-    return {
-      mid: resolveMid(book?.bbo ?? bbo, mid),
-      placed,
-      seeded,
-      traded,
-      ticks: s.ticks,
-      book,
-      prints: [],
-    };
   }
 
-  const jobs: Promise<boolean>[] = [];
-  const prints: { price: number; quantity: number }[] = [];
-
-  if (placeQuotes) {
-    const jitter = spreadBase + Math.floor(Math.random() * spreadBase);
-    const qty = 1 + Math.floor(Math.random() * 4);
-    jobs.push(
-      injectPlace({
-        userId: MM_BID_USER,
-        side: "BUY",
-        price: Math.max(1, mid - jitter),
-        quantity: qty,
-      }),
-      injectPlace({
-        userId: MM_ASK_USER,
-        side: "SELL",
-        price: mid + jitter,
-        quantity: qty,
-      }),
-    );
-
-    if (intensity !== "low" && Math.random() < 0.4) {
-      const deep = spreadBase * 2 + Math.floor(Math.random() * 5);
-      jobs.push(
-        injectPlace({
-          userId: MM_BID_USER,
-          side: "BUY",
-          price: Math.max(1, mid - deep),
-          quantity: 2 + Math.floor(Math.random() * 3),
-        }),
-        injectPlace({
-          userId: MM_ASK_USER,
-          side: "SELL",
-          price: mid + deep,
-          quantity: 2 + Math.floor(Math.random() * 3),
-        }),
-      );
-    }
-  }
-
-  if (placeTrades && bbo.bestAsk != null && bbo.bestBid != null) {
+  const liveBbo = book?.bbo ?? bbo;
+  if (
+    placeTrades &&
+    liveBbo.bestAsk != null &&
+    liveBbo.bestBid != null
+  ) {
+    const jobs: Promise<boolean>[] = [];
     const tradeCount = intensityTradeCount(intensity);
     for (let i = 0; i < tradeCount; i += 1) {
       const buy = Math.random() < 0.5;
-      const size = 1 + Math.floor(Math.random() * 2);
+      const size = 1;
       const trader = pickRetail();
-      const px = buy ? Number(bbo.bestAsk) : Number(bbo.bestBid);
+      const px = buy ? Number(liveBbo.bestAsk) : Number(liveBbo.bestBid);
       jobs.push(
         injectPlace({
           userId: trader,
@@ -309,17 +344,17 @@ export async function runMarketMakerTick(
       prints.push({ price: px, quantity: size });
       traded = true;
     }
+    if (jobs.length > 0) {
+      placed += (await Promise.all(jobs)).filter(Boolean).length;
+      await sleep(SETTLE_MS);
+      book = await readBook();
+    }
   }
 
-  if (jobs.length > 0) {
-    const results = await Promise.all(jobs);
-    placed += results.filter(Boolean).length;
-    await sleep(SETTLE_MS);
-    book = await readBook();
-  }
+  // spreadBase unused after requote style — keep API stable
+  void spreadBase;
 
   s.ticks += 1;
-
   return {
     mid: resolveMid(book?.bbo ?? bbo, mid),
     placed,
@@ -331,13 +366,169 @@ export async function runMarketMakerTick(
   };
 }
 
+/** One low-load heartbeat: replace MM ladder + maybe one retail print. */
+export async function runHeartbeatTick(): Promise<{
+  mid: number;
+  placed: number;
+  cancelled: number;
+  traded: boolean;
+  intensity: SimIntensity;
+  book: OrderBookSnapshot | null;
+  prints: { price: number; quantity: number }[];
+}> {
+  const intensity = resolveEffectiveIntensity();
+  await ensureFunded();
+  const s = state();
+  let book = await readBook();
+  const bbo = book?.bbo ?? { bestBid: null, bestAsk: null };
+  let mid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
+
+  // Slight drift so the chart isn't flat forever.
+  if (intensity !== "idle" && Math.random() < 0.35) {
+    mid = Math.max(1, mid + (Math.random() < 0.5 ? -1 : 1));
+  }
+  s.lastMid = mid;
+
+  const cancelled = await cancelMmQuotes();
+  const placed = await seedLadder(mid);
+  await sleep(SETTLE_MS);
+  book = await readBook();
+
+  const prints: { price: number; quantity: number }[] = [];
+  let traded = false;
+  const live = book?.bbo ?? bbo;
+  if (
+    live.bestAsk != null &&
+    live.bestBid != null &&
+    Math.random() < tradeChance(intensity)
+  ) {
+    const buy = Math.random() < 0.5;
+    const px = buy ? Number(live.bestAsk) : Number(live.bestBid);
+    const ok = await injectPlace({
+      userId: pickRetail(),
+      side: buy ? "BUY" : "SELL",
+      price: px,
+      quantity: 1,
+      timeInForce: "IOC",
+    });
+    if (ok) {
+      traded = true;
+      prints.push({ price: px, quantity: 1 });
+      await sleep(SETTLE_MS);
+      book = await readBook();
+    }
+  }
+
+  s.ticks += 1;
+  const hb = heartbeat();
+  hb.lastTickAt = Date.now();
+  hb.lastError = null;
+
+  return {
+    mid: resolveMid(book?.bbo ?? live, mid),
+    placed,
+    cancelled,
+    traded,
+    intensity,
+    book,
+    prints,
+  };
+}
+
+function scheduleNext(): void {
+  const hb = heartbeat();
+  if (!hb.enabled) return;
+  if (hb.timer) clearTimeout(hb.timer);
+  const ms = intervalFor(resolveEffectiveIntensity());
+  hb.timer = setTimeout(() => {
+    void loopOnce();
+  }, ms);
+}
+
+async function loopOnce(): Promise<void> {
+  const hb = heartbeat();
+  if (!hb.enabled) return;
+  if (hb.inFlight) {
+    scheduleNext();
+    return;
+  }
+  hb.inFlight = true;
+  try {
+    await runHeartbeatTick();
+  } catch (error) {
+    hb.lastError = error instanceof Error ? error.message : String(error);
+  } finally {
+    hb.inFlight = false;
+    scheduleNext();
+  }
+}
+
+/** Start the always-on MM ambience loop (idempotent). */
+export function startSimHeartbeat(): { started: boolean } {
+  const hb = heartbeat();
+  if (hb.enabled) return { started: false };
+  hb.enabled = true;
+  hb.lastError = null;
+  void loopOnce();
+  return { started: true };
+}
+
+export function stopSimHeartbeat(): { stopped: boolean } {
+  const hb = heartbeat();
+  if (!hb.enabled) return { stopped: false };
+  hb.enabled = false;
+  if (hb.timer) {
+    clearTimeout(hb.timer);
+    hb.timer = null;
+  }
+  return { stopped: true };
+}
+
+/**
+ * Called from the trade UI while a signed-in user is watching.
+ * Raises effective intensity until presence TTL expires.
+ */
+export function touchSimPresence(options?: {
+  boost?: "medium" | "high";
+}): {
+  intensity: SimIntensity;
+  boost: "medium" | "high";
+} {
+  const hb = heartbeat();
+  hb.lastPresenceAt = Date.now();
+  if (options?.boost === "high" || options?.boost === "medium") {
+    hb.boost = options.boost;
+  }
+  // Nudge sooner when someone arrives.
+  if (hb.enabled && !hb.inFlight) {
+    if (hb.timer) clearTimeout(hb.timer);
+    hb.timer = setTimeout(() => void loopOnce(), 200);
+  }
+  return {
+    intensity: resolveEffectiveIntensity(),
+    boost: hb.boost,
+  };
+}
+
 export function getMarketMakerStatus() {
   const s = state();
+  const hb = heartbeat();
+  const intensity = resolveEffectiveIntensity();
   return {
     funded: s.funded,
     ticks: s.ticks,
     lastMid: s.lastMid,
     users: [...ALL_USERS],
+    heartbeat: {
+      enabled: hb.enabled,
+      intensity,
+      boost: hb.boost,
+      viewersActive: hasActivePresence(hb),
+      lastPresenceAt: hb.lastPresenceAt || null,
+      lastTickAt: hb.lastTickAt,
+      lastError: hb.lastError,
+      intervalMs: intervalFor(intensity),
+    },
   };
 }
 

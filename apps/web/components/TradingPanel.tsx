@@ -125,6 +125,33 @@ export function TradingPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once on mount
   }, []);
 
+  // Raise MM heartbeat intensity while this signed-in user is on Trade.
+  useEffect(() => {
+    let stopped = false;
+
+    async function ping(boost: "medium" | "high" = "medium") {
+      try {
+        await fetch("/api/sim/market-maker", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "presence", boost }),
+        });
+      } catch {
+        // ignore — heartbeat may start on next ping
+      }
+    }
+
+    void ping("medium");
+    const timer = window.setInterval(() => {
+      if (!stopped) void ping("medium");
+    }, 20_000);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const usd = balanceFor(balances, "USD");
   const sol = balanceFor(balances, "SOL");
   const orderValue =

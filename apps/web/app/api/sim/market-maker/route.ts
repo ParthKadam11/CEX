@@ -4,16 +4,24 @@ import {
   clearSimOrderBook,
   getMarketMakerStatus,
   runMarketMakerTick,
+  startSimHeartbeat,
+  stopSimHeartbeat,
+  touchSimPresence,
   type MarketMakerTickOptions,
 } from "@/lib/sim/market-maker";
 
 /**
- * Dev crowd / MM simulator — no extra process.
- * Client switch loops POST { action: "tick", ...options }.
+ * Dev / demo market ambience.
+ * - Heartbeat runs in the Next.js Node process (see instrumentation.ts).
+ * - Clients on /trade POST { action: "presence" } to raise intensity.
  */
 export async function GET(request: NextRequest) {
   const userId = await getAuthenticatedUserId();
   if (!userId) return bffError(request, 401, "UNAUTHORIZED");
+  // Ensure heartbeat lives in the same Node isolate as API routes.
+  if (process.env.SIM_HEARTBEAT !== "false") {
+    startSimHeartbeat();
+  }
   return NextResponse.json({ ok: true, ...getMarketMakerStatus() });
 }
 
@@ -25,7 +33,7 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    // empty body ok for tick
+    // empty body ok
   }
 
   const record =
@@ -40,12 +48,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, ...getMarketMakerStatus() });
   }
 
+  if (action === "presence") {
+    const boost =
+      record.boost === "high" || record.boost === "medium"
+        ? record.boost
+        : "medium";
+    const result = touchSimPresence({ boost });
+    // Ensure heartbeat is on when a real user is watching.
+    startSimHeartbeat();
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      ...getMarketMakerStatus(),
+    });
+  }
+
+  if (action === "start") {
+    const result = startSimHeartbeat();
+    return NextResponse.json({ ok: true, ...result, ...getMarketMakerStatus() });
+  }
+
+  if (action === "stop") {
+    const result = stopSimHeartbeat();
+    return NextResponse.json({ ok: true, ...result, ...getMarketMakerStatus() });
+  }
+
   if (action === "clear") {
     try {
       const result = await clearSimOrderBook();
       return NextResponse.json({ ok: true, ...result });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "SIM_CLEAR_FAILED";
+      const message =
+        error instanceof Error ? error.message : "SIM_CLEAR_FAILED";
       return NextResponse.json(
         { error: { code: "SIM_CLEAR_FAILED", message } },
         { status: 502 },

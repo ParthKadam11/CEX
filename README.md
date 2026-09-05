@@ -104,6 +104,13 @@ pnpm install
 
 ## Environment
 
+Optional web sim ambience (defaults on for long-running Node):
+
+```env
+# Set false to disable the server-side market-maker heartbeat
+SIM_HEARTBEAT=true
+```
+
 The web app expects its environment in `apps/web/.env`.
 
 ```env
