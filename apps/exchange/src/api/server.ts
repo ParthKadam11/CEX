@@ -477,7 +477,32 @@ export function createExchangeApp(
     });
   });
 
-  // Live stream for gateway: ORDER, TRADE, BBO, CREDIT, POSITION, LIQUIDATION
+  app.get("/v1/markets/:market/funding", (c) => {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
+    }
+    const { runtime } = resolved;
+    return c.json(runtime.fundingInfo());
+  });
+
+  app.post("/v1/markets/:market/funding/settle", async (c) => {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
+    }
+    const { market, runtime } = resolved;
+    if (marketSpec(market).kind !== "PERP") {
+      return errorResponse(c, 400, "NOT_A_PERP");
+    }
+    const payments = await runtime.settleFunding();
+    return c.json({
+      ...runtime.fundingInfo(),
+      payments,
+    });
+  });
+
+  // Live stream for gateway: ORDER, TRADE, BBO, CREDIT, POSITION, LIQUIDATION, FUNDING
   app.get("/v1/markets/:market/stream", (c) => {
     const resolved = runtimeFor(c.req.param("market"));
     if (!resolved) {
@@ -519,6 +544,13 @@ export function createExchangeApp(
           userId &&
           event.kind === "LIQUIDATION" &&
           event.liquidation.userId !== userId
+        ) {
+          return;
+        }
+        if (
+          userId &&
+          event.kind === "FUNDING" &&
+          event.funding.userId !== userId
         ) {
           return;
         }

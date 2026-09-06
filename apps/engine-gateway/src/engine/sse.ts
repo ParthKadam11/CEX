@@ -1,6 +1,7 @@
 import type {
   AssetId,
   ExchangeStreamEvent,
+  FundingEvent,
   LiquidationEvent,
   MarketSymbol,
   OrderEvent,
@@ -252,6 +253,14 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
             liquidation: value.liquidation,
           }
         : null;
+    case "FUNDING":
+      return isFunding(value.funding)
+        ? {
+            kind: "FUNDING",
+            market: value.market,
+            funding: value.funding,
+          }
+        : null;
     default:
       return null;
   }
@@ -306,6 +315,23 @@ function isLiquidation(value: unknown): value is LiquidationEvent {
     value.marginReleased >= 0 &&
     value.reason === "MAINTENANCE_MARGIN" &&
     isIdentifier(value.counterpartyUserId) &&
+    isTimestamp(value.timestamp)
+  );
+}
+
+function isFunding(value: unknown): value is FundingEvent {
+  return (
+    isRecord(value) &&
+    isIdentifier(value.userId) &&
+    isMarketSymbol(value.market) &&
+    typeof value.size === "number" &&
+    Number.isSafeInteger(value.size) &&
+    value.size !== 0 &&
+    isSafePositiveInteger(value.mark) &&
+    typeof value.fundingRateBps === "number" &&
+    Number.isSafeInteger(value.fundingRateBps) &&
+    typeof value.payment === "number" &&
+    Number.isSafeInteger(value.payment) &&
     isTimestamp(value.timestamp)
   );
 }

@@ -15,7 +15,9 @@ function tempWalPath(): string {
 describe("perp liquidation via mark move", () => {
   it("force-closes underwater long when mark drops after a trade", async () => {
     const file = tempWalPath();
-    const live = MarketRuntime.open("SOL-USD-PERP", file);
+    const live = MarketRuntime.open("SOL-USD-PERP", file, undefined, {
+      fundingIntervalMs: 0,
+    });
 
     await live.credit("long", "USD", 50);
     await live.credit("short", "USD", 5_000);
@@ -80,14 +82,18 @@ describe("perp liquidation via mark move", () => {
 
     await live.close();
 
-    const restarted = MarketRuntime.open("SOL-USD-PERP", file);
+    const restarted = MarketRuntime.open("SOL-USD-PERP", file, undefined, {
+      fundingIntervalMs: 0,
+    });
     expect(restarted.positions.get("long", "SOL-USD-PERP")).toBeUndefined();
     await restarted.close();
   });
 
   it("force-closes underwater short when mark rises after a trade", async () => {
     const file = tempWalPath();
-    const live = MarketRuntime.open("SOL-USD-PERP", file);
+    const live = MarketRuntime.open("SOL-USD-PERP", file, undefined, {
+      fundingIntervalMs: 0,
+    });
 
     await live.credit("long", "USD", 5_000);
     await live.credit("short", "USD", 50);

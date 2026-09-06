@@ -4,6 +4,7 @@ import {
   TimeInForce,
   type AssetId,
   type CancelResult,
+  type FundingEvent,
   type LiquidationEvent,
   type MarketSymbol,
   type Order,
@@ -46,6 +47,10 @@ import {
   isLiquidatable,
   LIQUIDATOR_USER_ID,
 } from "../risk/liquidation.js";
+import {
+  fundingBalanceDelta,
+  fundingCharge,
+} from "../risk/funding.js";
 
 type OrderLock = { asset: AssetId; amount: number };
 
@@ -79,6 +84,8 @@ export class OrderPlacementService {
   private readonly liquidationHandlers: Array<
     (liquidation: LiquidationEvent) => void
   > = [];
+  private readonly fundingHandlers: Array<(funding: FundingEvent) => void> =
+    [];
   readonly queries: OrderQueryService;
 
   constructor(
@@ -118,6 +125,10 @@ export class OrderPlacementService {
 
   onLiquidation(handler: (liquidation: LiquidationEvent) => void): void {
     this.liquidationHandlers.push(handler);
+  }
+
+  onFunding(handler: (funding: FundingEvent) => void): void {
+    this.fundingHandlers.push(handler);
   }
 
   // Force-close a perp at mark vs house (`sim-liquidator`).
@@ -267,6 +278,83 @@ export class OrderPlacementService {
     const take = Math.min(loss, available);
     if (take > 0) {
       this.money.applyPnl(userId, -take, ref);
+    }
+  }
+
+  // Settle one funding interval across open positions at mark.
+  settleFunding(args: {
+    market: MarketSymbol;
+    mark: number;
+    fundingRateBps: number;
+    timestamp?: number;
+  }): FundingEvent[] {
+    const { market, mark, fundingRateBps } = args;
+    const timestamp = args.timestamp ?? Date.now();
+    if (!isPerpMarket(market)) return [];
+    if (!Number.isSafeInteger(mark) || mark <= 0) return [];
+    if (!Number.isSafeInteger(fundingRateBps)) return [];
+
+    const events: FundingEvent[] = [];
+    for (const position of this.positionStore.listByMarket(market)) {
+      if (position.userId === LIQUIDATOR_USER_ID) continue;
+      if (position.size === 0) continue;
+
+      const charge = fundingCharge(position.size, mark, fundingRateBps);
+      const payment = fundingBalanceDelta(charge);
+      if (payment === 0) continue;
+
+      this.applyFundingAbsorbingBankruptcy(position.userId, payment, {
+        refType: "FUNDING",
+        refId: `${market}:${timestamp}`,
+      });
+
+      const event: FundingEvent = {
+        userId: position.userId,
+        market,
+        size: position.size,
+        mark,
+        fundingRateBps,
+        payment,
+        timestamp,
+      };
+      events.push(event);
+      for (const handler of this.fundingHandlers) {
+        handler(event);
+      }
+    }
+    return events;
+  }
+
+  // Replay stored funding payments without recomputing from mark.
+  applyFundingPayments(
+    market: MarketSymbol,
+    payments: ReadonlyArray<{ userId: string; payment: number }>,
+    timestamp: number,
+  ): void {
+    for (const row of payments) {
+      if (row.payment === 0) continue;
+      this.applyFundingAbsorbingBankruptcy(row.userId, row.payment, {
+        refType: "FUNDING",
+        refId: `${market}:${timestamp}`,
+      });
+    }
+  }
+
+  private applyFundingAbsorbingBankruptcy(
+    userId: string,
+    amount: number,
+    ref?: BalanceRef,
+  ): void {
+    if (amount === 0) return;
+    if (amount > 0) {
+      this.money.applyFunding(userId, amount, ref);
+      return;
+    }
+    const loss = -amount;
+    const available = this.money.get(userId, "USD").available;
+    const take = Math.min(loss, available);
+    if (take > 0) {
+      this.money.applyFunding(userId, -take, ref);
     }
   }
 

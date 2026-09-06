@@ -12,6 +12,7 @@ import type { LiveBookHub } from "../redis/live-book.js";
 import type { MarketDataHub } from "../redis/market-data.js";
 import type { PositionHub } from "../redis/position-hub.js";
 import type { LiquidationHub } from "../redis/liquidation-hub.js";
+import type { FundingHub } from "../redis/funding-hub.js";
 import { injectCommand } from "../redis/streams.js";
 
 type GatewayAppOptions = {
@@ -24,6 +25,7 @@ type GatewayAppOptions = {
   liveBook: LiveBookHub;
   positions: PositionHub;
   liquidations: LiquidationHub;
+  fundings: FundingHub;
   internalToken: string | null;
 };
 
@@ -104,6 +106,38 @@ export function createGatewayApp(options: GatewayAppOptions) {
         502,
         "MARK_UNAVAILABLE",
         error instanceof Error ? error.message : "MARK_UNAVAILABLE",
+      );
+    }
+  });
+
+  app.get("/markets/:market/funding", async (c) => {
+    const engine = options.engines.tryGet(c.req.param("market"));
+    if (!engine) return errorResponse(c, 404, "UNKNOWN_MARKET");
+
+    try {
+      return c.json(await engine.funding());
+    } catch (error) {
+      return errorResponse(
+        c,
+        502,
+        "FUNDING_UNAVAILABLE",
+        error instanceof Error ? error.message : "FUNDING_UNAVAILABLE",
+      );
+    }
+  });
+
+  app.post("/markets/:market/funding/settle", async (c) => {
+    const engine = options.engines.tryGet(c.req.param("market"));
+    if (!engine) return errorResponse(c, 404, "UNKNOWN_MARKET");
+
+    try {
+      return c.json(await engine.settleFunding());
+    } catch (error) {
+      return errorResponse(
+        c,
+        502,
+        "FUNDING_SETTLE_FAILED",
+        error instanceof Error ? error.message : "FUNDING_SETTLE_FAILED",
       );
     }
   });
@@ -249,6 +283,17 @@ export function createGatewayApp(options: GatewayAppOptions) {
               .writeSSE({
                 event: "liquidation",
                 data: JSON.stringify(liquidation),
+              })
+              .catch(() => undefined);
+          }),
+        );
+        unsubscribers.push(
+          options.fundings.subscribe((funding) => {
+            if (funding.market !== market) return;
+            void stream
+              .writeSSE({
+                event: "funding",
+                data: JSON.stringify(funding),
               })
               .catch(() => undefined);
           }),

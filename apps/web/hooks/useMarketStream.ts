@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BboMessage, TradeTickMessage } from "@cex/app-contracts";
 import type {
+  FundingEvent,
   LiquidationEvent,
   MarketSymbol,
   OrderBookSnapshot,
@@ -25,6 +26,7 @@ type UseMarketStreamOptions = {
   onBook?: (book: OrderBookSnapshot) => void;
   onPosition?: (position: Position) => void;
   onLiquidation?: (liquidation: LiquidationEvent) => void;
+  onFunding?: (funding: FundingEvent) => void;
 };
 
 export function useMarketStream(options: UseMarketStreamOptions) {
@@ -99,6 +101,14 @@ export function useMarketStream(options: UseMarketStreamOptions) {
           return;
         }
         optionsRef.current.onLiquidation?.(liquidation);
+      });
+
+      source.addEventListener("funding", (event) => {
+        const funding = parseEvent<FundingEvent>(event);
+        if (!funding || funding.market !== optionsRef.current.market) {
+          return;
+        }
+        optionsRef.current.onFunding?.(funding);
       });
     }
 

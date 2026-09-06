@@ -242,7 +242,9 @@ describe("exchange HTTP + SSE", () => {
     const bus = new EventBus();
     const spot = MarketRuntime.open("SOL-USD", tempWal(), bus);
     const perpWal = path.join(path.dirname(tempWal()), "SOL-USD-PERP.jsonl");
-    const perp = MarketRuntime.open("SOL-USD-PERP", perpWal, bus);
+    const perp = MarketRuntime.open("SOL-USD-PERP", perpWal, bus, {
+      fundingIntervalMs: 0,
+    });
     const app = createExchangeApp(
       new Map([
         ["SOL-USD", spot],

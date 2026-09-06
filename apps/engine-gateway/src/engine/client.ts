@@ -199,6 +199,64 @@ export class EngineClient {
     };
   }
 
+  async funding(signal?: AbortSignal): Promise<{
+    market: MarketSymbol;
+    fundingRateBps: number | null;
+    fundingIntervalMs: number;
+    mark: number | null;
+  }> {
+    const res = await this.request(
+      `/v1/markets/${this.market}/funding`,
+      { headers: this.headers() },
+      true,
+      signal,
+    );
+    if (!res.ok) throw new Error(`funding failed: ${res.status}`);
+    return (await res.json()) as {
+      market: MarketSymbol;
+      fundingRateBps: number | null;
+      fundingIntervalMs: number;
+      mark: number | null;
+    };
+  }
+
+  async settleFunding(signal?: AbortSignal): Promise<{
+    market: MarketSymbol;
+    fundingRateBps: number | null;
+    fundingIntervalMs: number;
+    mark: number | null;
+    payments: Array<{
+      userId: string;
+      size: number;
+      mark: number;
+      fundingRateBps: number;
+      payment: number;
+      timestamp: number;
+    }>;
+  }> {
+    const res = await this.request(
+      `/v1/markets/${this.market}/funding/settle`,
+      { method: "POST", headers: this.headers() },
+      false,
+      signal,
+    );
+    if (!res.ok) throw new Error(`settleFunding failed: ${res.status}`);
+    return (await res.json()) as {
+      market: MarketSymbol;
+      fundingRateBps: number | null;
+      fundingIntervalMs: number;
+      mark: number | null;
+      payments: Array<{
+        userId: string;
+        size: number;
+        mark: number;
+        fundingRateBps: number;
+        payment: number;
+        timestamp: number;
+      }>;
+    };
+  }
+
   /** Dev hard-reset of exchange in-memory state + WAL. */
   async hardReset(signal?: AbortSignal): Promise<void> {
     const res = await this.request(

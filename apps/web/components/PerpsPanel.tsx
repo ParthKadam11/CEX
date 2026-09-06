@@ -47,6 +47,7 @@ export function PerpsPanel() {
   const [position, setPosition] = useState<Position | null>(null);
   const [markPrice, setMarkPrice] = useState<number | null>(null);
   const [leverage, setLeverage] = useState("5");
+  const [fundingRateBps, setFundingRateBps] = useState<number | null>(null);
 
   const { book, setBook, connected: streamConnected } = useMarketStream({
     market,
@@ -63,6 +64,14 @@ export function PerpsPanel() {
       void loadBalances();
       void loadOrders();
       void loadPositions();
+    },
+    onFunding: (funding) => {
+      setMessage(
+        `Funding ${funding.payment >= 0 ? "+" : ""}${funding.payment} USD @ ${
+          funding.fundingRateBps
+        } bps (mark ${funding.mark})`,
+      );
+      void loadBalances();
     },
     onTrade: (trade: TradeTickMessage) => {
       setMessage(`Trade ${trade.quantity} SOL @ ${trade.price} USD`);
@@ -141,6 +150,7 @@ export function PerpsPanel() {
         loadTradeHistory(true),
         loadPositions(),
         loadMark(),
+        loadFunding(),
       ]);
     }
     void bootstrap();
@@ -150,6 +160,7 @@ export function PerpsPanel() {
       void loadBalances();
       void loadPositions();
       void loadMark();
+      void loadFunding();
     }, 1_000);
 
     return () => {
@@ -256,6 +267,17 @@ export function PerpsPanel() {
     if (!response.ok) return;
     const body = (await response.json()) as { mark?: number | null };
     setMarkPrice(body.mark ?? null);
+  }
+
+  async function loadFunding() {
+    const response = await fetch(`/api/market/funding?${marketQs}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    const body = (await response.json()) as {
+      fundingRateBps?: number | null;
+    };
+    setFundingRateBps(body.fundingRateBps ?? null);
   }
 
   async function loadCandles() {
@@ -738,7 +760,12 @@ export function PerpsPanel() {
           <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
             Position
           </h2>
-          <span className="text-xs text-zinc-400">Mark {fmtNum(displayMark)}</span>
+          <span className="text-xs text-zinc-400">
+            Mark {fmtNum(displayMark)}
+            {fundingRateBps != null
+              ? ` · Funding ${fundingRateBps} bps`
+              : ""}
+          </span>
         </div>
         {!position ? (
           <p className="py-4 text-center text-sm text-zinc-400 dark:text-zinc-500">

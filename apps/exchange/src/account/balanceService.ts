@@ -113,6 +113,24 @@ export class BalanceService {
     amount: number,
     ref?: BalanceRef,
   ): { balance: Balance; entry: LedgerEntry } | null {
+    return this.applyAvailableDelta(userId, amount, "PNL_SETTLE", ref);
+  }
+
+  // Periodic funding payment to available USD.
+  applyFunding(
+    userId: string,
+    amount: number,
+    ref?: BalanceRef,
+  ): { balance: Balance; entry: LedgerEntry } | null {
+    return this.applyAvailableDelta(userId, amount, "FUNDING_SETTLE", ref);
+  }
+
+  private applyAvailableDelta(
+    userId: string,
+    amount: number,
+    reason: "PNL_SETTLE" | "FUNDING_SETTLE",
+    ref?: BalanceRef,
+  ): { balance: Balance; entry: LedgerEntry } | null {
     if (amount === 0) return null;
     const asset: AssetId = "USD";
     const before = this.store.get(userId, asset);
@@ -120,7 +138,7 @@ export class BalanceService {
       amount > 0
         ? this.store.credit(userId, asset, amount)
         : this.store.debitAvailable(userId, asset, -amount);
-    const entry = this.write(userId, asset, before, balance, "PNL_SETTLE", ref);
+    const entry = this.write(userId, asset, before, balance, reason, ref);
     return { balance, entry };
   }
 

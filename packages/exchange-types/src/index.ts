@@ -74,9 +74,16 @@ export type LedgerReason =
   | "SETTLE_DEBIT"
   | "SETTLE_CREDIT"
   | "PNL_SETTLE"
+  | "FUNDING_SETTLE"
   | "WITHDRAW";
 
-export type LedgerRefType = "ORDER" | "TRADE" | "DEPOSIT" | "WITHDRAW" | "POSITION";
+export type LedgerRefType =
+  | "ORDER"
+  | "TRADE"
+  | "DEPOSIT"
+  | "WITHDRAW"
+  | "POSITION"
+  | "FUNDING";
 
 export interface LedgerEntry {
   seq: number;
@@ -110,6 +117,10 @@ export interface Market {
   maxLeverage?: number;
   // Perp: maintenance margin in bps of notional (e.g. 50 = 0.5%).
   maintenanceMarginBps?: number;
+  // Perp: fixed funding rate in bps of notional per interval (positive = longs pay).
+  fundingRateBps?: number;
+  // Perp: funding settle interval in ms (demo default often 60s).
+  fundingIntervalMs?: number;
 }
 
 export interface Order {
@@ -280,6 +291,14 @@ export type EngineCommandBody =
       market: MarketSymbol;
       mark: number;
       timestamp: number;
+    }
+  | {
+      type: "FUNDING";
+      market: MarketSymbol;
+      mark: number;
+      fundingRateBps: number;
+      payments: Array<{ userId: string; payment: number }>;
+      timestamp: number;
     };
 
 export type EngineCommand = EngineCommandBody & { seq: number };
@@ -298,7 +317,18 @@ export type LiquidationEvent = {
   timestamp: number;
 };
 
-// Live SSE payloads from the exchange process (ORDER / BBO / CREDIT / POSITION / LIQUIDATION).
+// Periodic funding settle for one user (payment = balance delta; + credit / − debit).
+export type FundingEvent = {
+  userId: string;
+  market: MarketSymbol;
+  size: number;
+  mark: number;
+  fundingRateBps: number;
+  payment: number;
+  timestamp: number;
+};
+
+// Live SSE payloads from the exchange process.
 export type ExchangeStreamEvent =
   | { kind: "ORDER"; market: MarketSymbol; event: OrderEvent }
   | {
@@ -322,6 +352,11 @@ export type ExchangeStreamEvent =
       kind: "LIQUIDATION";
       market: MarketSymbol;
       liquidation: LiquidationEvent;
+    }
+  | {
+      kind: "FUNDING";
+      market: MarketSymbol;
+      funding: FundingEvent;
     };
 
 export function isMarketSymbol(value: unknown): value is MarketSymbol {

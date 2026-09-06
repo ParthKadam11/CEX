@@ -55,6 +55,11 @@ export const SOL_USD_PERP: Market = {
   defaultLeverage: 1,
   maxLeverage: 20,
   maintenanceMarginBps: 50,
+  // Demo: +100 bps (1%) of notional per interval so integer USD payments
+  // show up on small paper sizes (1 lot @ 100 → 1 USD). Longs pay shorts.
+  fundingRateBps: 100,
+  // Demo: settle every 60s (tests disable via runtime opts).
+  fundingIntervalMs: 60_000,
 };
 
 export function marketSpec(market: MarketSymbol): Market {

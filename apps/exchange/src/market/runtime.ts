@@ -3,6 +3,7 @@ import type {
   CancelResult,
   EngineCommand,
   EngineCommandBody,
+  FundingEvent,
   LiquidationEvent,
   MarketSymbol,
   Order,
@@ -25,7 +26,7 @@ import {
 } from "../journal/snapshot.js";
 import type { EventBus } from "../api/eventBus.js";
 import { CommandQueue } from "./commandQueue.js";
-import { isPerpMarket } from "./units.js";
+import { isPerpMarket, marketSpec } from "./units.js";
 import { resolveMarkPrice, type MarkPriceSnapshot } from "../risk/markPrice.js";
 
 export type MarketRuntimeOptions = {
@@ -33,6 +34,8 @@ export type MarketRuntimeOptions = {
   maxTerminalOrders?: number;
   maxOrderEvents?: number;
   maxLedgerEntries?: number;
+  // 0 disables auto funding timer (tests). Default: marketSpec.fundingIntervalMs.
+  fundingIntervalMs?: number;
 };
 
 export const DEFAULT_SNAPSHOT_EVERY = 1024;
@@ -61,6 +64,8 @@ export class MarketRuntime {
   private readonly snapshotEvery: number;
   private readonly ramBounds: RamBounds;
   private readonly queue: CommandQueue;
+  private fundingTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly fundingIntervalMs: number;
 
   constructor(
     readonly market: MarketSymbol,
@@ -80,6 +85,10 @@ export class MarketRuntime {
       maxLedgerEntries:
         opts.maxLedgerEntries ?? DEFAULT_RAM_BOUNDS.maxLedgerEntries,
     };
+    this.fundingIntervalMs =
+      opts.fundingIntervalMs ??
+      marketSpec(market).fundingIntervalMs ??
+      0;
     this.queue = new CommandQueue(() => this.wal.flush());
 
     this.placement.eventLog.onAppend((event) => {
@@ -98,6 +107,10 @@ export class MarketRuntime {
         liquidation,
       });
     });
+    this.placement.onFunding((funding) => {
+      if (this.replaying || !this.bus) return;
+      this.bus.publish({ kind: "FUNDING", market: this.market, funding });
+    });
   }
 
   static open(
@@ -111,6 +124,7 @@ export class MarketRuntime {
     const wal = new FileWal(walPath);
     const runtime = new MarketRuntime(market, wal, bus, opts, snapshotPath);
     runtime.replay(snapshot?.walSeq ?? 0, snapshot);
+    runtime.startFundingTimer();
     return runtime;
   }
 
@@ -140,6 +154,26 @@ export class MarketRuntime {
 
   cancel(orderId: string): Promise<CancelResult> {
     return this.enqueue(() => this.cancelNow(orderId));
+  }
+
+  // Settle funding for all open positions at current mark (perp only).
+  settleFunding(): Promise<FundingEvent[]> {
+    return this.enqueue(() => this.settleFundingNow());
+  }
+
+  fundingInfo(): {
+    market: MarketSymbol;
+    fundingRateBps: number | null;
+    fundingIntervalMs: number;
+    mark: number | null;
+  } {
+    const spec = marketSpec(this.market);
+    return {
+      market: this.market,
+      fundingRateBps: spec.fundingRateBps ?? null,
+      fundingIntervalMs: this.fundingIntervalMs,
+      mark: this.markPrice().mark,
+    };
   }
 
   //Dev-only: wipe book, balances, order indexes, WAL, and snapshot. Market is empty afterward (users must re-credit).
@@ -177,8 +211,27 @@ export class MarketRuntime {
   }
 
   async close(): Promise<void> {
+    this.stopFundingTimer();
     await this.enqueue(() => undefined);
     this.wal.close();
+  }
+
+  private startFundingTimer(): void {
+    this.stopFundingTimer();
+    if (!isPerpMarket(this.market) || this.fundingIntervalMs <= 0) return;
+    this.fundingTimer = setInterval(() => {
+      void this.settleFunding().catch(() => undefined);
+    }, this.fundingIntervalMs);
+    if (typeof this.fundingTimer.unref === "function") {
+      this.fundingTimer.unref();
+    }
+  }
+
+  private stopFundingTimer(): void {
+    if (this.fundingTimer) {
+      clearInterval(this.fundingTimer);
+      this.fundingTimer = null;
+    }
   }
 
   private creditNow(userId: string, asset: AssetId, amount: number) {
@@ -255,6 +308,36 @@ export class MarketRuntime {
     if (events.length > 0) {
       this.publishBbo();
     }
+    return events;
+  }
+
+  private settleFundingNow(): FundingEvent[] {
+    if (this.replaying || !isPerpMarket(this.market)) return [];
+    const mark = this.markPrice().mark;
+    if (mark == null) return [];
+    const fundingRateBps = marketSpec(this.market).fundingRateBps ?? 0;
+    if (fundingRateBps === 0) return [];
+
+    const timestamp = Date.now();
+    const events = this.placement.settleFunding({
+      market: this.market,
+      mark,
+      fundingRateBps,
+      timestamp,
+    });
+    if (events.length === 0) return [];
+
+    this.persist({
+      type: "FUNDING",
+      market: this.market,
+      mark,
+      fundingRateBps,
+      payments: events.map((e) => ({
+        userId: e.userId,
+        payment: e.payment,
+      })),
+      timestamp,
+    });
     return events;
   }
 
@@ -350,6 +433,13 @@ export class MarketRuntime {
           command.market,
           command.mark,
           this.book,
+          command.timestamp,
+        );
+        return;
+      case "FUNDING":
+        this.placement.applyFundingPayments(
+          command.market,
+          command.payments,
           command.timestamp,
         );
         return;
