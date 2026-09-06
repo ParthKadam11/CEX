@@ -4,6 +4,8 @@ import {
   TimeInForce,
   type AssetId,
   type CancelResult,
+  type LiquidationEvent,
+  type MarketSymbol,
   type Order,
   type PlacementResult,
   type Position,
@@ -30,6 +32,7 @@ import { lockForOrder, marginForFill, marketAssets } from "../market/assets.js";
 import {
   isPerpMarket,
   lotsForBudget,
+  marketSpec,
   orderUnitsOk,
   quoteNotional,
   resolveLeverage,
@@ -38,6 +41,11 @@ import { cloneOrder } from "../journal/cloneOrder.js";
 import type { EngineSnapshot } from "../journal/snapshot.js";
 import { PositionStore } from "../position/positionStore.js";
 import { applyPerpFill } from "../position/perpSettlement.js";
+import {
+  buildLiquidationClose,
+  isLiquidatable,
+  LIQUIDATOR_USER_ID,
+} from "../risk/liquidation.js";
 
 type OrderLock = { asset: AssetId; amount: number };
 
@@ -68,6 +76,9 @@ export class OrderPlacementService {
   // How much is still reserved per live order (after fills / unlocks).
   private readonly locks = new Map<string, OrderLock>();
   private readonly positionHandlers: Array<(position: Position) => void> = [];
+  private readonly liquidationHandlers: Array<
+    (liquidation: LiquidationEvent) => void
+  > = [];
   readonly queries: OrderQueryService;
 
   constructor(
@@ -103,6 +114,129 @@ export class OrderPlacementService {
 
   onPositionUpdate(handler: (position: Position) => void): void {
     this.positionHandlers.push(handler);
+  }
+
+  onLiquidation(handler: (liquidation: LiquidationEvent) => void): void {
+    this.liquidationHandlers.push(handler);
+  }
+
+  // Force-close a perp at mark vs house (`sim-liquidator`).
+  // Does not require book liquidity. Residual loss beyond available USD is
+  // absorbed (paper insurance) — no bankruptcy waterfall.
+  forceCloseAtMark(
+    userId: string,
+    market: MarketSymbol,
+    mark: number,
+    book: OrderBook,
+    timestamp = Date.now(),
+  ): LiquidationEvent | null {
+    if (!isPerpMarket(market)) return null;
+
+    for (const order of this.queries.getOpenByUser(userId, market)) {
+      this.cancel(order.orderId, book);
+    }
+
+    const before = this.positionStore.getOrEmpty(userId, market);
+    if (before.size === 0) return null;
+
+    const close = buildLiquidationClose(before, mark);
+    const sizeBefore = before.size;
+    const entryBefore = before.entryPrice;
+
+    const applied = applyPerpFill({
+      position: before,
+      side: close.side,
+      quantity: close.quantity,
+      price: close.price,
+      leverage: before.leverage,
+      marginIn: 0,
+      timestamp,
+    });
+
+    if (applied.position.size !== 0) {
+      throw new Error("liquidation did not fully close position");
+    }
+
+    if (applied.marginUnlocked > 0) {
+      this.money.unlock(userId, "USD", applied.marginUnlocked, {
+        refType: "POSITION",
+        refId: `${userId}:${market}`,
+      });
+    }
+
+    this.applyPnlAbsorbingBankruptcy(userId, applied.realizedPnl, {
+      refType: "POSITION",
+      refId: `liq:${userId}:${market}:${timestamp}`,
+    });
+
+    this.positionStore.set(applied.position);
+    for (const handler of this.positionHandlers) {
+      handler(applied.position);
+    }
+
+    const liquidation: LiquidationEvent = {
+      userId,
+      market,
+      size: sizeBefore,
+      entryPrice: entryBefore,
+      mark,
+      realizedPnl: applied.realizedPnl,
+      marginReleased: applied.marginUnlocked,
+      reason: "MAINTENANCE_MARGIN",
+      counterpartyUserId: LIQUIDATOR_USER_ID,
+      timestamp,
+    };
+    for (const handler of this.liquidationHandlers) {
+      handler(liquidation);
+    }
+    return liquidation;
+  }
+
+  // Scan open positions; force-close any underwater at the given mark.
+  scanAndLiquidate(
+    market: MarketSymbol,
+    mark: number,
+    book: OrderBook,
+    timestamp = Date.now(),
+  ): LiquidationEvent[] {
+    if (!isPerpMarket(market)) return [];
+    if (!Number.isSafeInteger(mark) || mark <= 0) return [];
+
+    const bps = marketSpec(market).maintenanceMarginBps ?? 50;
+    const out: LiquidationEvent[] = [];
+
+    for (const position of this.positionStore.listByMarket(market)) {
+      if (position.userId === LIQUIDATOR_USER_ID) continue;
+      if (!isLiquidatable(position, mark, bps)) continue;
+      const event = this.forceCloseAtMark(
+        position.userId,
+        market,
+        mark,
+        book,
+        timestamp,
+      );
+      if (event) out.push(event);
+    }
+    return out;
+  }
+
+  // Debit loss up to available; shortfall absorbed by paper insurance.
+  private applyPnlAbsorbingBankruptcy(
+    userId: string,
+    amount: number,
+    ref?: BalanceRef,
+  ): void {
+    if (amount === 0) return;
+    if (amount > 0) {
+      this.money.applyPnl(userId, amount, ref);
+      return;
+    }
+    const loss = -amount;
+    const available = this.money.get(userId, "USD").available;
+    const take = Math.min(loss, available);
+    if (take > 0) {
+      this.money.applyPnl(userId, -take, ref);
+    }
   }
 
   captureSnapshot(

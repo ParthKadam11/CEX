@@ -11,6 +11,7 @@ import type { GatewayMetrics } from "../metrics.js";
 import type { LiveBookHub } from "../redis/live-book.js";
 import type { MarketDataHub } from "../redis/market-data.js";
 import type { PositionHub } from "../redis/position-hub.js";
+import type { LiquidationHub } from "../redis/liquidation-hub.js";
 import { injectCommand } from "../redis/streams.js";
 
 type GatewayAppOptions = {
@@ -22,6 +23,7 @@ type GatewayAppOptions = {
   marketData: MarketDataHub;
   liveBook: LiveBookHub;
   positions: PositionHub;
+  liquidations: LiquidationHub;
   internalToken: string | null;
 };
 
@@ -236,6 +238,17 @@ export function createGatewayApp(options: GatewayAppOptions) {
               .writeSSE({
                 event: "position",
                 data: JSON.stringify(position),
+              })
+              .catch(() => undefined);
+          }),
+        );
+        unsubscribers.push(
+          options.liquidations.subscribe((liquidation) => {
+            if (liquidation.market !== market) return;
+            void stream
+              .writeSSE({
+                event: "liquidation",
+                data: JSON.stringify(liquidation),
               })
               .catch(() => undefined);
           }),

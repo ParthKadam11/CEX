@@ -10,6 +10,11 @@ import { OrderBookPanel } from "@/components/OrderBookPanel";
 import { useMarketStream } from "@/hooks/useMarketStream";
 import { PERP_VENUE } from "@/lib/markets";
 import {
+  approximateLiquidationPrice,
+  maintenanceRequirement,
+  positionEquity,
+} from "@/lib/perpRisk";
+import {
   balanceFor,
   buildLiveCandles,
   errorMessage,
@@ -47,6 +52,17 @@ export function PerpsPanel() {
     market,
     onPosition: (next) => {
       setPosition(next.size === 0 ? null : next);
+    },
+    onLiquidation: (liq) => {
+      setPosition(null);
+      setMessage(
+        `Liquidated ${Math.abs(liq.size)} SOL @ mark ${liq.mark} (PnL ${
+          liq.realizedPnl >= 0 ? "+" : ""
+        }${liq.realizedPnl})`,
+      );
+      void loadBalances();
+      void loadOrders();
+      void loadPositions();
     },
     onTrade: (trade: TradeTickMessage) => {
       setMessage(`Trade ${trade.quantity} SOL @ ${trade.price} USD`);
@@ -182,6 +198,22 @@ export function PerpsPanel() {
     position && displayMark != null
       ? position.size * (displayMark - position.entryPrice)
       : null;
+  const equity =
+    position && displayMark != null
+      ? positionEquity(
+          position.margin,
+          position.size,
+          position.entryPrice,
+          displayMark,
+        )
+      : null;
+  const maintenance =
+    position && displayMark != null
+      ? maintenanceRequirement(position.size, displayMark)
+      : null;
+  const liqPrice = position
+    ? approximateLiquidationPrice(position)
+    : null;
 
   async function loadBook() {
     const response = await fetch(`/api/market/book?${marketQs}`, { cache: "no-store" });
@@ -713,7 +745,7 @@ export function PerpsPanel() {
             No open position. Long or short to open one.
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
             <TickerStat
               label="Side"
               value={position.size > 0 ? "Long" : "Short"}
@@ -731,6 +763,22 @@ export function PerpsPanel() {
               }
               tone={upnl == null ? undefined : upnl >= 0 ? "up" : "down"}
             />
+            <TickerStat
+              label="Equity"
+              value={
+                equity == null || maintenance == null
+                  ? "—"
+                  : `${fmtNum(equity)} / ${fmtNum(maintenance)}`
+              }
+              tone={
+                equity == null || maintenance == null
+                  ? undefined
+                  : equity < maintenance
+                    ? "down"
+                    : "up"
+              }
+            />
+            <TickerStat label="Liq. price" value={fmtNum(liqPrice)} />
           </div>
         )}
       </section>

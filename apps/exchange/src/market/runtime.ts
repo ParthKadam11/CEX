@@ -3,6 +3,7 @@ import type {
   CancelResult,
   EngineCommand,
   EngineCommandBody,
+  LiquidationEvent,
   MarketSymbol,
   Order,
   PlacementResult,
@@ -24,6 +25,7 @@ import {
 } from "../journal/snapshot.js";
 import type { EventBus } from "../api/eventBus.js";
 import { CommandQueue } from "./commandQueue.js";
+import { isPerpMarket } from "./units.js";
 import { resolveMarkPrice, type MarkPriceSnapshot } from "../risk/markPrice.js";
 
 export type MarketRuntimeOptions = {
@@ -88,6 +90,14 @@ export class MarketRuntime {
     this.placement.onPositionUpdate((position) => {
       if (this.replaying || !this.bus) return;
       this.bus.publish({ kind: "POSITION", market: this.market, position });
+    });
+    this.placement.onLiquidation((liquidation) => {
+      if (this.replaying || !this.bus) return;
+      this.bus.publish({
+        kind: "LIQUIDATION",
+        market: this.market,
+        liquidation,
+      });
     });
   }
 
@@ -203,6 +213,7 @@ export class MarketRuntime {
     });
     this.publishBbo();
     this.publishTrades(result.trades);
+    this.scanLiquidations();
     return result;
   }
 
@@ -215,8 +226,37 @@ export class MarketRuntime {
         timestamp: Date.now(),
       });
       this.publishBbo();
+      this.scanLiquidations();
     }
     return result;
+  }
+
+  // After mark/BBO may have moved: force-close underwater perps at mark.
+  private scanLiquidations(): LiquidationEvent[] {
+    if (this.replaying || !isPerpMarket(this.market)) return [];
+    const mark = this.markPrice().mark;
+    if (mark == null) return [];
+
+    const timestamp = Date.now();
+    const events = this.placement.scanAndLiquidate(
+      this.market,
+      mark,
+      this.book,
+      timestamp,
+    );
+    for (const event of events) {
+      this.persist({
+        type: "LIQUIDATE",
+        userId: event.userId,
+        market: event.market,
+        mark: event.mark,
+        timestamp: event.timestamp,
+      });
+    }
+    if (events.length > 0) {
+      this.publishBbo();
+    }
+    return events;
   }
 
   private checkpointNow(): void {
@@ -304,6 +344,15 @@ export class MarketRuntime {
         return;
       case "CANCEL":
         this.placement.cancel(command.orderId, this.book);
+        return;
+      case "LIQUIDATE":
+        this.placement.forceCloseAtMark(
+          command.userId,
+          command.market,
+          command.mark,
+          this.book,
+          command.timestamp,
+        );
         return;
     }
   }

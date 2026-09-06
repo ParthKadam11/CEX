@@ -1,6 +1,7 @@
 import type {
   AssetId,
   ExchangeStreamEvent,
+  LiquidationEvent,
   MarketSymbol,
   OrderEvent,
   Position,
@@ -243,6 +244,14 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
             position: value.position,
           }
         : null;
+    case "LIQUIDATION":
+      return isLiquidation(value.liquidation)
+        ? {
+            kind: "LIQUIDATION",
+            market: value.market,
+            liquidation: value.liquidation,
+          }
+        : null;
     default:
       return null;
   }
@@ -277,6 +286,27 @@ function isPosition(value: unknown): value is Position {
     value.margin >= 0 &&
     isSafePositiveInteger(value.leverage) &&
     typeof value.updatedAt === "number"
+  );
+}
+
+function isLiquidation(value: unknown): value is LiquidationEvent {
+  return (
+    isRecord(value) &&
+    isIdentifier(value.userId) &&
+    isMarketSymbol(value.market) &&
+    typeof value.size === "number" &&
+    Number.isSafeInteger(value.size) &&
+    value.size !== 0 &&
+    isSafePositiveInteger(value.entryPrice) &&
+    isSafePositiveInteger(value.mark) &&
+    typeof value.realizedPnl === "number" &&
+    Number.isSafeInteger(value.realizedPnl) &&
+    typeof value.marginReleased === "number" &&
+    Number.isSafeInteger(value.marginReleased) &&
+    value.marginReleased >= 0 &&
+    value.reason === "MAINTENANCE_MARGIN" &&
+    isIdentifier(value.counterpartyUserId) &&
+    isTimestamp(value.timestamp)
   );
 }
 

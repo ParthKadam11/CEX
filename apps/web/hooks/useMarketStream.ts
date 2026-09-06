@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { BboMessage, TradeTickMessage } from "@cex/app-contracts";
-import type { MarketSymbol, OrderBookSnapshot, Position } from "@cex/exchange-types";
+import type {
+  LiquidationEvent,
+  MarketSymbol,
+  OrderBookSnapshot,
+  Position,
+} from "@cex/exchange-types";
 import { parseEvent } from "@/lib/trading";
 
 function emptyBook(market: MarketSymbol): OrderBookSnapshot {
@@ -19,6 +24,7 @@ type UseMarketStreamOptions = {
   onTrade?: (trade: TradeTickMessage) => void;
   onBook?: (book: OrderBookSnapshot) => void;
   onPosition?: (position: Position) => void;
+  onLiquidation?: (liquidation: LiquidationEvent) => void;
 };
 
 export function useMarketStream(options: UseMarketStreamOptions) {
@@ -83,6 +89,17 @@ export function useMarketStream(options: UseMarketStreamOptions) {
         if (!position || position.market !== optionsRef.current.market) return;
         optionsRef.current.onPosition?.(position);
       });
+
+      source.addEventListener("liquidation", (event) => {
+        const liquidation = parseEvent<LiquidationEvent>(event);
+        if (
+          !liquidation ||
+          liquidation.market !== optionsRef.current.market
+        ) {
+          return;
+        }
+        optionsRef.current.onLiquidation?.(liquidation);
+      });
     }
 
     connect();
@@ -96,3 +113,4 @@ export function useMarketStream(options: UseMarketStreamOptions) {
 
   return { book, setBook, connected, lastTrade };
 }
+

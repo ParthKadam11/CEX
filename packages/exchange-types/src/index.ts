@@ -263,11 +263,32 @@ export type EngineCommandBody =
       type: "CANCEL";
       orderId: string;
       timestamp: number;
+    }
+  | {
+      type: "LIQUIDATE";
+      userId: string;
+      market: MarketSymbol;
+      mark: number;
+      timestamp: number;
     };
 
 export type EngineCommand = EngineCommandBody & { seq: number };
 
-// Live SSE payloads from the exchange process (ORDER / BBO / CREDIT / POSITION). 
+// Force-close at mark (perp liquidation).
+export type LiquidationEvent = {
+  userId: string;
+  market: MarketSymbol;
+  size: number;
+  entryPrice: number;
+  mark: number;
+  realizedPnl: number;
+  marginReleased: number;
+  reason: "MAINTENANCE_MARGIN";
+  counterpartyUserId: string;
+  timestamp: number;
+};
+
+// Live SSE payloads from the exchange process (ORDER / BBO / CREDIT / POSITION / LIQUIDATION).
 export type ExchangeStreamEvent =
   | { kind: "ORDER"; market: MarketSymbol; event: OrderEvent }
   | {
@@ -286,7 +307,12 @@ export type ExchangeStreamEvent =
       amount: number;
     }
   | { kind: "TRADE"; market: MarketSymbol; trade: Trade }
-  | { kind: "POSITION"; market: MarketSymbol; position: Position };
+  | { kind: "POSITION"; market: MarketSymbol; position: Position }
+  | {
+      kind: "LIQUIDATION";
+      market: MarketSymbol;
+      liquidation: LiquidationEvent;
+    };
 
 export function isMarketSymbol(value: unknown): value is MarketSymbol {
   return value === "SOL-USD" || value === "SOL-USD-PERP";

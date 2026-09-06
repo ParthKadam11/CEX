@@ -18,6 +18,7 @@ import {
 import type { EventBus } from "./eventBus.js";
 import { MarketRuntime } from "../market/runtime.js";
 import { isPositiveUnit, isUnit, marketSpec } from "../market/units.js";
+import { enrichPositionRisk } from "../risk/liquidation.js";
 
 function isMarket(value: string): value is MarketSymbol {
   return isMarketSymbol(value);
@@ -407,7 +408,12 @@ export function createExchangeApp(
     const positions = userId
       ? runtime.positions.listByUser(userId).filter((p) => p.market === market)
       : runtime.positions.listByMarket(market);
-    return c.json({ positions });
+    const mark = runtime.markPrice().mark;
+    const bps = marketSpec(market).maintenanceMarginBps ?? 50;
+    return c.json({
+      positions: positions.map((p) => enrichPositionRisk(p, mark, bps)),
+      mark,
+    });
   });
 
   app.get("/v1/markets/:market/positions/:userId", (c) => {
@@ -422,18 +428,21 @@ export function createExchangeApp(
       return errorResponse(c, 400, "INVALID_USER_ID");
     }
 
-    const position = runtime.positions.get(userId, market);
+    const raw =
+      runtime.positions.get(userId, market) ?? {
+        userId,
+        market,
+        size: 0,
+        entryPrice: 0,
+        margin: 0,
+        leverage: 1,
+        updatedAt: 0,
+      };
+    const mark = runtime.markPrice().mark;
+    const bps = marketSpec(market).maintenanceMarginBps ?? 50;
     return c.json({
-      position:
-        position ?? {
-          userId,
-          market,
-          size: 0,
-          entryPrice: 0,
-          margin: 0,
-          leverage: 1,
-          updatedAt: 0,
-        },
+      position: enrichPositionRisk(raw, mark, bps),
+      mark,
     });
   });
 
@@ -468,7 +477,7 @@ export function createExchangeApp(
     });
   });
 
-  // Live stream for gateway: ORDER, TRADE, BBO, CREDIT, POSITION
+  // Live stream for gateway: ORDER, TRADE, BBO, CREDIT, POSITION, LIQUIDATION
   app.get("/v1/markets/:market/stream", (c) => {
     const resolved = runtimeFor(c.req.param("market"));
     if (!resolved) {
@@ -503,6 +512,13 @@ export function createExchangeApp(
           userId &&
           event.kind === "POSITION" &&
           event.position.userId !== userId
+        ) {
+          return;
+        }
+        if (
+          userId &&
+          event.kind === "LIQUIDATION" &&
+          event.liquidation.userId !== userId
         ) {
           return;
         }

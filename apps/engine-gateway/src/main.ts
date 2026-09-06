@@ -16,6 +16,7 @@ import {
 } from "./redis/market-data.js";
 import { LiveBookHub } from "./redis/live-book.js";
 import { PositionHub } from "./redis/position-hub.js";
+import { LiquidationHub } from "./redis/liquidation-hub.js";
 import {
   ackCommand,
   createRedis,
@@ -38,6 +39,7 @@ async function main(): Promise<void> {
   );
   const liveBook = new LiveBookHub(engines, marketData);
   const positions = new PositionHub();
+  const liquidations = new LiquidationHub();
   const metrics = new GatewayMetrics();
   const dedupe = new CommandDedupe(redis);
   const handler = new CommandHandler(
@@ -80,7 +82,8 @@ async function main(): Promise<void> {
           event.kind === "BBO" ||
           event.kind === "TRADE" ||
           event.kind === "ORDER" ||
-          event.kind === "POSITION"
+          event.kind === "POSITION" ||
+          event.kind === "LIQUIDATION"
         ) {
           liveBook.notify(event.market);
         }
@@ -142,6 +145,11 @@ async function main(): Promise<void> {
               error: err instanceof Error ? err.message : String(err),
             });
           }
+          return;
+        }
+
+        if (event.kind === "LIQUIDATION") {
+          liquidations.publish(event.liquidation);
           return;
         }
 
@@ -207,6 +215,7 @@ async function main(): Promise<void> {
     marketData,
     liveBook,
     positions,
+    liquidations,
     internalToken: config.internalToken,
   });
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {

@@ -25,7 +25,6 @@ import {
 export function TradingPanel() {
   const market = SPOT_VENUE.symbol;
   const marketQs = `market=${encodeURIComponent(market)}`;
-
   const [balances, setBalances] = useState<Balance[]>([]);
   const [orders, setOrders] = useState<TradingOrder[]>([]);
   const [historyCandles, setHistoryCandles] = useState<Candle[]>([]);
