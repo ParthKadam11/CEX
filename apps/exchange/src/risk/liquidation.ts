@@ -1,4 +1,4 @@
-import { Side, type Position } from "@cex/exchange-types";
+import { Side, type Position, type PositionRisk } from "@cex/exchange-types";
 
 export const LIQUIDATOR_USER_ID = "sim-liquidator";
 
@@ -101,20 +101,11 @@ export function buildLiquidationClose(
   };
 }
 
-export type PositionRiskView = Position & {
-  mark: number | null;
-  unrealizedPnl: number | null;
-  equity: number | null;
-  maintenance: number | null;
-  liquidatable: boolean;
-  liquidationPrice: number | null;
-};
-
 export function enrichPositionRisk(
   position: Position,
   mark: number | null,
   maintenanceMarginBps: number,
-): PositionRiskView {
+): PositionRisk {
   if (position.size === 0 || mark == null || mark <= 0) {
     return {
       ...position,

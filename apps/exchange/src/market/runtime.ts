@@ -29,7 +29,6 @@ import { isPerpMarket } from "./units.js";
 import { resolveMarkPrice, type MarkPriceSnapshot } from "../risk/markPrice.js";
 
 export type MarketRuntimeOptions = {
-  /** Write a snapshot and truncate the WAL every N commands. 0 disables. */
   snapshotEvery?: number;
   maxTerminalOrders?: number;
   maxOrderEvents?: number;

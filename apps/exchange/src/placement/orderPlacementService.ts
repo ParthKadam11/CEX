@@ -121,8 +121,8 @@ export class OrderPlacementService {
   }
 
   // Force-close a perp at mark vs house (`sim-liquidator`).
-  // Does not require book liquidity. Residual loss beyond available USD is
-  // absorbed (paper insurance) — no bankruptcy waterfall.
+  // Reuses applyPerpFill for both sides; no book liquidity required.
+  // Residual loss beyond available USD is absorbed (paper insurance).
   forceCloseAtMark(
     userId: string,
     market: MarketSymbol,
@@ -168,6 +168,37 @@ export class OrderPlacementService {
       refType: "POSITION",
       refId: `liq:${userId}:${market}:${timestamp}`,
     });
+
+    // House takes the opposite fill at mark, then is flattened at the same
+    // mark (inventory wipe). Open+flat at one price → house PnL 0.
+    const houseSide = close.side === Side.BUY ? Side.SELL : Side.BUY;
+    const houseOpen = applyPerpFill({
+      position: {
+        userId: LIQUIDATOR_USER_ID,
+        market,
+        size: 0,
+        entryPrice: 0,
+        margin: 0,
+        leverage: 1,
+        updatedAt: 0,
+      },
+      side: houseSide,
+      quantity: close.quantity,
+      price: close.price,
+      leverage: 1,
+      marginIn: 0,
+      timestamp,
+    });
+    const houseFlat = applyPerpFill({
+      position: houseOpen.position,
+      side: close.side,
+      quantity: close.quantity,
+      price: close.price,
+      leverage: 1,
+      marginIn: 0,
+      timestamp,
+    });
+    this.positionStore.set(houseFlat.position);
 
     this.positionStore.set(applied.position);
     for (const handler of this.positionHandlers) {

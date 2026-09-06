@@ -32,14 +32,12 @@ describe("liquidation math", () => {
   });
 
   it("flags long underwater when equity < maintenance", () => {
-    // size 1, entry 100, margin 20, mark 70 → uPnL -30, equity -10
     const long = pos({ size: 1, entryPrice: 100, margin: 20 });
     expect(isLiquidatable(long, 70, 50)).toBe(true);
     expect(isLiquidatable(long, 100, 50)).toBe(false);
   });
 
   it("flags short underwater when equity < maintenance", () => {
-    // size -1, entry 100, margin 20, mark 130 → uPnL -30, equity -10
     const short = pos({ size: -1, entryPrice: 100, margin: 20 });
     expect(isLiquidatable(short, 130, 50)).toBe(true);
     expect(isLiquidatable(short, 100, 50)).toBe(false);
@@ -84,5 +82,6 @@ describe("liquidation math", () => {
     expect(view.equity).toBe(-10);
     expect(view.liquidatable).toBe(true);
     expect(view.unrealizedPnl).toBe(-30);
+    expect(view.liquidationPrice).not.toBeNull();
   });
 });

@@ -164,9 +164,7 @@ export function createGatewayApp(options: GatewayAppOptions) {
     }
 
     try {
-      return c.json({
-        positions: await engine.positions(userId),
-      });
+      return c.json(await engine.positions(userId));
     } catch (error) {
       return errorResponse(
         c,
@@ -187,8 +185,10 @@ export function createGatewayApp(options: GatewayAppOptions) {
     }
 
     try {
+      const position = await engine.position(userId);
       return c.json({
-        position: await engine.position(userId),
+        position,
+        mark: position.mark,
       });
     } catch (error) {
       return errorResponse(

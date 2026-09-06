@@ -7,7 +7,7 @@ import type {
   Order,
   OrderBookSnapshot,
   PlacementResult,
-  Position,
+  PositionRisk,
 } from "@cex/exchange-types";
 
 export type EngineClientOptions = {
@@ -225,7 +225,7 @@ export class EngineClient {
   async position(
     userId: string,
     signal?: AbortSignal,
-  ): Promise<Position> {
+  ): Promise<PositionRisk> {
     const res = await this.request(
       `/v1/markets/${this.market}/positions/${encodeURIComponent(userId)}`,
       { headers: this.headers() },
@@ -233,14 +233,17 @@ export class EngineClient {
       signal,
     );
     if (!res.ok) throw new Error(`position failed: ${res.status}`);
-    const body = (await res.json()) as { position: Position };
+    const body = (await res.json()) as {
+      position: PositionRisk;
+      mark?: number | null;
+    };
     return body.position;
   }
 
   async positions(
     userId?: string,
     signal?: AbortSignal,
-  ): Promise<Position[]> {
+  ): Promise<{ positions: PositionRisk[]; mark: number | null }> {
     const query = userId
       ? `?userId=${encodeURIComponent(userId)}`
       : "";
@@ -251,8 +254,14 @@ export class EngineClient {
       signal,
     );
     if (!res.ok) throw new Error(`positions failed: ${res.status}`);
-    const body = (await res.json()) as { positions: Position[] };
-    return body.positions ?? [];
+    const body = (await res.json()) as {
+      positions: PositionRisk[];
+      mark?: number | null;
+    };
+    return {
+      positions: body.positions ?? [],
+      mark: body.mark ?? null,
+    };
   }
 
   // SSE endpoint URL for the live engine feed.

@@ -57,6 +57,16 @@ export interface Position {
   updatedAt: number;
 }
 
+// Position plus mark-risk fields for GET .../positions.
+export type PositionRisk = Position & {
+  mark: number | null;
+  unrealizedPnl: number | null;
+  equity: number | null;
+  maintenance: number | null;
+  liquidatable: boolean;
+  liquidationPrice: number | null;
+};
+
 export type LedgerReason =
   | "DEPOSIT"
   | "LOCK_ORDER"

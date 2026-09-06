@@ -60,6 +60,7 @@ describe("force-close liquidation", () => {
       available: 20,
       locked: 0,
     });
+    expect(liq!.counterpartyUserId).toBe("sim-liquidator");
   });
 
   it("liquidates an underwater short at mark", () => {
