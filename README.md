@@ -319,6 +319,7 @@ The integration test requires PostgreSQL, Redis, the exchange, the engine gatewa
 - SSE for live order, credit, BBO, trade, position, liquidation, and funding events
 - Engine gateway multi-market routing; Redis fan-out for POSITION / LIQUIDATION / FUNDING
 - OMS order APIs with perp leverage persistence + idempotency, Postgres order state, outbox, event-driven status updates
+- OMS cancel uses a conditional status update (`PENDING`/`ACCEPTED`/`OPEN`/`PARTIALLY_FILLED` only) so a fill race cannot mark a terminal order `CANCEL_REQUESTED`
 - Market-data writer (TimescaleDB history for trades, BBO, and one-minute candles per market)
 - Web app authentication, paper credit, and Spot / Perps trading surfaces (functional; design polish deferred)
 - Application-layer infra bootstrap and shared message contracts

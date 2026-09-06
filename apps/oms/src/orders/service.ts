@@ -136,6 +136,18 @@ export class OrderService {
       command.commandId,
       command,
     );
+    if (!updated) {
+      const latest = await this.repository.findByEngineOrderId(engineOrderId);
+      if (!latest) throw new OrderNotFoundError();
+      if (latest.userId !== userId) throw new OrderOwnershipError();
+      if (latest.status === OmsOrderStatus.CANCEL_REQUESTED) {
+        return {
+          order: latest,
+          command: cancelCommandFromOrder(latest, userId, clientOrderId),
+        };
+      }
+      throw new OrderNotCancellableError();
+    }
 
     try {
       await publishCancelCommand(this.redis, command);

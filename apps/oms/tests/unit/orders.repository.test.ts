@@ -128,3 +128,85 @@ describe("OrderRepository.applyEvent", () => {
     });
   });
 });
+
+describe("OrderRepository.requestCancel", () => {
+  it("only advances status when the row is still cancellable", async () => {
+    const order = {
+      id: "order-db",
+      status: OmsOrderStatus.CANCEL_REQUESTED,
+      fills: [],
+    };
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const findUniqueOrThrow = vi.fn().mockResolvedValue(order);
+    const create = vi.fn().mockResolvedValue({});
+    const tx = {
+      order: { updateMany, findUniqueOrThrow },
+      commandOutbox: { create },
+    };
+    const db = {
+      $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(tx),
+      ),
+    };
+    const repository = new OrderRepository(db as never);
+
+    const result = await repository.requestCancel("order-db", "cancel-1", {
+      commandId: "cancel-1",
+      type: "CANCEL",
+      userId: "u1",
+      orderId: "engine-1",
+      market: "SOL-USD",
+      timestamp: Date.now(),
+    });
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "order-db",
+        status: {
+          in: [
+            OmsOrderStatus.PENDING,
+            OmsOrderStatus.ACCEPTED,
+            OmsOrderStatus.OPEN,
+            OmsOrderStatus.PARTIALLY_FILLED,
+          ],
+        },
+      },
+      data: {
+        cancelCommandId: "cancel-1",
+        status: OmsOrderStatus.CANCEL_REQUESTED,
+      },
+    });
+    expect(create).toHaveBeenCalled();
+    expect(result).toEqual(order);
+  });
+
+  it("returns null without outbox write when the status filter matches nothing", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const create = vi.fn();
+    const tx = {
+      order: {
+        updateMany,
+        findUniqueOrThrow: vi.fn(),
+      },
+      commandOutbox: { create },
+    };
+    const db = {
+      $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(tx),
+      ),
+    };
+    const repository = new OrderRepository(db as never);
+
+    const result = await repository.requestCancel("order-db", "cancel-1", {
+      commandId: "cancel-1",
+      type: "CANCEL",
+      userId: "u1",
+      orderId: "engine-1",
+      market: "SOL-USD",
+      timestamp: Date.now(),
+    });
+
+    expect(result).toBeNull();
+    expect(create).not.toHaveBeenCalled();
+  });
+});

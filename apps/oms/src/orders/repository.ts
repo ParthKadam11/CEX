@@ -8,6 +8,13 @@ import {
 } from "@cex/db/enums";
 import { MAX_PAGE_LIMIT } from "@cex/exchange-types";
 
+const CANCELLABLE_STATUSES: readonly OmsOrderStatus[] = [
+  OmsOrderStatus.PENDING,
+  OmsOrderStatus.ACCEPTED,
+  OmsOrderStatus.OPEN,
+  OmsOrderStatus.PARTIALLY_FILLED,
+];
+
 export class OrderRepository {
   constructor(private readonly db: PrismaClient = prisma) {}
 
@@ -112,12 +119,22 @@ export class OrderRepository {
     command: AppCommand,
   ) {
     return this.db.$transaction(async (tx) => {
-      const order = await tx.order.update({
-        where: { id },
+      const updated = await tx.order.updateMany({
+        where: {
+          id,
+          status: { in: [...CANCELLABLE_STATUSES] },
+        },
         data: {
           cancelCommandId,
           status: OmsOrderStatus.CANCEL_REQUESTED,
         },
+      });
+      if (updated.count === 0) {
+        return null;
+      }
+
+      const order = await tx.order.findUniqueOrThrow({
+        where: { id },
         include: { fills: true },
       });
       await tx.commandOutbox.create({

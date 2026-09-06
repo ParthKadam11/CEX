@@ -188,4 +188,38 @@ describe("OrderService", () => {
     expect(redis.xadd).not.toHaveBeenCalled();
   });
 
+  it("rejects cancel when conditional update loses a race to a terminal status", async () => {
+    const repository = {
+      findByEngineOrderId: vi
+        .fn()
+        .mockResolvedValueOnce({
+          id: "db-order-1",
+          userId: "owner",
+          market: "SOL-USD",
+          status: "OPEN",
+          engineOrderId: "engine-order-1",
+          clientOrderId: "c1",
+          cancelCommandId: null,
+        })
+        .mockResolvedValueOnce({
+          id: "db-order-1",
+          userId: "owner",
+          market: "SOL-USD",
+          status: "FILLED",
+          engineOrderId: "engine-order-1",
+          clientOrderId: "c1",
+          cancelCommandId: null,
+        }),
+      requestCancel: vi.fn().mockResolvedValue(null),
+    } as unknown as OrderRepository;
+    const redis = { xadd: vi.fn() } as unknown as Redis;
+    const service = new OrderService(repository, redis);
+
+    await expect(service.cancel("owner", "engine-order-1")).rejects.toBeInstanceOf(
+      OrderNotCancellableError,
+    );
+    expect(repository.requestCancel).toHaveBeenCalled();
+    expect(redis.xadd).not.toHaveBeenCalled();
+  });
+
 });
