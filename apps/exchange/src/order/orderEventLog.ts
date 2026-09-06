@@ -63,6 +63,14 @@ export class OrderEventLog {
     return this.events.filter((e) => e.userId === userId);
   }
 
+  // Events with seq > afterSeq (for gap reconcile / catch-up).
+  readAfter(afterSeq: number): OrderEvent[] {
+    if (!Number.isSafeInteger(afterSeq) || afterSeq < 0) {
+      return [...this.events];
+    }
+    return this.events.filter((event) => event.seq > afterSeq);
+  }
+
   clear(): void {
     this.events = [];
     this.seq = 0;

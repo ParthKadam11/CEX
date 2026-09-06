@@ -340,4 +340,68 @@ describe("exchange HTTP + SSE", () => {
 
     await runtime.close();
   });
+
+  it("reconcile returns orders and order events for SSE gap recovery", async () => {
+    const bus = new EventBus();
+    const runtime = MarketRuntime.open("SOL-USD", tempWal(), bus);
+    const app = createExchangeApp(runtime, bus);
+
+    await app.request("/v1/markets/SOL-USD/credit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: "seller", asset: "SOL", amount: 10 }),
+    });
+    await app.request("/v1/markets/SOL-USD/credit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: "buyer", asset: "USD", amount: 10_000 }),
+    });
+
+    await app.request("/v1/markets/SOL-USD/orders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        orderId: "sell-1",
+        userId: "seller",
+        side: "SELL",
+        type: "LIMIT",
+        timeInForce: "GTC",
+        price: 100,
+        quantity: 1,
+      }),
+    });
+    await app.request("/v1/markets/SOL-USD/orders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        orderId: "buy-1",
+        userId: "buyer",
+        side: "BUY",
+        type: "LIMIT",
+        timeInForce: "GTC",
+        price: 100,
+        quantity: 1,
+      }),
+    });
+
+    const reconcile = await app.request("/v1/markets/SOL-USD/reconcile");
+    expect(reconcile.status).toBe(200);
+    const body = await reconcile.json();
+    expect(body.market).toBe("SOL-USD");
+    expect(body.orders.length).toBeGreaterThanOrEqual(2);
+    expect(body.orderEvents.some((e: { type: string }) => e.type === "FILL")).toBe(
+      true,
+    );
+    expect(body.orderEventSeq).toBeGreaterThan(0);
+
+    const after = await app.request(
+      "/v1/markets/SOL-USD/reconcile?afterOrderEventSeq=1",
+    );
+    const afterBody = await after.json();
+    expect(afterBody.orderEvents.every((e: { seq: number }) => e.seq > 1)).toBe(
+      true,
+    );
+
+    await runtime.close();
+  });
 });

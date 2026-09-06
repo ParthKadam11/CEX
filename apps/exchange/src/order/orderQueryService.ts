@@ -49,11 +49,26 @@ export class OrderQueryService {
     return this.getByUser(userId, { openOnly: true, market });
   }
 
+  // All orders currently in the store (any user), optionally filtered by market.
+  listAll(market?: MarketSymbol): Order[] {
+    const orders = this.store.all();
+    if (market === undefined) return orders;
+    return orders.filter((order) => order.market === market);
+  }
+
   getHistory(orderId: string): OrderEvent[] {
     return this.log.forOrder(orderId);
   }
 
   getEventsByUser(userId: string): OrderEvent[] {
     return this.log.forUser(userId);
+  }
+
+  getEventsAfter(afterSeq: number): OrderEvent[] {
+    return this.log.readAfter(afterSeq);
+  }
+
+  get eventSeq(): number {
+    return this.log.currentSeq;
   }
 }

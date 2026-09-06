@@ -486,6 +486,20 @@ export function createExchangeApp(
     return c.json(runtime.fundingInfo());
   });
 
+  // Gateway SSE-gap reconcile: current orders/positions + retained events.
+  app.get("/v1/markets/:market/reconcile", (c) => {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
+    }
+    const { runtime } = resolved;
+    const afterSeq = parseAfterSeq(c.req.query("afterOrderEventSeq"));
+    if (afterSeq === "invalid") {
+      return errorResponse(c, 400, "INVALID_AFTER_SEQ");
+    }
+    return c.json(runtime.reconcileSnapshot(afterSeq ?? 0));
+  });
+
   app.post("/v1/markets/:market/funding/settle", async (c) => {
     const resolved = runtimeFor(c.req.param("market"));
     if (!resolved) {

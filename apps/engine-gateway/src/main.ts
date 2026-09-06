@@ -1,14 +1,13 @@
 import { serve } from "@hono/node-server";
-import type { AppOrderEvent } from "@cex/app-contracts";
-import type {
-  FundingEvent,
-  LiquidationEvent,
-  OrderEvent,
-  Position,
-} from "@cex/exchange-types";
 import { loadConfig } from "./config.js";
 import { CommandDedupe } from "./dedupe.js";
 import { CommandHandler } from "./commands/handler.js";
+import {
+  toAppFundingEvent,
+  toAppLiquidationEvent,
+  toAppOrderEvent,
+  toAppPositionEvent,
+} from "./engine/events.js";
 import { EngineRegistry } from "./engine/registry.js";
 import { EngineSseClient } from "./engine/sse.js";
 import { createGatewayApp } from "./http/server.js";
@@ -32,6 +31,7 @@ import {
   readCommands,
   publishOrderEvent,
 } from "./redis/streams.js";
+import { reconcileSseGap } from "./sse/gapReconcile.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -56,6 +56,14 @@ async function main(): Promise<void> {
     dedupe,
     metrics,
   );
+  const gapDeps = {
+    redis,
+    metrics,
+    liveBook,
+    positions,
+    liquidations,
+    fundings,
+  };
 
   await ensureCommandGroup(redis);
   await marketData.start();
@@ -87,19 +95,37 @@ async function main(): Promise<void> {
       async (event) => {
         if (event.kind === "ready") {
           if (event.gap) {
-            liveBook.notify(event.market);
+            try {
+              await reconcileSseGap(engine, gapDeps);
+              metrics.increment("sseGapReconciles");
+            } catch (err) {
+              log("error", "SSE ready-gap reconcile failed", {
+                market: event.market,
+                error: err instanceof Error ? err.message : String(err),
+              });
+              liveBook.notify(event.market);
+            }
           }
           return;
         }
 
         if (event.kind === "gap") {
-          log("warn", "SSE catch-up gap; refreshing book", {
+          log("warn", "SSE catch-up gap; reconciling OMS state", {
             market: event.market,
             afterSeq: event.afterSeq,
             oldestSeq: event.oldestSeq,
             latestSeq: event.latestSeq,
           });
-          liveBook.notify(event.market);
+          try {
+            await reconcileSseGap(engine, gapDeps);
+            metrics.increment("sseGapReconciles");
+          } catch (err) {
+            log("error", "SSE gap reconcile failed", {
+              market: event.market,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            liveBook.notify(event.market);
+          }
           return;
         }
 
@@ -303,82 +329,3 @@ main().catch((err) => {
   });
   process.exit(1);
 });
-
-function toAppOrderEvent(event: OrderEvent): AppOrderEvent | null {
-  if (event.type === "STATUS") return null;
-
-  return {
-    eventId: `exchange-${event.seq}-${event.orderId}-${event.type}`,
-    type: event.type,
-    userId: event.userId,
-    market: event.market,
-    orderId: event.orderId,
-    status: event.status,
-    reason: event.reason,
-    engineSequence: event.seq,
-    fills:
-      event.type === "FILL" && event.tradeId && event.price && event.quantity
-        ? [
-            {
-              tradeId: event.tradeId,
-              price: event.price,
-              quantity: event.quantity,
-            },
-          ]
-        : undefined,
-    timestamp: event.timestamp,
-  };
-}
-
-function toAppPositionEvent(position: Position): AppOrderEvent {
-  return {
-    eventId: `position-${position.userId}-${position.market}-${position.updatedAt}`,
-    type: "POSITION",
-    userId: position.userId,
-    market: position.market,
-    position: {
-      size: position.size,
-      entryPrice: position.entryPrice,
-      margin: position.margin,
-      leverage: position.leverage,
-      updatedAt: position.updatedAt,
-    },
-    timestamp: position.updatedAt || Date.now(),
-  };
-}
-
-function toAppLiquidationEvent(liquidation: LiquidationEvent): AppOrderEvent {
-  return {
-    eventId: `liquidation-${liquidation.userId}-${liquidation.market}-${liquidation.timestamp}`,
-    type: "LIQUIDATION",
-    userId: liquidation.userId,
-    market: liquidation.market,
-    reason: liquidation.reason,
-    liquidation: {
-      size: liquidation.size,
-      entryPrice: liquidation.entryPrice,
-      mark: liquidation.mark,
-      realizedPnl: liquidation.realizedPnl,
-      marginReleased: liquidation.marginReleased,
-      reason: liquidation.reason,
-      counterpartyUserId: liquidation.counterpartyUserId,
-    },
-    timestamp: liquidation.timestamp,
-  };
-}
-
-function toAppFundingEvent(funding: FundingEvent): AppOrderEvent {
-  return {
-    eventId: `funding-${funding.userId}-${funding.market}-${funding.timestamp}`,
-    type: "FUNDING",
-    userId: funding.userId,
-    market: funding.market,
-    funding: {
-      size: funding.size,
-      mark: funding.mark,
-      fundingRateBps: funding.fundingRateBps,
-      payment: funding.payment,
-    },
-    timestamp: funding.timestamp,
-  };
-}

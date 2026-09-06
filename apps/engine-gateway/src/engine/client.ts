@@ -3,10 +3,14 @@ import type {
   CancelResult,
   CreditResult,
   Balance,
+  FundingEvent,
+  LiquidationEvent,
   MarketSymbol,
   Order,
   OrderBookSnapshot,
+  OrderEvent,
   PlacementResult,
+  Position,
   PositionRisk,
 } from "@cex/exchange-types";
 
@@ -40,7 +44,7 @@ export class EngineClient {
 
   constructor(
     private readonly baseUrl: string,
-    private readonly market: MarketSymbol,
+    readonly market: MarketSymbol,
     private readonly gatewayToken = "local-dev-exchange-token",
     options: EngineClientOptions = {},
   ) {
@@ -319,6 +323,40 @@ export class EngineClient {
     return {
       positions: body.positions ?? [],
       mark: body.mark ?? null,
+    };
+  }
+
+  async reconcile(
+    afterOrderEventSeq = 0,
+    signal?: AbortSignal,
+  ): Promise<{
+    market: MarketSymbol;
+    orders: Order[];
+    orderEvents: OrderEvent[];
+    positions: Position[];
+    liquidations: LiquidationEvent[];
+    fundings: FundingEvent[];
+    orderEventSeq: number;
+  }> {
+    const query =
+      afterOrderEventSeq > 0
+        ? `?afterOrderEventSeq=${afterOrderEventSeq}`
+        : "";
+    const res = await this.request(
+      `/v1/markets/${this.market}/reconcile${query}`,
+      { headers: this.headers() },
+      true,
+      signal,
+    );
+    if (!res.ok) throw new Error(`reconcile failed: ${res.status}`);
+    return (await res.json()) as {
+      market: MarketSymbol;
+      orders: Order[];
+      orderEvents: OrderEvent[];
+      positions: Position[];
+      liquidations: LiquidationEvent[];
+      fundings: FundingEvent[];
+      orderEventSeq: number;
     };
   }
 

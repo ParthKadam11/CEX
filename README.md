@@ -51,6 +51,7 @@ The exchange engine is intentionally single-writer per market. It keeps matching
 - Snapshots shorten restart time by restoring state and replaying only the WAL tail.
 - `EventBus` publishes live `ORDER`, `BBO`, `CREDIT`, `TRADE`, `POSITION`, `LIQUIDATION`, and `FUNDING` events for SSE consumers.
 - SSE includes a monotonic `streamSeq` and a bounded ring so reconnecting gateways can catch up via `?afterSeq=` / `Last-Event-ID` (gap signal when the ring was overrun).
+- On SSE `gap`, the gateway calls `GET /v1/markets/:market/reconcile` and republishes retained order events, order snapshots, positions, liquidations, and funding to `orders:events` so OMS can catch up.
 
 
 
@@ -259,6 +260,7 @@ One exchange process hosts both markets (`SOL-USD` and `SOL-USD-PERP`) by defaul
 | `GET`    | `/v1/markets/:market/funding`                  | Funding rate / interval (perp)                       |
 | `POST`   | `/v1/markets/:market/funding/settle`           | Force a funding settle tick (perp)                   |
 | `GET`    | `/v1/markets/:market/book`                     | Fetch order book snapshot                            |
+| `GET`    | `/v1/markets/:market/reconcile`                | Gap recovery snapshot (orders, events, risk)         |
 | `GET`    | `/v1/markets/:market/stream?userId=`           | Subscribe to live SSE                                |
 
 

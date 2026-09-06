@@ -7,7 +7,9 @@ import type {
   LiquidationEvent,
   MarketSymbol,
   Order,
+  OrderEvent,
   PlacementResult,
+  Position,
   Trade,
 } from "@cex/exchange-types";
 import fs from "node:fs";
@@ -36,6 +38,7 @@ export type MarketRuntimeOptions = {
   maxLedgerEntries?: number;
   // 0 disables auto funding timer (tests). Default: marketSpec.fundingIntervalMs.
   fundingIntervalMs?: number;
+  maxRecentRiskEvents?: number;
 };
 
 export const DEFAULT_SNAPSHOT_EVERY = 1024;
@@ -43,6 +46,18 @@ export const DEFAULT_RAM_BOUNDS: RamBounds = {
   maxTerminalOrders: 10_000,
   maxOrderEvents: 50_000,
   maxLedgerEntries: 20_000,
+};
+
+export const DEFAULT_RECENT_RISK_EVENTS = 1024;
+
+export type MarketReconcileSnapshot = {
+  market: MarketSymbol;
+  orders: Order[];
+  orderEvents: OrderEvent[];
+  positions: Position[];
+  liquidations: LiquidationEvent[];
+  fundings: FundingEvent[];
+  orderEventSeq: number;
 };
 
 /*
@@ -66,6 +81,9 @@ export class MarketRuntime {
   private readonly queue: CommandQueue;
   private fundingTimer: ReturnType<typeof setInterval> | null = null;
   private readonly fundingIntervalMs: number;
+  private readonly maxRecentRiskEvents: number;
+  private readonly recentLiquidations: LiquidationEvent[] = [];
+  private readonly recentFundings: FundingEvent[] = [];
 
   constructor(
     readonly market: MarketSymbol,
@@ -89,6 +107,8 @@ export class MarketRuntime {
       opts.fundingIntervalMs ??
       marketSpec(market).fundingIntervalMs ??
       0;
+    this.maxRecentRiskEvents =
+      opts.maxRecentRiskEvents ?? DEFAULT_RECENT_RISK_EVENTS;
     this.queue = new CommandQueue(() => this.wal.flush());
 
     this.placement.eventLog.onAppend((event) => {
@@ -100,7 +120,9 @@ export class MarketRuntime {
       this.bus.publish({ kind: "POSITION", market: this.market, position });
     });
     this.placement.onLiquidation((liquidation) => {
-      if (this.replaying || !this.bus) return;
+      if (this.replaying) return;
+      this.rememberRiskEvent(this.recentLiquidations, liquidation);
+      if (!this.bus) return;
       this.bus.publish({
         kind: "LIQUIDATION",
         market: this.market,
@@ -108,7 +130,9 @@ export class MarketRuntime {
       });
     });
     this.placement.onFunding((funding) => {
-      if (this.replaying || !this.bus) return;
+      if (this.replaying) return;
+      this.rememberRiskEvent(this.recentFundings, funding);
+      if (!this.bus) return;
       this.bus.publish({ kind: "FUNDING", market: this.market, funding });
     });
   }
@@ -176,6 +200,19 @@ export class MarketRuntime {
     };
   }
 
+  // Snapshot for gateway SSE-gap reconcile (orders, events, positions, risk).
+  reconcileSnapshot(afterOrderEventSeq = 0): MarketReconcileSnapshot {
+    return {
+      market: this.market,
+      orders: this.queries.listAll(this.market).map(cloneOrder),
+      orderEvents: this.queries.getEventsAfter(afterOrderEventSeq),
+      positions: this.positions.listByMarket(this.market),
+      liquidations: [...this.recentLiquidations],
+      fundings: [...this.recentFundings],
+      orderEventSeq: this.queries.eventSeq,
+    };
+  }
+
   //Dev-only: wipe book, balances, order indexes, WAL, and snapshot. Market is empty afterward (users must re-credit).
   hardReset(): Promise<void> {
     return this.enqueue(() => {
@@ -196,6 +233,8 @@ export class MarketRuntime {
       this.placement.restoreSnapshot(empty, this.book);
       this.wal.wipe();
       this.snapshotSeq = 0;
+      this.recentLiquidations.length = 0;
+      this.recentFundings.length = 0;
       if (this.snapshotPath && fs.existsSync(this.snapshotPath)) {
         fs.rmSync(this.snapshotPath, { force: true });
       }
@@ -443,6 +482,13 @@ export class MarketRuntime {
           command.timestamp,
         );
         return;
+    }
+  }
+
+  private rememberRiskEvent<T>(buf: T[], event: T): void {
+    buf.push(event);
+    while (buf.length > this.maxRecentRiskEvents) {
+      buf.shift();
     }
   }
 }
