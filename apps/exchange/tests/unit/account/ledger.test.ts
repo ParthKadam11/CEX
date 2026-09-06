@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { Ledger } from "../../../src/account/ledger.js";
-import { BalanceService } from "../../../src/account/balanceService.js";
+import {
+  BalanceService,
+  CreditIdempotencyConflictError,
+} from "../../../src/account/balanceService.js";
 
 describe("Ledger", () => {
   it("appends with growing seq and filters by user / asset / ref", () => {
@@ -173,5 +176,30 @@ describe("BalanceService", () => {
       available: 50,
       locked: 0,
     });
+  });
+
+  it("credit with commandId is idempotent on retry", () => {
+    const svc = new BalanceService();
+    const first = svc.credit("u1", "USD", 100, "DEPOSIT", {
+      refType: "DEPOSIT",
+      refId: "cmd-1",
+    });
+    const second = svc.credit("u1", "USD", 100, "DEPOSIT", {
+      refType: "DEPOSIT",
+      refId: "cmd-1",
+    });
+
+    expect(first.idempotent).toBeUndefined();
+    expect(second.idempotent).toBe(true);
+    expect(second.entry.seq).toBe(first.entry.seq);
+    expect(svc.get("u1", "USD").available).toBe(100);
+    expect(svc.ledger.all()).toHaveLength(1);
+
+    expect(() =>
+      svc.credit("u1", "USD", 50, "DEPOSIT", {
+        refType: "DEPOSIT",
+        refId: "cmd-1",
+      }),
+    ).toThrow(CreditIdempotencyConflictError);
   });
 });

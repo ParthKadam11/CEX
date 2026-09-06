@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { OrderType, Side, TimeInForce } from "@cex/exchange-types";
 import { OrderBook } from "../../../src/book/orderBook.js";
+import { cloneOrder } from "../../../src/journal/cloneOrder.js";
 import { fund, makeOrder, remaining } from "../../helpers.js";
 import { OrderPlacementService } from "../../../src/placement/orderPlacementService.js";
 
@@ -475,6 +476,31 @@ describe("OrderPlacementService", () => {
     expect(second.reason).toBe("DUPLICATE_ORDER_ID");
     expect(second.order).toBe(first.order);
     expect(book.getOrder("duplicate-id")).toBe(first.order);
+  });
+
+  it("treats identical place retries as idempotent success", () => {
+    const book = new OrderBook("SOL-USD");
+    const service = new OrderPlacementService();
+    fund(service, "buyer", { USD: 100 });
+
+    const order = makeOrder({
+      orderId: "retry-id",
+      userId: "buyer",
+      side: Side.BUY,
+      price: 100,
+      quantity: 1,
+    });
+    const first = service.place(order, book);
+    const second = service.place(cloneOrder(order), book);
+
+    expect(first.accepted).toBe(true);
+    expect(second.accepted).toBe(true);
+    expect(second.idempotent).toBe(true);
+    expect(second.order).toBe(first.order);
+    expect(service.balances.get("buyer", "USD").locked).toBe(100);
+    expect(
+      service.eventLog.forOrder("retry-id").filter((e) => e.type === "REJECTED"),
+    ).toHaveLength(0);
   });
 
   it("rejects when buyer has insufficient balance", () => {

@@ -15,6 +15,13 @@ export type BalanceRef = {
   refId: string;
 };
 
+export class CreditIdempotencyConflictError extends Error {
+  constructor(commandId: string) {
+    super(`CREDIT_IDEMPOTENCY_CONFLICT:${commandId}`);
+    this.name = "CreditIdempotencyConflictError";
+  }
+}
+
 /*
   BalanceService = BalanceStore mutations + Ledger append in one place.
 
@@ -45,13 +52,33 @@ export class BalanceService {
   }
 
   // Deposit into available.
+  // When commandId is set, retries with the same id return the prior result.
   credit(
     userId: string,
     asset: AssetId,
     amount: number,
     reason: LedgerReason = "DEPOSIT",
     ref?: BalanceRef,
-  ): { balance: Balance; entry: LedgerEntry } {
+  ): { balance: Balance; entry: LedgerEntry; idempotent?: boolean } {
+    if (ref?.refType === "DEPOSIT" && ref.refId) {
+      const prior = this.journal.forRef("DEPOSIT", ref.refId);
+      if (prior.length > 0) {
+        const entry = prior[0]!;
+        if (
+          entry.userId !== userId ||
+          entry.asset !== asset ||
+          entry.availableDelta !== amount
+        ) {
+          throw new CreditIdempotencyConflictError(ref.refId);
+        }
+        return {
+          balance: this.store.get(userId, asset),
+          entry,
+          idempotent: true,
+        };
+      }
+    }
+
     const before = this.store.get(userId, asset);
     const balance = this.store.credit(userId, asset, amount);
     const entry = this.write(userId, asset, before, balance, reason, ref);

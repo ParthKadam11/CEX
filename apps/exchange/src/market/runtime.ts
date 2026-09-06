@@ -168,8 +168,10 @@ export class MarketRuntime {
     return resolveMarkPrice(this.book, this.placement.getLastTradePrice());
   }
 
-  credit(userId: string, asset: AssetId, amount: number) {
-    return this.enqueue(() => this.creditNow(userId, asset, amount));
+  credit(userId: string, asset: AssetId, amount: number, commandId?: string) {
+    return this.enqueue(() =>
+      this.creditNow(userId, asset, amount, commandId),
+    );
   }
 
   place(order: Order): Promise<PlacementResult> {
@@ -273,14 +275,31 @@ export class MarketRuntime {
     }
   }
 
-  private creditNow(userId: string, asset: AssetId, amount: number) {
-    const result = this.placement.balances.credit(userId, asset, amount);
+  private creditNow(
+    userId: string,
+    asset: AssetId,
+    amount: number,
+    commandId?: string,
+  ) {
+    const result = this.placement.balances.credit(
+      userId,
+      asset,
+      amount,
+      "DEPOSIT",
+      commandId
+        ? { refType: "DEPOSIT", refId: commandId }
+        : undefined,
+    );
+    if (result.idempotent) {
+      return result;
+    }
     this.persist({
       type: "CREDIT",
       userId,
       asset,
       amount,
       timestamp: Date.now(),
+      ...(commandId ? { commandId } : {}),
     });
     if (!this.replaying && this.bus) {
       this.bus.publish({
@@ -297,6 +316,9 @@ export class MarketRuntime {
   private placeNow(order: Order): PlacementResult {
     const snapshot = cloneOrder(order);
     const result = this.placement.place(order, this.book);
+    if (!result.accepted || result.idempotent) {
+      return result;
+    }
     this.persist({
       type: "PLACE",
       order: snapshot,
@@ -458,6 +480,10 @@ export class MarketRuntime {
           command.userId,
           command.asset,
           command.amount,
+          "DEPOSIT",
+          command.commandId
+            ? { refType: "DEPOSIT", refId: command.commandId }
+            : undefined,
         );
         return;
       case "PLACE":

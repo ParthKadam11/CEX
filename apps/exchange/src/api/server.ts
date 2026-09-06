@@ -19,6 +19,7 @@ import type { EventBus } from "./eventBus.js";
 import { MarketRuntime } from "../market/runtime.js";
 import { isPositiveUnit, isUnit, marketSpec } from "../market/units.js";
 import { enrichPositionRisk } from "../risk/liquidation.js";
+import { CreditIdempotencyConflictError } from "../account/balanceService.js";
 
 function isMarket(value: string): value is MarketSymbol {
   return isMarketSymbol(value);
@@ -156,6 +157,7 @@ export function createExchangeApp(
       userId?: string;
       asset?: AssetId;
       amount?: number;
+      commandId?: string;
     };
     try {
       body = await c.req.json();
@@ -177,9 +179,28 @@ export function createExchangeApp(
     if (body.asset !== "SOL" && body.asset !== "USD") {
       return errorResponse(c, 400, "INVALID_ASSET");
     }
+    if (body.commandId !== undefined && !isIdentifier(body.commandId)) {
+      return errorResponse(c, 400, "INVALID_COMMAND_ID");
+    }
 
-    const result = await runtime.credit(body.userId, body.asset, amount);
-    return c.json({ balance: result.balance, entry: result.entry });
+    try {
+      const result = await runtime.credit(
+        body.userId,
+        body.asset,
+        amount,
+        body.commandId,
+      );
+      return c.json({
+        balance: result.balance,
+        entry: result.entry,
+        idempotent: result.idempotent === true,
+      });
+    } catch (error) {
+      if (error instanceof CreditIdempotencyConflictError) {
+        return errorResponse(c, 409, "CREDIT_IDEMPOTENCY_CONFLICT");
+      }
+      throw error;
+    }
   });
 
   app.post("/v1/markets/:market/orders", async (c) => {

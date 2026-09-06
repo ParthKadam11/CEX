@@ -69,19 +69,26 @@ export class EngineClient {
     userId: string,
     asset: AssetId,
     amount: number,
+    commandId?: string,
     signal?: AbortSignal,
-  ): Promise<CreditResult> {
+  ): Promise<CreditResult & { idempotent?: boolean }> {
     const res = await this.request(
       `/v1/markets/${this.market}/credit`,
       {
         method: "POST",
         headers: { ...this.headers(), "content-type": "application/json" },
-        body: JSON.stringify({ userId, asset, amount }),
+        body: JSON.stringify({
+          userId,
+          asset,
+          amount,
+          ...(commandId ? { commandId } : {}),
+        }),
       },
       false,
       signal,
     );
     const body = (await res.json()) as CreditResult & {
+      idempotent?: boolean;
       error?: string | { code?: string; message?: string };
     };
     if (!res.ok) {

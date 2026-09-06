@@ -238,6 +238,63 @@ describe("exchange HTTP + SSE", () => {
     await runtime.close();
   });
 
+  it("retries the same place and credit commandIds without double-applying", async () => {
+    const bus = new EventBus();
+    const runtime = MarketRuntime.open("SOL-USD", tempWal(), bus);
+    const app = createExchangeApp(runtime, bus);
+    const headers = { "content-type": "application/json" };
+
+    const credit1 = await app.request("/v1/markets/SOL-USD/credit", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        userId: "u1",
+        asset: "USD",
+        amount: 100,
+        commandId: "credit-1",
+      }),
+    });
+    const credit2 = await app.request("/v1/markets/SOL-USD/credit", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        userId: "u1",
+        asset: "USD",
+        amount: 100,
+        commandId: "credit-1",
+      }),
+    });
+    expect(credit1.status).toBe(200);
+    expect(credit2.status).toBe(200);
+    expect((await credit2.json()).idempotent).toBe(true);
+    expect(runtime.balances.get("u1", "USD").available).toBe(100);
+
+    const orderBody = {
+      orderId: "ord-1",
+      userId: "u1",
+      side: "BUY",
+      type: "LIMIT",
+      price: 100,
+      quantity: 1,
+    };
+    const place1 = await app.request("/v1/markets/SOL-USD/orders", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(orderBody),
+    });
+    const place2 = await app.request("/v1/markets/SOL-USD/orders", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(orderBody),
+    });
+    expect(place1.status).toBe(200);
+    expect(place2.status).toBe(200);
+    expect((await place2.json()).idempotent).toBe(true);
+    expect(runtime.balances.get("u1", "USD").locked).toBe(100);
+
+    await runtime.close();
+  });
+
   it("hosts spot and perps in one app with separate books", async () => {
     const bus = new EventBus();
     const spot = MarketRuntime.open("SOL-USD", tempWal(), bus);

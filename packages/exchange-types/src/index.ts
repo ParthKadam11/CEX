@@ -183,6 +183,8 @@ export interface PlacementResult {
   reason?: RejectReason;
   // Perp markets: positions touched by this placement's fills. 
   positions?: Position[];
+  // True when this place matched an existing orderId with the same intent (retry).
+  idempotent?: boolean;
 }
 
 export type CancelFailReason = "UNKNOWN_ORDER" | "NOT_CANCELLABLE";
@@ -274,6 +276,8 @@ export type EngineCommandBody =
       asset: AssetId;
       amount: number;
       timestamp: number;
+      // Optional idempotency key (gateway commandId). Retries must not double-credit.
+      commandId?: string;
     }
   | {
       type: "PLACE";
@@ -371,4 +375,5 @@ export function isMarketSymbol(value: unknown): value is MarketSymbol {
 export type CreditResult = {
   balance: Balance;
   entry: LedgerEntry;
+  idempotent?: boolean;
 };

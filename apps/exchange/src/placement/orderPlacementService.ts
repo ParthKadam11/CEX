@@ -428,6 +428,17 @@ export class OrderPlacementService {
   place(order: Order, book: OrderBook): PlacementResult {
     const existing = this.store.get(order.orderId);
     if (existing) {
+      if (sameOrderIntent(existing, order)) {
+        return {
+          order: existing,
+          trades: [],
+          accepted: true,
+          idempotent: true,
+          positions: isPerpMarket(existing.market)
+            ? [this.positionStore.getOrEmpty(existing.userId, existing.market)]
+            : undefined,
+        };
+      }
       this.log.append({
         type: "REJECTED",
         orderId: existing.orderId,
@@ -838,4 +849,18 @@ export class OrderPlacementService {
     }
     return false;
   }
+}
+
+function sameOrderIntent(existing: Order, incoming: Order): boolean {
+  return (
+    existing.userId === incoming.userId &&
+    existing.market === incoming.market &&
+    existing.side === incoming.side &&
+    existing.type === incoming.type &&
+    existing.timeInForce === incoming.timeInForce &&
+    existing.price === incoming.price &&
+    existing.quantity === incoming.quantity &&
+    (existing.quoteBudget ?? undefined) === (incoming.quoteBudget ?? undefined) &&
+    (existing.leverage ?? undefined) === (incoming.leverage ?? undefined)
+  );
 }

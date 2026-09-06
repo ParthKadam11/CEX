@@ -272,6 +272,7 @@ Notable engine rules:
 - Maintenance liquidation force-closes underwater perps at mark vs house (`sim-liquidator`).
 - Funding settles periodically (demo: 100 bps / 60s); longs pay shorts when rate > 0.
 - Credit balances per market separately (spot USD and perp USD are not shared).
+- Exchange place/credit are idempotent on retry: same `orderId`+intent returns the prior order; credit with `commandId` does not double-apply.
 - `FOK_BUDGET` is a market-buy-only fill-or-kill order. It must fill the
 requested quantity within `quoteBudget` or reject before matching.
 - The exchange `BalanceStore` and its WAL are authoritative for trading balances.

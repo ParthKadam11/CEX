@@ -89,7 +89,12 @@ export class CommandHandler {
     const market = command.market ?? this.primaryMarket;
     try {
       const engine = this.engines.get(market);
-      await engine.credit(command.userId, command.asset, command.amount);
+      await engine.credit(
+        command.userId,
+        command.asset,
+        command.amount,
+        command.commandId,
+      );
       await this.emit({
         eventId: crypto.randomUUID(),
         commandId: command.commandId,
