@@ -182,7 +182,9 @@ export type AppOrderEventType =
   | "CREDIT_OK"
   | "CREDIT_FAILED"
   | "COMMAND_FAILED"
-  | "POSITION";
+  | "POSITION"
+  | "LIQUIDATION"
+  | "FUNDING";
 
 export type AppOrderEvent = {
   eventId: string;
@@ -203,7 +205,7 @@ export type AppOrderEvent = {
     price: number;
     quantity: number;
   }>;
-  /** Perp position snapshot when type is POSITION. */
+  // Perp position snapshot when type is POSITION.
   position?: {
     size: number;
     entryPrice: number;
@@ -211,7 +213,24 @@ export type AppOrderEvent = {
     leverage: number;
     updatedAt: number;
   };
-  /** Monotonic engine event sequence when sourced from exchange SSE. */
+  // Perp force-close when type is LIQUIDATION.
+  liquidation?: {
+    size: number;
+    entryPrice: number;
+    mark: number;
+    realizedPnl: number;
+    marginReleased: number;
+    reason: "MAINTENANCE_MARGIN";
+    counterpartyUserId: string;
+  };
+  // Perp funding payment when type is FUNDING (payment = balance delta).
+  funding?: {
+    size: number;
+    mark: number;
+    fundingRateBps: number;
+    payment: number;
+  };
+  // Monotonic engine event sequence when sourced from exchange SSE.
   engineSequence?: number;
   timestamp: number;
 };

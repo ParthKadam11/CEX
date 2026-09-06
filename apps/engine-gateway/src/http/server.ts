@@ -405,7 +405,13 @@ function marketMeta(market: MarketSymbol) {
     lotSize: 1,
     status: "OPEN" as const,
     ...(kind === "PERP"
-      ? { defaultLeverage: 1, maxLeverage: 20, maintenanceMarginBps: 50 }
+      ? {
+          defaultLeverage: 1,
+          maxLeverage: 20,
+          maintenanceMarginBps: 50,
+          fundingRateBps: 100,
+          fundingIntervalMs: 60_000,
+        }
       : {}),
   };
 }

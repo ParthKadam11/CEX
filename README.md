@@ -5,9 +5,9 @@ CEX is a TypeScript monorepo for a centralized exchange prototype. The repositor
 ## Repository Overview
 
 - `apps/exchange`  
-Single-writer matching engine process (one market per process). Supports spot `SOL-USD` and perpetual `SOL-USD-PERP` (USD margin + positions).
+Single-writer matching engine. One process hosts spot `SOL-USD` and perpetual `SOL-USD-PERP` by default (USD margin, positions, mark, liquidation, funding).
 - `apps/web`  
-A Next.js application with Google sign-in, paper trading balances, and a dashboard for engine balances, orders, and the SOL-USD market.
+A Next.js application with Google sign-in, paper trading balances, and dashboard / Spot / Perps trading surfaces.
 - `apps/market-data-writer`  
 A separate Redis consumer that persists durable BBO and trade events into TimescaleDB and serves historical market-data queries.
 - `packages/exchange-types`  
@@ -47,9 +47,9 @@ The exchange engine is intentionally single-writer per market. It keeps matching
 
 - `MarketRuntime` coordinates live commands, WAL persistence, replay, and checkpoints.
 - `CommandQueue` serializes concurrent commands and batches WAL flushes.
-- `FileWal` appends `CREDIT`, `PLACE`, and `CANCEL` commands.
+- `FileWal` appends `CREDIT`, `PLACE`, `CANCEL`, `LIQUIDATE`, and `FUNDING` commands.
 - Snapshots shorten restart time by restoring state and replaying only the WAL tail.
-- `EventBus` publishes live `ORDER`, `BBO`, and `CREDIT` events for SSE consumers.
+- `EventBus` publishes live `ORDER`, `BBO`, `CREDIT`, `TRADE`, `POSITION`, `LIQUIDATION`, and `FUNDING` events for SSE consumers.
 
 
 
@@ -240,21 +240,23 @@ the public BFF/internal service boundaries.
 
 ## Exchange API
 
-Each exchange process serves one market (`SOL-USD` or `SOL-USD-PERP`). Command, balance, book, and stream APIs require `x-gateway-token`. Only `/health` is public.
+One exchange process hosts both markets (`SOL-USD` and `SOL-USD-PERP`) by default. Command, balance, book, and stream APIs require `x-gateway-token`. Only `/health` is public.
 
 
 | Method   | Path                                           | Purpose                                              |
 | -------- | ---------------------------------------------- | ---------------------------------------------------- |
-| `GET`    | `/health`                                      | Process health and active market                     |
+| `GET`    | `/health`                                      | Process health and active markets                    |
 | `POST`   | `/v1/markets/:market/credit`                   | Internal gateway credit operation                    |
 | `POST`   | `/v1/markets/:market/orders`                   | Place a limit or market order (`leverage` for perps) |
 | `DELETE` | `/v1/markets/:market/orders/:orderId`          | Cancel an order                                      |
 | `GET`    | `/v1/markets/:market/orders/:orderId`          | Fetch one order                                      |
 | `GET`    | `/v1/markets/:market/orders?userId=&openOnly=` | Fetch user orders                                    |
 | `GET`    | `/v1/markets/:market/balances/:userId`         | Fetch engine balances                                |
-| `GET`    | `/v1/markets/:market/positions`                | List positions (perp)                                |
+| `GET`    | `/v1/markets/:market/positions`                | List positions with risk fields (perp)               |
 | `GET`    | `/v1/markets/:market/positions/:userId`        | Fetch one user position                              |
 | `GET`    | `/v1/markets/:market/mark`                     | Mark price (BBO mid or last trade)                   |
+| `GET`    | `/v1/markets/:market/funding`                  | Funding rate / interval (perp)                       |
+| `POST`   | `/v1/markets/:market/funding/settle`           | Force a funding settle tick (perp)                   |
 | `GET`    | `/v1/markets/:market/book`                     | Fetch order book snapshot                            |
 | `GET`    | `/v1/markets/:market/stream?userId=`           | Subscribe to live SSE                                |
 
@@ -264,6 +266,9 @@ Notable engine rules:
 - Units are integer-only.
 - Spot market buys require `quoteBudget`; perp MARKET orders require `quoteBudget` on both sides (notional cap for margin).
 - Perps lock USD margin (`ceil(notional / leverage)`); fills update positions and realize PnL — no SOL delivery.
+- Maintenance liquidation force-closes underwater perps at mark vs house (`sim-liquidator`).
+- Funding settles periodically (demo: 100 bps / 60s); longs pay shorts when rate &gt; 0.
+- Credit balances per market separately (spot USD and perp USD are not shared).
 - `FOK_BUDGET` is a market-buy-only fill-or-kill order. It must fill the
 requested quantity within `quoteBudget` or reject before matching.
 - The exchange `BalanceStore` and its WAL are authoritative for trading balances.
@@ -305,23 +310,23 @@ The integration test requires PostgreSQL, Redis, the exchange, the engine gatewa
 
 ### Implemented
 
-- Spot exchange engine for `SOL-USD` and perp engine for `SOL-USD-PERP`
+- Spot exchange engine for `SOL-USD` and perp engine for `SOL-USD-PERP` (one multi-market process by default)
 - Spot balance locking / delivery settlement; perp USD margin + positions + PnL
-- WAL persistence with checkpoints and replay (positions in snapshot v2)
-- Mark price helper (BBO mid / last trade)
-- HTTP commands and queries (including positions + mark)
-- SSE for live order, credit, BBO, trade, and position events
-- Web app authentication, paper funding, and dashboard / trade UX (spot)
-- Application-layer infra bootstrap and shared message contracts
-- Engine gateway multi-market routing (spot + optional perp URL)
-- OMS order APIs, Postgres order state, transactional command outbox, and event-driven status updates
+- Mark price, maintenance liquidation (force-close at mark), and periodic funding payments
+- WAL persistence with checkpoints and replay (`CREDIT` / `PLACE` / `CANCEL` / `LIQUIDATE` / `FUNDING`; positions in snapshot v2)
+- HTTP commands and queries (orders, balances, book, mark, positions + risk fields, funding)
+- SSE for live order, credit, BBO, trade, position, liquidation, and funding events
+- Engine gateway multi-market routing; Redis fan-out for POSITION / LIQUIDATION / FUNDING
+- OMS order APIs with perp leverage persistence + idempotency, Postgres order state, outbox, event-driven status updates
 - Market-data writer (TimescaleDB history for trades, BBO, and one-minute candles per market)
+- Web app authentication, paper credit, and Spot / Perps trading surfaces (functional; design polish deferred)
+- Application-layer infra bootstrap and shared message contracts
 
 
 
-### In progress
+### Remaining
 
-- Perp trading UI (market switcher, leverage, positions panel)
-- Liquidation engine and funding payments
+- Whole-app UI / UX polish (Spot + Perps + dashboard) in a dedicated pass
 - Authenticated application gateway hardening for non-local deployments
+- Later risk upgrades (optional): partial liquidation, ADL, insurance waterfall, cross-margin, book-IOC liquidations
 

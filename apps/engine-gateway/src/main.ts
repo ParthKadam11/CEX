@@ -1,6 +1,11 @@
 import { serve } from "@hono/node-server";
 import type { AppOrderEvent } from "@cex/app-contracts";
-import type { OrderEvent, Position } from "@cex/exchange-types";
+import type {
+  FundingEvent,
+  LiquidationEvent,
+  OrderEvent,
+  Position,
+} from "@cex/exchange-types";
 import { loadConfig } from "./config.js";
 import { CommandDedupe } from "./dedupe.js";
 import { CommandHandler } from "./commands/handler.js";
@@ -153,11 +158,32 @@ async function main(): Promise<void> {
 
         if (event.kind === "LIQUIDATION") {
           liquidations.publish(event.liquidation);
+          try {
+            await publishOrderEvent(
+              redis,
+              toAppLiquidationEvent(event.liquidation),
+            );
+            metrics.increment("eventsPublished");
+          } catch (err) {
+            log("error", "liquidation event publish failed", {
+              userId: event.liquidation.userId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
           return;
         }
 
         if (event.kind === "FUNDING") {
           fundings.publish(event.funding);
+          try {
+            await publishOrderEvent(redis, toAppFundingEvent(event.funding));
+            metrics.increment("eventsPublished");
+          } catch (err) {
+            log("error", "funding event publish failed", {
+              userId: event.funding.userId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
           return;
         }
 
@@ -300,5 +326,41 @@ function toAppPositionEvent(position: Position): AppOrderEvent {
       updatedAt: position.updatedAt,
     },
     timestamp: position.updatedAt || Date.now(),
+  };
+}
+
+function toAppLiquidationEvent(liquidation: LiquidationEvent): AppOrderEvent {
+  return {
+    eventId: `liquidation-${liquidation.userId}-${liquidation.market}-${liquidation.timestamp}`,
+    type: "LIQUIDATION",
+    userId: liquidation.userId,
+    market: liquidation.market,
+    reason: liquidation.reason,
+    liquidation: {
+      size: liquidation.size,
+      entryPrice: liquidation.entryPrice,
+      mark: liquidation.mark,
+      realizedPnl: liquidation.realizedPnl,
+      marginReleased: liquidation.marginReleased,
+      reason: liquidation.reason,
+      counterpartyUserId: liquidation.counterpartyUserId,
+    },
+    timestamp: liquidation.timestamp,
+  };
+}
+
+function toAppFundingEvent(funding: FundingEvent): AppOrderEvent {
+  return {
+    eventId: `funding-${funding.userId}-${funding.market}-${funding.timestamp}`,
+    type: "FUNDING",
+    userId: funding.userId,
+    market: funding.market,
+    funding: {
+      size: funding.size,
+      mark: funding.mark,
+      fundingRateBps: funding.fundingRateBps,
+      payment: funding.payment,
+    },
+    timestamp: funding.timestamp,
   };
 }

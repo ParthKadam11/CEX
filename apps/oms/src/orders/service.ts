@@ -215,6 +215,7 @@ function assertSameOrder(
     price: number;
     quantity: number;
     quoteBudget: number | null;
+    leverage?: number | null;
   },
 ): void {
   if (
@@ -224,7 +225,8 @@ function assertSameOrder(
     command.timeInForce !== existing.timeInForce ||
     command.price !== existing.price ||
     command.quantity !== existing.quantity ||
-    (command.quoteBudget ?? null) !== existing.quoteBudget
+    (command.quoteBudget ?? null) !== existing.quoteBudget ||
+    (command.leverage ?? null) !== (existing.leverage ?? null)
   ) {
     throw new IdempotencyConflictError();
   }

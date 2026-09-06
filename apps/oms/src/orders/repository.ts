@@ -31,6 +31,7 @@ export class OrderRepository {
           price: command.price,
           quantity: command.quantity,
           quoteBudget: command.quoteBudget,
+          leverage: command.leverage ?? null,
           status: OmsOrderStatus.PENDING,
         },
         include: { fills: true },

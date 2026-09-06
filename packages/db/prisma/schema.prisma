@@ -85,6 +85,8 @@ model Order {
   price           Int
   quantity        Int
   quoteBudget     Int?
+  // Perp leverage at place time (null for spot).
+  leverage        Int?
   filledQuantity      Int              @default(0)
   lastEngineSequence  Int              @default(0)
   status              OmsOrderStatus   @default(PENDING)
