@@ -2,9 +2,9 @@
 
 A multi-service paper centralized exchange built to study what actually happens after someone clicks Buy: matching, balance locks, durable order flow, market-data persistence, and perpetual risk.
 
-This is not a UI clone of Binance and not a production custody exchange. It is a systems project: a single-writer matching engine, an asynchronous OMS with a transactional outbox, a gateway that translates Redis Streams and exchange SSE, and a separate TimescaleDB market-data writer. Spot and perpetual markets run in-process with mark price, liquidation, and funding.
+It is a systems project: a single-writer matching engine, an asynchronous OMS with a transactional outbox, a gateway that translates Redis Streams and exchange SSE, and a separate TimescaleDB market-data writer. Spot and perpetual markets run in-process with mark price, liquidation, and funding.
 
-Built to make failure modes visible — duplicate commands, maker/taker fills, reconnect gaps, crash windows between engine execution and event publication — instead of hiding them behind a single CRUD API.
+Built to make failure modes visible duplicate commands, maker/taker fills, reconnect gaps, crash windows between engine execution and event publication instead of hiding them behind a single CRUD API.
 
 ## What makes it different
 
@@ -15,28 +15,26 @@ Built to make failure modes visible — duplicate commands, maker/taker fills, r
 - Perps add margin, positions, mark, liquidation, and funding on top of the same engine model
 - SSE reconnect uses `streamSeq` catch-up, with reconcile when the in-memory ring was overrun
 
-Honest limits: paper credit (no real deposits), BFF-trust auth, single-writer local WAL, not multi-node HA.
-
 ## Repository Overview
 
 - `apps/exchange`  
-  Single-writer matching engine. One process hosts spot `SOL-USD` and perpetual `SOL-USD-PERP` by default (USD margin, positions, mark, liquidation, funding).
+Single-writer matching engine. One process hosts spot `SOL-USD` and perpetual `SOL-USD-PERP` by default (USD margin, positions, mark, liquidation, funding).
 - `apps/oms`  
-  Product-facing order state in Postgres, transactional command outbox, and event-driven status updates.
+Product-facing order state in Postgres, transactional command outbox, and event-driven status updates.
 - `apps/engine-gateway`  
-  Sole client of the exchange: Redis commands → engine HTTP; SSE → `orders:events` + `md:events` + live pub/sub.
+Sole client of the exchange: Redis commands → engine HTTP; SSE → `orders:events` + `md:events` + live pub/sub.
 - `apps/market-data-writer`  
-  Consumes durable market-data events into TimescaleDB and serves historical trades, BBO, and candles.
+Consumes durable market-data events into TimescaleDB and serves historical trades, BBO, and candles.
 - `apps/web`  
-  Next.js trading app: Google auth, paper credit, Spot / Perps surfaces, charts, and BFF proxies.
+Next.js trading app: Google auth, paper credit, Spot / Perps surfaces, charts, and BFF proxies.
 - `packages/exchange-types`  
-  Shared engine domain types: orders, trades, balances, positions, events, commands.
+Shared engine domain types: orders, trades, balances, positions, events, commands.
 - `packages/app-contracts`  
-  Application-layer Redis Streams / pub/sub contracts.
+Application-layer Redis Streams / pub/sub contracts.
 - `packages/db`  
-  Prisma schema for users and OMS order state.
+Prisma schema for users and OMS order state.
 - `infra`  
-  Local Redis, PostgreSQL, and TimescaleDB.
+Local Redis, PostgreSQL, and TimescaleDB.
 
 
 
@@ -324,8 +322,6 @@ pnpm test:oms:integration
 ```
 
 The integration test requires PostgreSQL, Redis, the exchange, the engine gateway, and OMS to be running.
-
-
 
 ### Implemented
 
