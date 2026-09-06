@@ -160,8 +160,12 @@ TRUNCATE TABLE "OrderFill", "Order", "CommandOutbox", "OmsProcessedEvent" CASCAD
       "KEYS",
       "engine-gateway:dedupe:*",
     ]);
-    const keys = keysOut
-      .split(/\r?\n/)
+    const outcomeKeysOut = await dockerExec("infra-redis-1", [
+      "redis-cli",
+      "KEYS",
+      "engine-gateway:outcome:*",
+    ]);
+    const keys = [...keysOut.split(/\r?\n/), ...outcomeKeysOut.split(/\r?\n/)]
       .map((k) => k.trim())
       .filter(Boolean);
     if (keys.length > 0) {

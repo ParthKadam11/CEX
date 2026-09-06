@@ -19,8 +19,8 @@ import { log } from "../logger.js";
 import type { GatewayMetrics } from "../metrics.js";
 import { publishOrderEvent } from "../redis/streams.js";
 
-// One Redis command → engine HTTP → orders:events. Fills and trades fan out from
-// exchange SSE so market data and maker-side order updates share one source.
+// One Redis command → engine HTTP → orders:events.
+// Crash-safe: persist outcome before publish; retries replay outcome (engine is idempotent).
 
 export class CommandHandler {
   constructor(
@@ -40,18 +40,22 @@ export class CommandHandler {
       return;
     }
 
+    const cached = await this.dedupe.loadOutcome(command.commandId);
+    if (cached) {
+      this.metrics.increment("commandsOutcomeReplay");
+      log("info", "replaying saved command outcome", {
+        commandId: command.commandId,
+        events: cached.length,
+      });
+      await this.publishAll(cached);
+      await this.dedupe.markProcessed(command.commandId);
+      return;
+    }
+
     try {
-      switch (command.type) {
-        case "CREDIT":
-          await this.handleCredit(command);
-          break;
-        case "PLACE":
-          await this.handlePlace(command);
-          break;
-        case "CANCEL":
-          await this.handleCancel(command);
-          break;
-      }
+      const events = await this.execute(command);
+      await this.dedupe.saveOutcome(command.commandId, events);
+      await this.publishAll(events);
       await this.dedupe.markProcessed(command.commandId);
     } catch (err) {
       this.metrics.increment("commandsFailed");
@@ -61,20 +65,32 @@ export class CommandHandler {
         type: command.type,
         error: reason,
       });
-      await this.emit({
-        eventId: crypto.randomUUID(),
-        commandId: command.commandId,
-        type: "COMMAND_FAILED",
-        userId: command.userId,
-        market: this.marketOf(command),
-        orderId: command.type === "CANCEL" ? command.orderId : undefined,
-        clientOrderId:
-          command.type === "PLACE" || command.type === "CANCEL"
-            ? command.clientOrderId
-            : undefined,
-        reason,
-        timestamp: Date.now(),
-      });
+
+      // If the engine result is already journaled, keep it for retry replay.
+      // Do not replace a successful outcome with COMMAND_FAILED.
+      const retained = await this.dedupe.loadOutcome(command.commandId);
+      if (retained) {
+        log("warn", "command outcome retained for retry", {
+          commandId: command.commandId,
+          events: retained.length,
+        });
+        return;
+      }
+
+      const failEvent = this.commandFailedEvent(command, reason);
+      try {
+        await this.dedupe.saveOutcome(command.commandId, [failEvent]);
+        await this.publishAll([failEvent]);
+        await this.dedupe.markProcessed(command.commandId);
+      } catch (publishErr) {
+        log("error", "failed to publish COMMAND_FAILED", {
+          commandId: command.commandId,
+          error:
+            publishErr instanceof Error
+              ? publishErr.message
+              : String(publishErr),
+        });
+      }
     }
   }
 
@@ -85,7 +101,18 @@ export class CommandHandler {
     return command.market;
   }
 
-  private async handleCredit(command: CreditCommand): Promise<void> {
+  private async execute(command: AppCommand): Promise<AppOrderEvent[]> {
+    switch (command.type) {
+      case "CREDIT":
+        return this.executeCredit(command);
+      case "PLACE":
+        return this.executePlace(command);
+      case "CANCEL":
+        return this.executeCancel(command);
+    }
+  }
+
+  private async executeCredit(command: CreditCommand): Promise<AppOrderEvent[]> {
     const market = command.market ?? this.primaryMarket;
     try {
       const engine = this.engines.get(market);
@@ -95,74 +122,116 @@ export class CommandHandler {
         command.amount,
         command.commandId,
       );
-      await this.emit({
-        eventId: crypto.randomUUID(),
-        commandId: command.commandId,
-        type: "CREDIT_OK",
-        userId: command.userId,
-        market,
-        timestamp: Date.now(),
-      });
+      return [
+        {
+          eventId: eventId(command.commandId, "CREDIT_OK"),
+          commandId: command.commandId,
+          type: "CREDIT_OK",
+          userId: command.userId,
+          market,
+          timestamp: Date.now(),
+        },
+      ];
     } catch (err) {
       this.metrics.increment("commandsFailed");
-      await this.emit({
-        eventId: crypto.randomUUID(),
-        commandId: command.commandId,
-        type: "CREDIT_FAILED",
-        userId: command.userId,
-        market,
-        reason: err instanceof Error ? err.message : String(err),
-        timestamp: Date.now(),
-      });
+      return [
+        {
+          eventId: eventId(command.commandId, "CREDIT_FAILED"),
+          commandId: command.commandId,
+          type: "CREDIT_FAILED",
+          userId: command.userId,
+          market,
+          reason: err instanceof Error ? err.message : String(err),
+          timestamp: Date.now(),
+        },
+      ];
     }
   }
 
-  private async handlePlace(command: PlaceCommand): Promise<void> {
+  private async executePlace(command: PlaceCommand): Promise<AppOrderEvent[]> {
     const engine = this.engines.get(command.market);
     const order = toEngineOrder(command);
     const result = await engine.place(order);
-    await this.emitPlaceEvents(command, result);
+    return placeEvents(command, result);
   }
 
-  private async handleCancel(command: CancelCommand): Promise<void> {
+  private async executeCancel(command: CancelCommand): Promise<AppOrderEvent[]> {
     const engine = this.engines.get(command.market);
     const result = await engine.cancel(command.orderId);
     if (result.cancelled) {
-      await this.emit({
-        eventId: crypto.randomUUID(),
+      return [
+        {
+          eventId: eventId(command.commandId, "CANCELLED"),
+          commandId: command.commandId,
+          type: "CANCELLED",
+          userId: command.userId,
+          market: command.market,
+          orderId: command.orderId,
+          clientOrderId: command.clientOrderId,
+          order: result.order,
+          status: result.order?.status,
+          timestamp: Date.now(),
+        },
+      ];
+    }
+
+    return [
+      {
+        eventId: eventId(command.commandId, "COMMAND_FAILED"),
         commandId: command.commandId,
-        type: "CANCELLED",
+        type: "COMMAND_FAILED",
         userId: command.userId,
         market: command.market,
         orderId: command.orderId,
         clientOrderId: command.clientOrderId,
-        order: result.order,
-        status: result.order?.status,
+        reason: result.reason ?? "CANCEL_FAILED",
         timestamp: Date.now(),
-      });
-      return;
-    }
+      },
+    ];
+  }
 
-    await this.emit({
-      eventId: crypto.randomUUID(),
+  private commandFailedEvent(
+    command: AppCommand,
+    reason: string,
+  ): AppOrderEvent {
+    return {
+      eventId: eventId(command.commandId, "COMMAND_FAILED"),
       commandId: command.commandId,
       type: "COMMAND_FAILED",
       userId: command.userId,
-      market: command.market,
-      orderId: command.orderId,
-      clientOrderId: command.clientOrderId,
-      reason: result.reason ?? "CANCEL_FAILED",
+      market: this.marketOf(command),
+      orderId: command.type === "CANCEL" ? command.orderId : undefined,
+      clientOrderId:
+        command.type === "PLACE" || command.type === "CANCEL"
+          ? command.clientOrderId
+          : undefined,
+      reason,
       timestamp: Date.now(),
-    });
+    };
   }
 
-  private async emitPlaceEvents(
-    command: PlaceCommand,
-    result: PlacementResult,
-  ): Promise<void> {
-    if (!result.accepted) {
-      await this.emit({
-        eventId: crypto.randomUUID(),
+  private async publishAll(events: AppOrderEvent[]): Promise<void> {
+    for (const event of events) {
+      await publishOrderEvent(this.redis, event);
+      this.metrics.increment("eventsPublished");
+      log("info", "command event published", {
+        type: event.type,
+        commandId: event.commandId,
+        orderId: event.orderId,
+        eventId: event.eventId,
+      });
+    }
+  }
+}
+
+function placeEvents(
+  command: PlaceCommand,
+  result: PlacementResult,
+): AppOrderEvent[] {
+  if (!result.accepted) {
+    return [
+      {
+        eventId: eventId(command.commandId, "REJECTED"),
         commandId: command.commandId,
         type: "REJECTED",
         userId: command.userId,
@@ -173,12 +242,13 @@ export class CommandHandler {
         status: result.order.status,
         reason: result.reason ?? "REJECTED",
         timestamp: Date.now(),
-      });
-      return;
-    }
+      },
+    ];
+  }
 
-    await this.emit({
-      eventId: crypto.randomUUID(),
+  const events: AppOrderEvent[] = [
+    {
+      eventId: eventId(command.commandId, "ACCEPTED"),
       commandId: command.commandId,
       type: "ACCEPTED",
       userId: command.userId,
@@ -188,54 +258,60 @@ export class CommandHandler {
       order: result.order,
       status: result.order.status,
       timestamp: Date.now(),
-    });
+    },
+  ];
 
-    if (
-      result.order.status === "OPEN" ||
-      result.order.status === "PARTIALLY_FILLED"
-    ) {
-      await this.emit({
-        eventId: crypto.randomUUID(),
-        commandId: command.commandId,
-        type: "RESTING",
-        userId: command.userId,
-        market: command.market,
-        orderId: result.order.orderId,
-        clientOrderId: command.clientOrderId,
-        order: result.order,
-        status: result.order.status,
-        timestamp: Date.now(),
-      });
-    }
-
-    for (const position of result.positions ?? []) {
-      await this.emit({
-        eventId: crypto.randomUUID(),
-        commandId: command.commandId,
-        type: "POSITION",
-        userId: position.userId,
-        market: position.market,
-        position: {
-          size: position.size,
-          entryPrice: position.entryPrice,
-          margin: position.margin,
-          leverage: position.leverage,
-          updatedAt: position.updatedAt,
-        },
-        timestamp: Date.now(),
-      });
-    }
-  }
-
-  private async emit(event: AppOrderEvent): Promise<void> {
-    await publishOrderEvent(this.redis, event);
-    this.metrics.increment("eventsPublished");
-    log("info", "command event published", {
-      type: event.type,
-      commandId: event.commandId,
-      orderId: event.orderId,
+  if (
+    result.order.status === "OPEN" ||
+    result.order.status === "PARTIALLY_FILLED"
+  ) {
+    events.push({
+      eventId: eventId(command.commandId, "RESTING"),
+      commandId: command.commandId,
+      type: "RESTING",
+      userId: command.userId,
+      market: command.market,
+      orderId: result.order.orderId,
+      clientOrderId: command.clientOrderId,
+      order: result.order,
+      status: result.order.status,
+      timestamp: Date.now(),
     });
   }
+
+  for (const position of result.positions ?? []) {
+    events.push({
+      eventId: eventId(
+        command.commandId,
+        "POSITION",
+        `${position.userId}:${position.market}`,
+      ),
+      commandId: command.commandId,
+      type: "POSITION",
+      userId: position.userId,
+      market: position.market,
+      position: {
+        size: position.size,
+        entryPrice: position.entryPrice,
+        margin: position.margin,
+        leverage: position.leverage,
+        updatedAt: position.updatedAt,
+      },
+      timestamp: position.updatedAt || Date.now(),
+    });
+  }
+
+  return events;
+}
+
+function eventId(
+  commandId: string,
+  type: string,
+  suffix?: string,
+): string {
+  return suffix
+    ? `gw-${commandId}-${type}-${suffix}`
+    : `gw-${commandId}-${type}`;
 }
 
 function toEngineOrder(command: PlaceCommand): Order {

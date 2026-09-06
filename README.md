@@ -1,25 +1,42 @@
 # CEX
 
-CEX is a TypeScript monorepo for a centralized exchange prototype. The repository currently contains a working exchange engine and a Next.js trading web app, with the application layer being built around them.
+A multi-service paper centralized exchange built to study what actually happens after someone clicks Buy: matching, balance locks, durable order flow, market-data persistence, and perpetual risk.
+
+This is not a UI clone of Binance and not a production custody exchange. It is a systems project: a single-writer matching engine, an asynchronous OMS with a transactional outbox, a gateway that translates Redis Streams and exchange SSE, and a separate TimescaleDB market-data writer. Spot and perpetual markets run in-process with mark price, liquidation, and funding.
+
+Built to make failure modes visible — duplicate commands, maker/taker fills, reconnect gaps, crash windows between engine execution and event publication — instead of hiding them behind a single CRUD API.
+
+## What makes it different
+
+- Engine owns matching and balances; OMS is a durable projection, not a second matching engine
+- Place/cancel flow uses Redis Streams + Postgres outbox instead of synchronous “write DB and hope”
+- Maker and taker fills share a trade id but are stored per order; events carry engine sequence
+- Live market data is ephemeral (pub/sub); history is durable (`md:events` → Timescale)
+- Perps add margin, positions, mark, liquidation, and funding on top of the same engine model
+- SSE reconnect uses `streamSeq` catch-up, with reconcile when the in-memory ring was overrun
+
+Honest limits: paper credit (no real deposits), BFF-trust auth, single-writer local WAL, not multi-node HA.
 
 ## Repository Overview
 
 - `apps/exchange`  
-Single-writer matching engine. One process hosts spot `SOL-USD` and perpetual `SOL-USD-PERP` by default (USD margin, positions, mark, liquidation, funding).
-- `apps/web`  
-A Next.js application with Google sign-in, paper trading balances, and dashboard / Spot / Perps trading surfaces.
+  Single-writer matching engine. One process hosts spot `SOL-USD` and perpetual `SOL-USD-PERP` by default (USD margin, positions, mark, liquidation, funding).
+- `apps/oms`  
+  Product-facing order state in Postgres, transactional command outbox, and event-driven status updates.
+- `apps/engine-gateway`  
+  Sole client of the exchange: Redis commands → engine HTTP; SSE → `orders:events` + `md:events` + live pub/sub.
 - `apps/market-data-writer`  
-A separate Redis consumer that persists durable BBO and trade events into TimescaleDB and serves historical market-data queries.
+  Consumes durable market-data events into TimescaleDB and serves historical trades, BBO, and candles.
+- `apps/web`  
+  Next.js trading app: Google auth, paper credit, Spot / Perps surfaces, charts, and BFF proxies.
 - `packages/exchange-types`  
-Shared engine domain types such as orders, trades, balances, events, and engine commands.
-- `packages/db`  
-Prisma client and schema for user accounts and wallet data.
-- `packages/solana`  
-Shared Solana RPC helpers used by the web app.
+  Shared engine domain types: orders, trades, balances, positions, events, commands.
 - `packages/app-contracts`  
-Application-layer message contracts for Redis Streams, Redis pub/sub, and market-data payloads.
+  Application-layer Redis Streams / pub/sub contracts.
+- `packages/db`  
+  Prisma schema for users and OMS order state.
 - `infra`  
-Local infrastructure for the application layer, currently Redis and TimescaleDB.
+  Local Redis, PostgreSQL, and TimescaleDB.
 
 
 
@@ -273,6 +290,7 @@ Notable engine rules:
 - Funding settles periodically (demo: 100 bps / 60s); longs pay shorts when rate > 0.
 - Credit balances per market separately (spot USD and perp USD are not shared).
 - Exchange place/credit are idempotent on retry: same `orderId`+intent returns the prior order; credit with `commandId` does not double-apply.
+- Gateway command handling journals the outcome in Redis before publish, then marks processed — crash mid-flight retries replay the outcome (deterministic event ids) instead of relying on a best-effort mark.
 - `FOK_BUDGET` is a market-buy-only fill-or-kill order. It must fill the
 requested quantity within `quoteBudget` or reject before matching.
 - The exchange `BalanceStore` and its WAL are authoritative for trading balances.
