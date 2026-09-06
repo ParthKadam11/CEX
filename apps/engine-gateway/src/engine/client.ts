@@ -322,9 +322,11 @@ export class EngineClient {
     };
   }
 
-  // SSE endpoint URL for the live engine feed.
-  streamUrl(): string {
-    return `${this.baseUrl}/v1/markets/${this.market}/stream`;
+  // SSE endpoint URL for the live engine feed (optional catch-up cursor).
+  streamUrl(afterSeq?: number | null): string {
+    const base = `${this.baseUrl}/v1/markets/${this.market}/stream`;
+    if (afterSeq == null) return base;
+    return `${base}?afterSeq=${afterSeq}`;
   }
 
   streamHeaders(): Record<string, string> {

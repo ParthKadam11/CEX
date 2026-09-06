@@ -328,8 +328,8 @@ export type FundingEvent = {
   timestamp: number;
 };
 
-// Live SSE payloads from the exchange process.
-export type ExchangeStreamEvent =
+// Live SSE payloads from the exchange process (streamSeq assigned by EventBus).
+export type ExchangeStreamEventBody =
   | { kind: "ORDER"; market: MarketSymbol; event: OrderEvent }
   | {
       kind: "BBO";
@@ -358,6 +358,11 @@ export type ExchangeStreamEvent =
       market: MarketSymbol;
       funding: FundingEvent;
     };
+
+// Sequenced SSE event (monotonic per EventBus / process).
+export type ExchangeStreamEvent = ExchangeStreamEventBody & {
+  streamSeq: number;
+};
 
 export function isMarketSymbol(value: unknown): value is MarketSymbol {
   return value === "SOL-USD" || value === "SOL-USD-PERP";

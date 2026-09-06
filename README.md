@@ -50,6 +50,7 @@ The exchange engine is intentionally single-writer per market. It keeps matching
 - `FileWal` appends `CREDIT`, `PLACE`, `CANCEL`, `LIQUIDATE`, and `FUNDING` commands.
 - Snapshots shorten restart time by restoring state and replaying only the WAL tail.
 - `EventBus` publishes live `ORDER`, `BBO`, `CREDIT`, `TRADE`, `POSITION`, `LIQUIDATION`, and `FUNDING` events for SSE consumers.
+- SSE includes a monotonic `streamSeq` and a bounded ring so reconnecting gateways can catch up via `?afterSeq=` / `Last-Event-ID` (gap signal when the ring was overrun).
 
 
 
@@ -267,7 +268,7 @@ Notable engine rules:
 - Spot market buys require `quoteBudget`; perp MARKET orders require `quoteBudget` on both sides (notional cap for margin).
 - Perps lock USD margin (`ceil(notional / leverage)`); fills update positions and realize PnL — no SOL delivery.
 - Maintenance liquidation force-closes underwater perps at mark vs house (`sim-liquidator`).
-- Funding settles periodically (demo: 100 bps / 60s); longs pay shorts when rate &gt; 0.
+- Funding settles periodically (demo: 100 bps / 60s); longs pay shorts when rate > 0.
 - Credit balances per market separately (spot USD and perp USD are not shared).
 - `FOK_BUDGET` is a market-buy-only fill-or-kill order. It must fill the
 requested quantity within `quoteBudget` or reject before matching.
@@ -304,8 +305,6 @@ pnpm test:oms:integration
 
 The integration test requires PostgreSQL, Redis, the exchange, the engine gateway, and OMS to be running.
 
-## Project status
-
 
 
 ### Implemented
@@ -321,12 +320,4 @@ The integration test requires PostgreSQL, Redis, the exchange, the engine gatewa
 - Market-data writer (TimescaleDB history for trades, BBO, and one-minute candles per market)
 - Web app authentication, paper credit, and Spot / Perps trading surfaces (functional; design polish deferred)
 - Application-layer infra bootstrap and shared message contracts
-
-
-
-### Remaining
-
-- Whole-app UI / UX polish (Spot + Perps + dashboard) in a dedicated pass
-- Authenticated application gateway hardening for non-local deployments
-- Later risk upgrades (optional): partial liquidation, ADL, insurance waterfall, cross-margin, book-IOC liquidations
 

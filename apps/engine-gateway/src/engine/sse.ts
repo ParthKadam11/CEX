@@ -20,9 +20,24 @@ export type EngineSseReady = {
   kind: "ready";
   market: MarketSymbol;
   userId: string | null;
+  streamSeq: number;
+  oldestSeq: number | null;
+  gap: boolean;
 };
 
-export type EngineSseEvent = ExchangeStreamEvent | EngineSseReady;
+export type EngineSseGap = {
+  kind: "gap";
+  market: MarketSymbol;
+  afterSeq: number;
+  oldestSeq: number | null;
+  latestSeq: number;
+};
+
+export type EngineSseEvent =
+  | ExchangeStreamEvent
+  | EngineSseReady
+  | EngineSseGap;
+
 type EventHandler = (event: EngineSseEvent) => void | Promise<void>;
 type SseOptions = {
   onConnectionChange?: (connected: boolean) => void;
@@ -30,18 +45,26 @@ type SseOptions = {
   headers?: Record<string, string>;
 };
 
-//Reads the exchange SSE stream and reconnects after disconnects. This class only transports and validates engine events. Consumers decide what to do with them, such as publishing BBO/trades to Redis.
+type UrlFactory = (afterSeq: number | null) => string;
+
+// Reads the exchange SSE stream and reconnects after disconnects.
+// Tracks streamSeq and requests catch-up via ?afterSeq= on reconnect.
 
 export class EngineSseClient {
   private abortController: AbortController | null = null;
   private stopped = true;
   private running = false;
+  private lastStreamSeq: number | null = null;
 
   constructor(
-    private readonly url: string,
+    private readonly urlFor: UrlFactory | string,
     private readonly onEvent: EventHandler,
     private readonly options: SseOptions = {},
   ) {}
+
+  get cursor(): number | null {
+    return this.lastStreamSeq;
+  }
 
   start(): void {
     if (this.running) return;
@@ -57,6 +80,16 @@ export class EngineSseClient {
     this.abortController?.abort();
   }
 
+  private resolveUrl(): string {
+    if (typeof this.urlFor === "string") {
+      const afterSeq = this.lastStreamSeq;
+      if (afterSeq == null) return this.urlFor;
+      const join = this.urlFor.includes("?") ? "&" : "?";
+      return `${this.urlFor}${join}afterSeq=${afterSeq}`;
+    }
+    return this.urlFor(this.lastStreamSeq);
+  }
+
   private async run(): Promise<void> {
     let delayMs = 500;
 
@@ -69,6 +102,7 @@ export class EngineSseClient {
 
         log("warn", "SSE disconnected", {
           error: error instanceof Error ? error.message : String(error),
+          afterSeq: this.lastStreamSeq,
         });
         this.options.onReconnect?.();
         await sleep(delayMs);
@@ -80,11 +114,15 @@ export class EngineSseClient {
   private async connectOnce(): Promise<void> {
     const controller = new AbortController();
     this.abortController = controller;
+    const url = this.resolveUrl();
 
     try {
-      const response = await fetch(this.url, {
+      const response = await fetch(url, {
         headers: {
           accept: "text/event-stream",
+          ...(this.lastStreamSeq != null
+            ? { "Last-Event-ID": String(this.lastStreamSeq) }
+            : {}),
           ...this.options.headers,
         },
         signal: controller.signal,
@@ -95,12 +133,16 @@ export class EngineSseClient {
       }
 
       this.options.onConnectionChange?.(true);
-      log("info", "SSE connected", { url: this.url });
+      log("info", "SSE connected", {
+        url,
+        afterSeq: this.lastStreamSeq,
+      });
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let eventName = "message";
+      let eventId: string | null = null;
       let dataLines: string[] = [];
 
       while (!this.stopped) {
@@ -122,10 +164,11 @@ export class EngineSseClient {
             if (dataLines.length > 0) {
               const data = dataLines.join("\n");
               dataLines = [];
-
               const currentEventName = eventName;
+              const currentId = eventId;
               eventName = "message";
-              await this.dispatch(currentEventName, data);
+              eventId = null;
+              await this.dispatch(currentEventName, data, currentId);
             }
             continue;
           }
@@ -134,6 +177,11 @@ export class EngineSseClient {
 
           if (line.startsWith("event:")) {
             eventName = line.slice("event:".length).trim();
+            continue;
+          }
+
+          if (line.startsWith("id:")) {
+            eventId = line.slice("id:".length).trim();
             continue;
           }
 
@@ -150,13 +198,23 @@ export class EngineSseClient {
     }
   }
 
-  private async dispatch(eventName: string, rawData: string): Promise<void> {
+  private async dispatch(
+    eventName: string,
+    rawData: string,
+    eventId: string | null,
+  ): Promise<void> {
     try {
       const data: unknown = JSON.parse(rawData);
 
       if (eventName === "ready") {
         const ready = parseReady(data);
         if (ready) await this.onEvent(ready);
+        return;
+      }
+
+      if (eventName === "gap") {
+        const gap = parseGap(data);
+        if (gap) await this.onEvent(gap);
         return;
       }
 
@@ -171,6 +229,19 @@ export class EngineSseClient {
         return;
       }
 
+      const seqFromId = eventId != null ? Number(eventId) : null;
+      if (
+        seqFromId != null &&
+        Number.isSafeInteger(seqFromId) &&
+        seqFromId !== event.streamSeq
+      ) {
+        log("warn", "SSE id does not match streamSeq", {
+          eventId,
+          streamSeq: event.streamSeq,
+        });
+      }
+
+      this.lastStreamSeq = event.streamSeq;
       await this.onEvent(event);
     } catch (error) {
       log("warn", "invalid SSE event data", {
@@ -186,28 +257,80 @@ function parseReady(value: unknown): EngineSseReady | null {
   const userId = value.userId;
   if (userId !== null && typeof userId !== "string") return null;
 
+  const streamSeq =
+    typeof value.streamSeq === "number" && Number.isSafeInteger(value.streamSeq)
+      ? value.streamSeq
+      : 0;
+  const oldestSeq =
+    value.oldestSeq === null
+      ? null
+      : typeof value.oldestSeq === "number" &&
+          Number.isSafeInteger(value.oldestSeq)
+        ? value.oldestSeq
+        : null;
+  const gap = value.gap === true;
+
   return {
     kind: "ready",
     market: value.market,
     userId,
+    streamSeq,
+    oldestSeq,
+    gap,
+  };
+}
+
+function parseGap(value: unknown): EngineSseGap | null {
+  if (!isRecord(value) || !isMarketSymbol(value.market)) return null;
+  if (
+    typeof value.afterSeq !== "number" ||
+    !Number.isSafeInteger(value.afterSeq) ||
+    typeof value.latestSeq !== "number" ||
+    !Number.isSafeInteger(value.latestSeq)
+  ) {
+    return null;
+  }
+  const oldestSeq =
+    value.oldestSeq === null
+      ? null
+      : typeof value.oldestSeq === "number" &&
+          Number.isSafeInteger(value.oldestSeq)
+        ? value.oldestSeq
+        : null;
+  return {
+    kind: "gap",
+    market: value.market,
+    afterSeq: value.afterSeq,
+    oldestSeq,
+    latestSeq: value.latestSeq,
   };
 }
 
 function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
   if (!isRecord(value) || !isMarketSymbol(value.market)) return null;
+  if (
+    typeof value.streamSeq !== "number" ||
+    !Number.isSafeInteger(value.streamSeq) ||
+    value.streamSeq <= 0
+  ) {
+    return null;
+  }
 
   switch (value.kind) {
     case "ORDER":
       return isOrderEvent(value.event)
-        ? { kind: "ORDER", market: value.market, event: value.event }
+        ? {
+            kind: "ORDER",
+            market: value.market,
+            event: value.event,
+            streamSeq: value.streamSeq,
+          }
         : null;
     case "BBO":
-      return (
-        isNullableNumber(value.bestBid) &&
+      return isNullableNumber(value.bestBid) &&
         isNullableNumber(value.bestAsk) &&
         isSafePositiveInteger(value.engineSequence) &&
         isTimestamp(value.timestamp)
-      )
         ? {
             kind: "BBO",
             market: value.market,
@@ -215,6 +338,7 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
             bestAsk: value.bestAsk,
             engineSequence: value.engineSequence,
             timestamp: value.timestamp,
+            streamSeq: value.streamSeq,
           }
         : null;
     case "CREDIT":
@@ -227,6 +351,7 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
             userId: value.userId,
             asset: value.asset,
             amount: value.amount,
+            streamSeq: value.streamSeq,
           }
         : null;
     case "TRADE":
@@ -235,6 +360,7 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
             kind: "TRADE",
             market: value.market,
             trade: value.trade,
+            streamSeq: value.streamSeq,
           }
         : null;
     case "POSITION":
@@ -243,6 +369,7 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
             kind: "POSITION",
             market: value.market,
             position: value.position,
+            streamSeq: value.streamSeq,
           }
         : null;
     case "LIQUIDATION":
@@ -251,6 +378,7 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
             kind: "LIQUIDATION",
             market: value.market,
             liquidation: value.liquidation,
+            streamSeq: value.streamSeq,
           }
         : null;
     case "FUNDING":
@@ -259,6 +387,7 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
             kind: "FUNDING",
             market: value.market,
             funding: value.funding,
+            streamSeq: value.streamSeq,
           }
         : null;
     default:

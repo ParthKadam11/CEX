@@ -310,4 +310,34 @@ describe("exchange HTTP + SSE", () => {
     await spot.close();
     await perp.close();
   });
+
+  it("replays SSE events after afterSeq for catch-up", async () => {
+    const bus = new EventBus();
+    const runtime = MarketRuntime.open("SOL-USD", tempWal(), bus);
+    const app = createExchangeApp(runtime, bus);
+
+    await app.request("/v1/markets/SOL-USD/credit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: "u1", asset: "USD", amount: 10 }),
+    });
+    await app.request("/v1/markets/SOL-USD/credit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: "u1", asset: "USD", amount: 20 }),
+    });
+    expect(bus.latestSeq).toBeGreaterThanOrEqual(2);
+
+    const catchUp = bus.catchUp(1);
+    expect(catchUp.gap).toBe(false);
+    expect(catchUp.events.some((e) => e.kind === "CREDIT")).toBe(true);
+    expect(catchUp.events.every((e) => e.streamSeq > 1)).toBe(true);
+
+    const invalid = await app.request(
+      "/v1/markets/SOL-USD/stream?afterSeq=not-a-number",
+    );
+    expect(invalid.status).toBe(400);
+
+    await runtime.close();
+  });
 });

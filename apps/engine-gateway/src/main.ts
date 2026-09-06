@@ -83,8 +83,26 @@ async function main(): Promise<void> {
 
   for (const engine of engines.all()) {
     const sse = new EngineSseClient(
-      engine.streamUrl(),
+      (afterSeq) => engine.streamUrl(afterSeq),
       async (event) => {
+        if (event.kind === "ready") {
+          if (event.gap) {
+            liveBook.notify(event.market);
+          }
+          return;
+        }
+
+        if (event.kind === "gap") {
+          log("warn", "SSE catch-up gap; refreshing book", {
+            market: event.market,
+            afterSeq: event.afterSeq,
+            oldestSeq: event.oldestSeq,
+            latestSeq: event.latestSeq,
+          });
+          liveBook.notify(event.market);
+          return;
+        }
+
         if (
           event.kind === "BBO" ||
           event.kind === "TRADE" ||

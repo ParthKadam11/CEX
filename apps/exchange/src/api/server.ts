@@ -503,79 +503,146 @@ export function createExchangeApp(
   });
 
   // Live stream for gateway: ORDER, TRADE, BBO, CREDIT, POSITION, LIQUIDATION, FUNDING
+  // Supports catch-up via ?afterSeq=N or Last-Event-ID (events with streamSeq > N).
   app.get("/v1/markets/:market/stream", (c) => {
     const resolved = runtimeFor(c.req.param("market"));
     if (!resolved) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
-    const { market, runtime } = resolved;
+    const { market } = resolved;
 
     const userId = c.req.query("userId");
     if (userId !== undefined && !isIdentifier(userId)) {
       return errorResponse(c, 400, "INVALID_USER_ID");
     }
 
+    const afterSeq = parseAfterSeq(
+      c.req.query("afterSeq") ?? c.req.header("Last-Event-ID"),
+    );
+    if (afterSeq === "invalid") {
+      return errorResponse(c, 400, "INVALID_AFTER_SEQ");
+    }
+
     return streamSSE(c, async (stream) => {
-      await stream.writeSSE({
-        event: "ready",
-        data: JSON.stringify({ market, userId: userId ?? null }),
-      });
+      let lastSent = afterSeq ?? 0;
+      let catchingUp = true;
+      const pending: ExchangeStreamEvent[] = [];
 
-      const onEvent = async (event: ExchangeStreamEvent) => {
-        if (event.market !== market) return;
-        if (
-          userId &&
-          event.kind === "ORDER" &&
-          event.event.userId !== userId
-        ) {
-          return;
-        }
-        if (userId && event.kind === "CREDIT" && event.userId !== userId) {
-          return;
-        }
-        if (
-          userId &&
-          event.kind === "POSITION" &&
-          event.position.userId !== userId
-        ) {
-          return;
-        }
-        if (
-          userId &&
-          event.kind === "LIQUIDATION" &&
-          event.liquidation.userId !== userId
-        ) {
-          return;
-        }
-        if (
-          userId &&
-          event.kind === "FUNDING" &&
-          event.funding.userId !== userId
-        ) {
-          return;
-        }
-
+      const writeEvent = async (event: ExchangeStreamEvent) => {
+        if (!streamEventAllowed(event, market, userId)) return;
+        if (event.streamSeq <= lastSent) return;
         await stream.writeSSE({
+          id: String(event.streamSeq),
           event: event.kind,
           data: JSON.stringify(event),
         });
+        lastSent = event.streamSeq;
       };
 
+      // Subscribe before catch-up so live events during replay are not lost.
       const unsubscribe = bus.subscribe((event) => {
-        void onEvent(event);
+        if (catchingUp) {
+          pending.push(event);
+          return;
+        }
+        void writeEvent(event);
       });
 
-      // keep the stream open until the client disconnects
-      await new Promise<void>((resolve) => {
-        stream.onAbort(() => {
-          unsubscribe();
-          resolve();
+      try {
+        const catchUp =
+          afterSeq != null ? bus.catchUp(afterSeq) : null;
+
+        await stream.writeSSE({
+          event: "ready",
+          data: JSON.stringify({
+            market,
+            userId: userId ?? null,
+            streamSeq: bus.latestSeq,
+            oldestSeq: bus.oldestSeq,
+            gap: catchUp?.gap ?? false,
+          }),
         });
-      });
+
+        if (catchUp?.gap) {
+          await stream.writeSSE({
+            event: "gap",
+            data: JSON.stringify({
+              market,
+              afterSeq,
+              oldestSeq: catchUp.oldestSeq,
+              latestSeq: catchUp.latestSeq,
+            }),
+          });
+        }
+
+        if (catchUp) {
+          for (const event of catchUp.events) {
+            await writeEvent(event);
+          }
+        }
+
+        catchingUp = false;
+        for (const event of pending) {
+          await writeEvent(event);
+        }
+
+        await new Promise<void>((resolve) => {
+          stream.onAbort(() => {
+            resolve();
+          });
+        });
+      } finally {
+        unsubscribe();
+      }
     });
   });
 
   return app;
+}
+
+function streamEventAllowed(
+  event: ExchangeStreamEvent,
+  market: MarketSymbol,
+  userId: string | undefined,
+): boolean {
+  if (event.market !== market) return false;
+  if (userId && event.kind === "ORDER" && event.event.userId !== userId) {
+    return false;
+  }
+  if (userId && event.kind === "CREDIT" && event.userId !== userId) {
+    return false;
+  }
+  if (
+    userId &&
+    event.kind === "POSITION" &&
+    event.position.userId !== userId
+  ) {
+    return false;
+  }
+  if (
+    userId &&
+    event.kind === "LIQUIDATION" &&
+    event.liquidation.userId !== userId
+  ) {
+    return false;
+  }
+  if (
+    userId &&
+    event.kind === "FUNDING" &&
+    event.funding.userId !== userId
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function parseAfterSeq(
+  raw: string | undefined | null,
+): number | null | "invalid" {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isSafeInteger(n) || n < 0) return "invalid";
+  return n;
 }
 
 function resolveRuntimes(
