@@ -1,7 +1,6 @@
 import { type NextAuthOptions } from "next-auth"
 import GoogleProvider, { type GoogleProfile } from "next-auth/providers/google"
 import { Provider, prisma as db } from "@cex/db"
-import { STARTING_USD_BALANCE } from "@/lib/constants"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -45,10 +44,6 @@ export const authOptions: NextAuthOptions = {
             name: googleProfile?.name,
             profilePic: googleProfile?.picture,
             provider: Provider.Google,
-            // Simulated USD quote currency (UsdWallet — DB only)
-            usdWallet: {
-              create: { balance: STARTING_USD_BALANCE },
-            },
           },
         })
 

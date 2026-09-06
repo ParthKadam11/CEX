@@ -1,5 +1,5 @@
 /**
- * Nuclear local/demo wipe: engine, OMS orders, wallets money, Timescale history, Redis streams.
+ * Nuclear local/demo wipe: engine, OMS orders, Timescale history, Redis streams.
  * Not for production.
  */
 
@@ -66,11 +66,10 @@ export async function runNuclearReset(): Promise<NuclearResetReport> {
     };
   }
 
-  // 3) OMS Postgres: orders + zero wallet balances (keep User accounts).
+  // 3) OMS Postgres: orders + outbox (keep User accounts; trading balances live in the engine).
   try {
     const sql = `
 TRUNCATE TABLE "OrderFill", "Order", "CommandOutbox", "OmsProcessedEvent" CASCADE;
-UPDATE "UsdWallet" SET balance = 0;
 `;
     const out = await dockerExec("infra-postgres-1", [
       "psql",
@@ -83,7 +82,7 @@ UPDATE "UsdWallet" SET balance = 0;
       "-c",
       sql,
     ]);
-    steps.oms = { ok: true, detail: out.slice(0, 300) || "truncated + wallets zeroed" };
+    steps.oms = { ok: true, detail: out.slice(0, 300) || "oms tables truncated" };
   } catch (error) {
     steps.oms = {
       ok: false,

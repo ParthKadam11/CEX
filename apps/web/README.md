@@ -6,7 +6,6 @@
 
 - Google sign-in with NextAuth
 - user creation in PostgreSQL through `@cex/db`
-- simulated USD wallet row on first sign-in (legacy DB record)
 - dashboard with engine trading balances and recent orders
 - authenticated SOL-USD order book, balances, order placement, and cancellation
 - paper credit into the engine ledger for demo funding
@@ -31,7 +30,7 @@
 ## Key implementation details
 
 - Authentication uses Google through NextAuth.
-- On first sign-in, the app creates a `User` and a legacy simulated `UsdWallet` record.
+- On first sign-in, the app creates a `User` record.
 - The authenticated Prisma user id is copied to `session.user.uid`.
 - The exchange engine ledger is authoritative for trading balances; the web app reads balances through the engine gateway.
 

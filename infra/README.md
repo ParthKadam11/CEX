@@ -31,7 +31,7 @@ Default connection string:
 DATABASE_URL=postgresql://postgres:mysecretpassword@127.0.0.1:5432/postgres
 ```
 
-Set the same value in `packages/db/.env` (and the web app env) so OMS and Next.js can reach it. The exchange engine's WAL-backed balance ledger remains authoritative for trading balances; Postgres `UsdWallet` is not used for order execution.
+Set the same value in `packages/db/.env` (and the web app env) so OMS and Next.js can reach it. The exchange engine's WAL-backed balance ledger is authoritative for trading balances.
 
 ### TimescaleDB
 

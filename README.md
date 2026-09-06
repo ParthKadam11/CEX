@@ -273,7 +273,6 @@ Notable engine rules:
 - `FOK_BUDGET` is a market-buy-only fill-or-kill order. It must fill the
 requested quantity within `quoteBudget` or reject before matching.
 - The exchange `BalanceStore` and its WAL are authoritative for trading balances.
-- Postgres `UsdWallet` is legacy onboarding data, not an execution balance.
 
 
 
