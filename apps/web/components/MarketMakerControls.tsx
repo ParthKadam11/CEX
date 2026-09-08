@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Activity, Settings2, X } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import type { MarketSymbol, OrderBookSnapshot } from "@cex/exchange-types";
 
 const MAX_EVENTS = 40;
@@ -271,49 +271,30 @@ export function MarketMakerControls({
   }
 
   const live = status?.enabled ?? false;
-  const effective = status?.intensity ?? "idle";
 
   return (
     <div ref={rootRef} className="relative flex items-center gap-2">
-      {live && (
-        <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-50 px-2 py-1 text-[11px] font-semibold tracking-wide text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-950/50 dark:text-emerald-400">
-          <span className="relative flex size-2">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-            <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
-          </span>
-          SIM {effective === "idle" ? "idle" : effective}
-        </span>
-      )}
-
       <button
         type="button"
-        aria-label="Simulation settings"
+        aria-label="Market simulation settings"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={`inline-flex size-8 items-center justify-center rounded-md border transition ${
-          live
-            ? "border-emerald-500/40 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/50 dark:text-emerald-400"
-            : open
-              ? "border-zinc-300 bg-zinc-50 text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
-              : "border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-        }`}
+        className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500 transition-colors hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
       >
-        {open ? <X className="size-4" /> : <Settings2 className="size-4" />}
+        <Settings2 className="size-3.5" aria-hidden />
+        {live ? "Sim on" : "Sim"}
       </button>
 
       {open && (
-        <div className="absolute top-full right-0 z-40 mt-2 w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-950">
+        <div className="absolute top-full right-0 z-40 mt-2 w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-md border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950">
           <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-3 py-2.5 dark:border-zinc-800">
-            <div className="flex items-center gap-2">
-              <Activity className="size-4 text-zinc-400" />
-              <div>
-                <p className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-                  Simulator
-                </p>
-                <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
-                  Market makers & retail flow
-                </p>
-              </div>
+            <div>
+              <p className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
+                Simulation
+              </p>
+              <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                Synthetic quotes and flow for the book
+              </p>
             </div>
             <button
               type="button"
@@ -322,13 +303,13 @@ export function MarketMakerControls({
               aria-label="Toggle market simulation"
               disabled={busy}
               onClick={() => void toggleHeartbeat()}
-              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                live ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-600"
+              className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+                live ? "bg-zinc-950 dark:bg-zinc-100" : "bg-zinc-300 dark:bg-zinc-600"
               }`}
             >
               <span
-                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  live ? "translate-x-5" : "translate-x-0"
+                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform dark:bg-zinc-950 ${
+                  live ? "translate-x-4" : "translate-x-0"
                 }`}
               />
             </button>
@@ -450,9 +431,7 @@ export function MarketMakerControls({
                 Recent events
               </p>
               {busy && live && (
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
-                  ticking…
-                </span>
+                <span className="text-[10px] text-zinc-400">ticking…</span>
               )}
             </div>
             <div className="ob-scroll max-h-40 space-y-1.5 pr-1">

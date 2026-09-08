@@ -28,18 +28,18 @@ type TradeDeskLayoutProps = {
   className?: string;
 };
 
-function useIsLargeScreen() {
-  const [large, setLarge] = useState(true);
+function useViewportMode() {
+  const [mode, setMode] = useState<"unknown" | "mobile" | "desktop">("unknown");
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
-    const sync = () => setLarge(mq.matches);
+    const sync = () => setMode(mq.matches ? "desktop" : "mobile");
     sync();
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
 
-  return large;
+  return mode;
 }
 
 function DeskSeparator({ className }: { className?: string }) {
@@ -89,6 +89,7 @@ function usePersistedLayout(id: string) {
   });
 }
 
+/** Mobile: scrollable stack. Desktop (lg+): resizable panels. */
 export function TradeDeskLayout({
   id,
   chart,
@@ -98,12 +99,44 @@ export function TradeDeskLayout({
   secondary,
   className,
 }: TradeDeskLayoutProps) {
-  const isLarge = useIsLargeScreen();
+  const mode = useViewportMode();
   const main = usePersistedLayout(`cex-desk-${id}-main`);
-  const columns = usePersistedLayout(
-    `cex-desk-${id}-cols-${isLarge ? "lg" : "sm"}`,
-  );
+  const columns = usePersistedLayout(`cex-desk-${id}-cols-lg`);
   const footer = usePersistedLayout(`cex-desk-${id}-footer`);
+
+  if (mode === "unknown") {
+    return (
+      <div
+        className={cn("min-h-[280px] w-full bg-zinc-100 dark:bg-zinc-900", className)}
+        aria-hidden
+      />
+    );
+  }
+
+  if (mode === "mobile") {
+    return (
+      <div
+        className={cn(
+          "flex w-full flex-col gap-px bg-zinc-200 dark:bg-zinc-800",
+          className,
+        )}
+      >
+        <section className="flex min-h-[260px] flex-col bg-white dark:bg-zinc-950 sm:min-h-[300px]">
+          {chart}
+        </section>
+        <section className="flex h-[min(380px,50dvh)] flex-col overflow-hidden bg-white dark:bg-zinc-950">
+          {book}
+        </section>
+        <section className="bg-white dark:bg-zinc-950">{ticket}</section>
+        {secondary ? (
+          <section className="bg-white dark:bg-zinc-950">{secondary}</section>
+        ) : null}
+        <section className="min-h-[180px] bg-white pb-6 dark:bg-zinc-950">
+          {bottom}
+        </section>
+      </div>
+    );
+  }
 
   return (
     <Group
@@ -117,7 +150,7 @@ export function TradeDeskLayout({
       <Panel id="workspace" defaultSize="72%" minSize="35%" className="min-h-0">
         <Group
           id={`${id}-cols`}
-          orientation={isLarge ? "horizontal" : "vertical"}
+          orientation="horizontal"
           className="h-full min-h-0"
           defaultLayout={columns.defaultLayout}
           onLayoutChanged={columns.onLayoutChanged}
@@ -125,8 +158,8 @@ export function TradeDeskLayout({
         >
           <Panel
             id="chart"
-            defaultSize={isLarge ? "52%" : "40%"}
-            minSize={isLarge ? "22%" : "18%"}
+            defaultSize="52%"
+            minSize="22%"
             className="min-h-0 min-w-0"
           >
             <PanelFrame>{chart}</PanelFrame>
@@ -134,8 +167,8 @@ export function TradeDeskLayout({
           <DeskSeparator />
           <Panel
             id="book"
-            defaultSize={isLarge ? "24%" : "30%"}
-            minSize={isLarge ? "14%" : "16%"}
+            defaultSize="24%"
+            minSize="14%"
             className="min-h-0 min-w-0"
           >
             <PanelFrame>{book}</PanelFrame>
@@ -143,8 +176,8 @@ export function TradeDeskLayout({
           <DeskSeparator />
           <Panel
             id="ticket"
-            defaultSize={isLarge ? "24%" : "30%"}
-            minSize={isLarge ? "16%" : "16%"}
+            defaultSize="24%"
+            minSize="16%"
             className="min-h-0 min-w-0"
           >
             <PanelFrame className="overflow-y-auto">{ticket}</PanelFrame>

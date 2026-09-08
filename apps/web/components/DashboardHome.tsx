@@ -114,8 +114,8 @@ export function DashboardHome() {
   const visibleOrders = ordersTab === "open" ? openOrders : recentOrders;
 
   return (
-    <div className="animate-fade-up w-full py-8 sm:py-10">
-      <div className="mb-10 flex items-center gap-3">
+    <div className="animate-fade-up w-full py-6 sm:py-10">
+      <div className="mb-8 flex items-center gap-3 sm:mb-10">
         {image ? (
           <Image
             src={image}
@@ -137,8 +137,8 @@ export function DashboardHome() {
         </div>
       </div>
 
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-14">
-        <section className="min-w-0">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,280px)] lg:gap-10">
+        <section className="order-2 min-w-0 lg:order-1">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800">
             <div className="flex gap-6" role="tablist" aria-label="Orders">
               <OrdersTabButton
@@ -231,7 +231,7 @@ export function DashboardHome() {
           )}
         </section>
 
-        <aside className="space-y-4 lg:pt-1">
+        <aside className="order-1 space-y-4 lg:order-2 lg:pt-1">
           <div className="flex items-baseline justify-between gap-3">
             <h2 className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
               Balances

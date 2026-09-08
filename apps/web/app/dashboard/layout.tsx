@@ -5,7 +5,7 @@ export default function DashboardLayout({
 }>) {
   return (
     <main className="min-h-dvh bg-background">
-      <section className="mx-auto w-full max-w-[1600px] px-4 py-2 sm:px-6">
+      <section className="mx-auto w-full max-w-[1600px] px-3 py-3 sm:px-6 sm:py-4">
         {children}
       </section>
     </main>

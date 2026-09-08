@@ -8,15 +8,14 @@ const SECTIONS = [
   { id: "path", label: "Order path" },
   { id: "data", label: "Live vs history" },
   { id: "perps", label: "Perp risk" },
-  { id: "failures", label: "Failure modes" },
 ] as const;
 
 export function HowItWorks() {
   return (
-    <div className="animate-fade-up mx-auto w-full max-w-5xl py-8 sm:py-10">
-      <header className="mb-10 max-w-2xl border-b border-zinc-200 pb-8 dark:border-zinc-800">
+    <div className="animate-fade-up mx-auto w-full max-w-5xl py-6 sm:py-10">
+      <header className="mb-8 max-w-2xl border-b border-zinc-200 pb-6 sm:mb-10 sm:pb-8 dark:border-zinc-800">
         <p className="text-sm text-zinc-400">Architecture</p>
-        <h1 className="mt-2 font-display text-4xl tracking-tight text-zinc-950 dark:text-zinc-50">
+        <h1 className="mt-2 font-display text-3xl tracking-tight text-zinc-950 sm:text-4xl dark:text-zinc-50">
           How it works
         </h1>
         <p className="mt-4 text-pretty text-base leading-relaxed text-zinc-500 dark:text-zinc-400">
@@ -35,7 +34,22 @@ export function HowItWorks() {
         </p>
       </header>
 
-      <div className="grid gap-12 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-16">
+      <nav
+        aria-label="On this page"
+        className="-mx-1 mb-8 flex gap-1 overflow-x-auto px-1 pb-1 lg:hidden"
+      >
+        {SECTIONS.map((section) => (
+          <a
+            key={section.id}
+            href={`#${section.id}`}
+            className="shrink-0 rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
+          >
+            {section.label}
+          </a>
+        ))}
+      </nav>
+
+      <div className="grid gap-10 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-16">
         <nav
           aria-label="On this page"
           className="hidden lg:sticky lg:top-6 lg:block lg:self-start"
@@ -147,20 +161,6 @@ export function HowItWorks() {
               Perps add USD margin, positions, mark price, liquidation, and
               funding on top of the same engine model as spot. Risk checks run
               with matching — not as a separate after-the-fact service.
-            </p>
-          </DocSection>
-
-          <DocSection id="failures" title="Failure modes">
-            <p>The design deliberately surfaces hard cases, including:</p>
-            <ul className="mt-3 list-disc space-y-2 pl-5">
-              <li>Duplicate commands and idempotent retries</li>
-              <li>Crash windows between execution and event publication</li>
-              <li>Reconnect gaps and OMS reconcile</li>
-              <li>Maker/taker fill accounting</li>
-            </ul>
-            <p className="mt-4">
-              For runbooks and env setup, see the repo{" "}
-              <code className="text-xs">README.md</code>.
             </p>
           </DocSection>
         </article>

@@ -8,8 +8,8 @@ export default async function SpotPage() {
   if (!session?.user?.uid) redirect("/");
 
   return (
-    <main className="flex h-dvh flex-col overflow-hidden bg-background">
-      <section className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col px-3 py-2 sm:px-4">
+    <main className="bg-background lg:flex lg:h-dvh lg:flex-col lg:overflow-hidden">
+      <section className="mx-auto flex w-full max-w-[1600px] flex-col px-2 py-2 sm:px-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:px-4">
         <TradingPanel />
       </section>
     </main>

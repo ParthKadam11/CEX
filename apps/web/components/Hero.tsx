@@ -11,11 +11,11 @@ export function Hero() {
 
   return (
     <main className="flex min-h-[calc(100dvh-3.5rem)] flex-col">
-      <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-1 py-20 sm:px-2">
+      <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-4 py-16 sm:px-6 sm:py-20">
         <p className="animate-fade-up text-sm font-medium text-zinc-500 dark:text-zinc-400">
           Spot & perps
         </p>
-        <h1 className="animate-fade-up mt-4 font-display text-balance text-6xl leading-[0.95] text-zinc-950 sm:text-7xl dark:text-zinc-50">
+        <h1 className="animate-fade-up mt-4 font-display text-balance text-5xl leading-[0.95] text-zinc-950 sm:text-6xl md:text-7xl dark:text-zinc-50">
           CEX
         </h1>
         <p className="animate-fade-up delay-100 mt-6 max-w-md text-pretty text-lg leading-relaxed text-zinc-500 dark:text-zinc-400">
@@ -52,7 +52,7 @@ export function Hero() {
         id="product"
         className="border-t border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-900/50"
       >
-        <div className="mx-auto grid max-w-3xl gap-8 px-1 py-16 sm:grid-cols-3 sm:px-2">
+        <div className="mx-auto grid max-w-3xl gap-8 px-4 py-12 sm:grid-cols-3 sm:px-6 sm:py-16">
           {[
             {
               title: "Balances",
