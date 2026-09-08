@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Instrument_Serif, Sora } from "next/font/google";
+import { getServerSession } from "next-auth";
 import "./globals.css";
 import { Appbar } from "@/components/Appbar";
+import { authOptions } from "@/lib/auth";
 import Provider from "./providers";
 
 const sora = Sora({
@@ -37,11 +39,13 @@ const themeInitScript = `
 })();
 `;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await getServerSession(authOptions);
+
   return (
     <html
       lang="en"
@@ -52,7 +56,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-full bg-background font-sans text-foreground">
-        <Provider>
+        <Provider session={session}>
           <Appbar>{children}</Appbar>
         </Provider>
       </body>

@@ -38,8 +38,19 @@ export function Appbar({ children }: { children: React.ReactNode }) {
   const session = useSession();
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
-  const showAppNav = Boolean(session.data?.user);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const isAppRoute =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/spot") ||
+    pathname.startsWith("/perps") ||
+    pathname.startsWith("/trade");
+
+  // While session hydrates, keep the app chrome on app routes so the guest
+  // top bar does not flash on refresh.
+  const showAppNav =
+    Boolean(session.data?.user) ||
+    (session.status === "loading" && isAppRoute);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -59,6 +70,11 @@ export function Appbar({ children }: { children: React.ReactNode }) {
   }, [menuOpen]);
 
   if (!showAppNav) {
+    // Avoid mounting the marketing header during session load on any route.
+    if (session.status === "loading") {
+      return <div className="min-h-full bg-background">{children}</div>;
+    }
+
     return (
       <>
         <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur-sm supports-backdrop-filter:bg-background/80">

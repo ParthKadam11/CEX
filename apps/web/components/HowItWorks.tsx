@@ -36,17 +36,26 @@ export function HowItWorks() {
 
       <nav
         aria-label="On this page"
-        className="-mx-1 mb-8 flex gap-1 overflow-x-auto px-1 pb-1 lg:hidden"
+        className="mb-10 border-b border-zinc-200 pb-6 lg:hidden dark:border-zinc-800"
       >
-        {SECTIONS.map((section) => (
-          <a
-            key={section.id}
-            href={`#${section.id}`}
-            className="shrink-0 rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
-          >
-            {section.label}
-          </a>
-        ))}
+        <p className="mb-3 text-[10px] font-medium tracking-[0.14em] text-zinc-400 uppercase">
+          On this page
+        </p>
+        <ol className="space-y-2.5">
+          {SECTIONS.map((section, index) => (
+            <li key={section.id}>
+              <a
+                href={`#${section.id}`}
+                className="flex items-baseline gap-3 text-sm text-zinc-600 transition-colors hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
+              >
+                <span className="w-4 shrink-0 tabular-nums text-xs text-zinc-400">
+                  {index + 1}
+                </span>
+                <span>{section.label}</span>
+              </a>
+            </li>
+          ))}
+        </ol>
       </nav>
 
       <div className="grid gap-10 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-16">
