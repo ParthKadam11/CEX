@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import type { MarketDataWriterConfig } from "./config.js";
+import type { IngesterConfig } from "./config.js";
 import { persistEvents } from "./db.js";
 import {
   ackMessage,
@@ -12,7 +12,7 @@ import type { Redis } from "ioredis";
 export async function runWorker(
   redis: Redis,
   pool: Pool,
-  config: MarketDataWriterConfig,
+  config: IngesterConfig,
   signal: AbortSignal,
 ): Promise<void> {
   while (!signal.aborted) {
@@ -27,7 +27,7 @@ export async function runWorker(
     } catch (error) {
       if (signal.aborted) return;
       console.error(
-        "[market-data-writer] worker error",
+        "[ingester] worker error",
         error instanceof Error ? error.message : String(error),
       );
       await sleep(1_000, signal);

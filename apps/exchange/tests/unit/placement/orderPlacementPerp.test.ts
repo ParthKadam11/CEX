@@ -160,4 +160,60 @@ describe("OrderPlacementService perps", () => {
     expect(result.accepted).toBe(false);
     expect(result.reason).toBe("INSUFFICIENT_BALANCE");
   });
+
+  it("survives ceil margin remainder when a resting perp is filled in parts", () => {
+    // Lock for 5 @ 163 lev 5 = ceil(815/5)=163.
+    // Fill 3 → release ceil(489/5)=98, residual lock 65.
+    // Fill 2 → ideal release ceil(326/5)=66 > 65 (would underflow without clamp).
+    const book = new OrderBook("SOL-USD-PERP");
+    const service = new OrderPlacementService();
+    fund(service, "short", { USD: 1_000 });
+    fund(service, "long", { USD: 1_000 });
+
+    service.place(
+      makeOrder({
+        orderId: "ask-ceil",
+        userId: "short",
+        market: "SOL-USD-PERP",
+        side: Side.SELL,
+        price: 163,
+        quantity: 5,
+        leverage: 5,
+      }),
+      book,
+    );
+
+    const first = service.place(
+      makeOrder({
+        orderId: "bid-ceil-1",
+        userId: "long",
+        market: "SOL-USD-PERP",
+        side: Side.BUY,
+        price: 163,
+        quantity: 3,
+        leverage: 5,
+      }),
+      book,
+    );
+    expect(first.accepted).toBe(true);
+    expect(first.trades).toHaveLength(1);
+
+    const second = service.place(
+      makeOrder({
+        orderId: "bid-ceil-2",
+        userId: "long",
+        market: "SOL-USD-PERP",
+        side: Side.BUY,
+        price: 163,
+        quantity: 2,
+        leverage: 5,
+      }),
+      book,
+    );
+    expect(second.accepted).toBe(true);
+    expect(second.trades).toHaveLength(1);
+    expect(service.queries.getById("ask-ceil")?.status).toBe("FILLED");
+    expect(service.positions.get("short", "SOL-USD-PERP")?.size).toBe(-5);
+    expect(service.positions.get("long", "SOL-USD-PERP")?.size).toBe(5);
+  });
 });

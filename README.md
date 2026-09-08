@@ -2,7 +2,7 @@
 
 A multi-service paper centralized exchange built to study what actually happens after someone clicks Buy: matching, balance locks, durable order flow, market-data persistence, and perpetual risk.
 
-It is a systems project: a single-writer matching engine, an asynchronous OMS with a transactional outbox, a gateway that translates Redis Streams and exchange SSE, and a separate TimescaleDB market-data writer. Spot and perpetual markets run in-process with mark price, liquidation, and funding.
+It is a systems project: a single-writer matching engine, an asynchronous OMS with a transactional outbox, a gateway that translates Redis Streams and exchange SSE, and a separate TimescaleDB ingester. Spot and perpetual markets run in-process with mark price, liquidation, and funding.
 
 Built to make failure modes visible duplicate commands, maker/taker fills, reconnect gaps, crash windows between engine execution and event publication instead of hiding them behind a single CRUD API.
 
@@ -23,7 +23,7 @@ Single-writer matching engine. One process hosts spot `SOL-USD` and perpetual `S
 Product-facing order state in Postgres, transactional command outbox, and event-driven status updates.
 - `apps/engine-gateway`  
 Sole client of the exchange: Redis commands → engine HTTP; SSE → `orders:events` + `md:events` + live pub/sub.
-- `apps/market-data-writer`  
+- `apps/ingester`  
 Consumes durable market-data events into TimescaleDB and serves historical trades, BBO, and candles.
 - `apps/web`  
 Next.js trading app: Google auth, paper credit, Spot / Perps surfaces, charts, and BFF proxies.
@@ -51,7 +51,7 @@ Application layer
   └─ OMS → engine-gateway → exchange
   └─ Redis Streams + Redis pub/sub
   └─ exchange SSE → engine-gateway → md:events + orders:events
-  └─ md:events → market-data-writer → TimescaleDB
+  └─ md:events → ingester → TimescaleDB
 ```
 
 
@@ -89,7 +89,7 @@ CEX/
 ├── apps/
 │   ├── exchange/
 │   ├── engine-gateway/
-│   ├── market-data-writer/
+│   ├── ingester/
 │   ├── oms/
 │   └── web/
 ├── infra/
@@ -241,16 +241,16 @@ It exposes order APIs at `http://localhost:4030`, publishes place/cancel command
 
 ### Market-data writer
 
-The market-data writer persists the durable `md:events` stream into TimescaleDB:
+The ingester persists the durable `md:events` stream into TimescaleDB:
 
 ```bash
-pnpm dev:market-data
+pnpm dev:ingester
 ```
 
 It serves historical trades, BBO snapshots, and one-minute candles at
 `http://localhost:4040`.
 
-For non-local deployments, set the same value as `OMS_INTERNAL_TOKEN` on OMS and the web app. Set `GATEWAY_INTERNAL_TOKEN` on the engine gateway and the same value as `ENGINE_GATEWAY_INTERNAL_TOKEN` on the web app. Set `MARKET_DATA_INTERNAL_TOKEN` on the market-data writer and web app, and point `MARKET_DATA_URL` at the writer service.
+For non-local deployments, set the same value as `OMS_INTERNAL_TOKEN` on OMS and the web app. Set `GATEWAY_INTERNAL_TOKEN` on the engine gateway and the same value as `ENGINE_GATEWAY_INTERNAL_TOKEN` on the web app. Set `INGESTER_INTERNAL_TOKEN` (or legacy `MARKET_DATA_INTERNAL_TOKEN`) on the ingester and web app, and point `MARKET_DATA_URL` at the ingester service.
 
 See [API.md](API.md) for request IDs, error envelopes, order pagination, and
 the public BFF/internal service boundaries.

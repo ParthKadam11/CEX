@@ -1,4 +1,4 @@
-export type MarketDataWriterConfig = {
+export type IngesterConfig = {
   port: number;
   redisUrl: string;
   timescaleUrl: string;
@@ -8,41 +8,40 @@ export type MarketDataWriterConfig = {
   blockMs: number;
 };
 
-export function loadConfig(): MarketDataWriterConfig {
+export function loadConfig(): IngesterConfig {
   return {
-    port: boundedNumber(process.env.MARKET_DATA_PORT, 4040, 1_024, 65_535),
+    port: boundedNumber(process.env.INGESTER_PORT ?? process.env.MARKET_DATA_PORT, 4040, 1_024, 65_535),
     redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
     timescaleUrl:
       process.env.TIMESCALE_URL ??
       "postgresql://cex:cex@127.0.0.1:5434/cex_md",
-    internalToken: serviceToken(
-      "MARKET_DATA_INTERNAL_TOKEN",
-      "local-dev-market-data-token",
-    ),
+    internalToken:
+      process.env.INGESTER_INTERNAL_TOKEN ??
+      process.env.MARKET_DATA_INTERNAL_TOKEN ??
+      (process.env.NODE_ENV === "production"
+        ? (() => {
+            throw new Error(
+              "INGESTER_INTERNAL_TOKEN is required in production",
+            );
+          })()
+        : "local-dev-market-data-token"),
     consumerName:
+      process.env.INGESTER_CONSUMER_NAME ??
       process.env.MARKET_DATA_CONSUMER_NAME ??
-      `timescale-writer-${process.pid}`,
+      `ingester-${process.pid}`,
     batchSize: boundedNumber(
-      process.env.MARKET_DATA_BATCH_SIZE,
+      process.env.INGESTER_BATCH_SIZE ?? process.env.MARKET_DATA_BATCH_SIZE,
       100,
       1,
       1_000,
     ),
     blockMs: boundedNumber(
-      process.env.MARKET_DATA_BLOCK_MS,
+      process.env.INGESTER_BLOCK_MS ?? process.env.MARKET_DATA_BLOCK_MS,
       5_000,
       100,
       30_000,
     ),
   };
-}
-
-function serviceToken(name: string, fallback: string): string {
-  const token = process.env[name];
-  if (process.env.NODE_ENV === "production" && !token) {
-    throw new Error(`${name} is required in production`);
-  }
-  return token ?? fallback;
 }
 
 function boundedNumber(

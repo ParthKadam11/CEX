@@ -50,7 +50,7 @@ TIMESCALE_URL=postgresql://cex:cex@127.0.0.1:5434/cex_md
 Start the separate writer after infrastructure is running:
 
 ```bash
-pnpm dev:market-data
+pnpm dev:ingester
 ```
 
 It owns the TimescaleDB schema and consumes the durable `md:events` Redis

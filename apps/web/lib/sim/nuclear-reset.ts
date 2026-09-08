@@ -171,7 +171,7 @@ TRUNCATE TABLE "OrderFill", "Order", "CommandOutbox", "OmsProcessedEvent" CASCAD
     if (keys.length > 0) {
       await dockerExec("infra-redis-1", ["redis-cli", "DEL", ...keys]);
     }
-    // Recreate consumer groups used by gateway / OMS / md-writer.
+    // Recreate consumer groups used by gateway / OMS / ingester.
     for (const [stream, group] of [
       ["orders:commands", "xpg"],
       ["orders:events", "oms"],

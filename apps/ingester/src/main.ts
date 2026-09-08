@@ -27,7 +27,7 @@ async function main(): Promise<void> {
       },
       (info) => {
         console.log(
-          `[market-data-writer] ready on http://localhost:${info.port}`,
+          `[ingester] ready on http://localhost:${info.port}`,
         );
       },
     );
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
 
 main().catch((error) => {
   console.error(
-    "[market-data-writer] fatal error",
+    "[ingester] fatal error",
     error instanceof Error ? error.message : String(error),
   );
   process.exitCode = 1;

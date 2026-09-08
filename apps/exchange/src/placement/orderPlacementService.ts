@@ -702,11 +702,17 @@ export class OrderPlacementService {
     trade: Trade;
   }): Position {
     const { order, side, trade } = args;
-    const { orderLockRelease, positionMargin, unlockExcess } = marginForFill(
-      order,
-      trade.quantity,
-      trade.price,
-    );
+    const ideal = marginForFill(order, trade.quantity, trade.price);
+    const tracked = this.locks.get(order.orderId)?.amount ?? 0;
+    const finalFill = order.filledQuantity >= order.quantity;
+
+    // Per-fill ceil(notional/leverage) can exceed the initial lock; the last
+    // fill consumes whatever order lock remains so we never underflow.
+    let orderLockRelease = finalFill
+      ? tracked
+      : Math.min(ideal.orderLockRelease, tracked);
+    let positionMargin = Math.min(ideal.positionMargin, orderLockRelease);
+    let unlockExcess = Math.max(0, orderLockRelease - positionMargin);
 
     this.releaseTrackedLock(order.orderId, orderLockRelease);
     this.dropEmptyLock(order.orderId);
@@ -776,11 +782,9 @@ export class OrderPlacementService {
 
   private releaseTrackedLock(orderId: string, amount: number): void {
     const lock = this.locks.get(orderId);
-    if (!lock) return;
-    lock.amount -= amount;
-    if (lock.amount < 0) {
-      throw new Error(`lock underflow for order ${orderId}`);
-    }
+    if (!lock || amount <= 0) return;
+    // Clamp: per-fill ceil margin can exceed the residual tracked lock.
+    lock.amount = Math.max(0, lock.amount - amount);
   }
 
   private dropEmptyLock(orderId: string): void {

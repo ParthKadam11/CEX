@@ -30,7 +30,7 @@ export function createHistoryApp(
   app.get("/health", async (c) => {
     try {
       await pool.query("SELECT 1");
-      return c.json({ ok: true, service: "market-data-writer", markets: MARKETS });
+      return c.json({ ok: true, service: "ingester", markets: MARKETS });
     } catch {
       return errorResponse(c, 503, "TIMESCALE_UNAVAILABLE");
     }
