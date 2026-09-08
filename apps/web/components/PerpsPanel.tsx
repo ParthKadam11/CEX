@@ -7,6 +7,7 @@ import type { Balance, OrderBookSnapshot, Position } from "@cex/exchange-types";
 import { CandleChart } from "@/components/CandleChart";
 import { MarketMakerControls } from "@/components/MarketMakerControls";
 import { OrderBookPanel } from "@/components/OrderBookPanel";
+import { TradeDeskLayout } from "@/components/TradeDeskLayout";
 import { useMarketStream } from "@/hooks/useMarketStream";
 import { PERP_VENUE } from "@/lib/markets";
 import {
@@ -44,6 +45,7 @@ export function PerpsPanel() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [bottomTab, setBottomTab] = useState<"position" | "orders">("position");
   const [position, setPosition] = useState<Position | null>(null);
   const [markPrice, setMarkPrice] = useState<number | null>(null);
   const [leverage, setLeverage] = useState("5");
@@ -411,29 +413,10 @@ export function PerpsPanel() {
     ]);
   }
 
-  async function paperFund(amount = 10_000) {
-    const response = await fetch("/api/market/credit", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ asset: "USD", amount, market }),
-    });
-    if (!response.ok) {
-      const body = (await response.json()) as {
-        error?: { code?: string; message?: string } | string;
-      };
-      setMessage(errorMessage(body) ?? "Credit failed");
-      return;
-    }
-    setMessage(`Credited ${amount} USD margin`);
-    window.setTimeout(() => {
-      void loadBalances();
-    }, 500);
-  }
-
   return (
-    <div className="flex w-full flex-col">
+    <div className="flex h-full min-h-0 w-full flex-col">
       {/* Ticker */}
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-3 border-b border-zinc-200 px-1 py-3 dark:border-zinc-800">
+      <div className="flex shrink-0 flex-wrap items-end gap-x-6 gap-y-3 border-b border-zinc-200 px-1 py-3 dark:border-zinc-800">
         <div className="flex items-end gap-3">
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
@@ -528,90 +511,81 @@ export function PerpsPanel() {
         </div>
       </div>
 
-      {/* Main workspace */}
-      <div className="grid h-[min(720px,calc(100dvh-12rem))] min-h-[560px] gap-px overflow-hidden bg-zinc-200 dark:bg-zinc-800 lg:grid-cols-[minmax(0,1fr)_280px_320px] lg:grid-rows-[minmax(0,1fr)]">
-        {/* Chart */}
-        <section className="flex min-h-0 flex-col overflow-hidden bg-white dark:bg-zinc-950">
-          <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
-            <div>
-              <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-                Chart
-              </h2>
-              <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
-                {chartInterval}
-              </p>
+      <TradeDeskLayout
+        id="perp"
+        className="min-h-0 flex-1"
+        chart={
+          <section className="flex h-full min-h-0 flex-col">
+            <div className="flex shrink-0 items-center border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+                  Chart
+                </h2>
+                <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                  {chartInterval}
+                </p>
+              </div>
             </div>
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                title="Paper-credit USD margin (not on-chain)"
-                onClick={() => paperFund(10_000)}
-                className="rounded-md border border-zinc-200 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-              >
-                +USD margin
-              </button>
+            <div className="min-h-0 flex-1">
+              <CandleChart
+                candles={chartCandles}
+                intervalLabel={chartInterval}
+                className="h-full"
+              />
             </div>
-          </div>
-          <div className="min-h-0 flex-1">
-            <CandleChart
-              candles={chartCandles}
-              intervalLabel={chartInterval}
-              className="h-full"
-            />
-          </div>
-        </section>
+          </section>
+        }
+        book={
+          <OrderBookPanel
+            book={book}
+            trades={tape}
+            lastTradePrice={tape[0]?.price ?? null}
+            className="h-full min-h-0 overflow-hidden rounded-none border-0 bg-white dark:bg-zinc-950"
+            onSelectPrice={(next) => {
+              setPrice(String(next));
+              setMode("limit");
+            }}
+          />
+        }
+        ticket={
+          <section className="flex h-full min-h-0 flex-col overflow-y-auto p-4">
+            <div className="mb-3 grid grid-cols-2 gap-1 rounded-md bg-zinc-100 p-1 dark:bg-zinc-900">
+              {(["BUY", "SELL"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setSide(option)}
+                  className={`h-9 rounded text-sm font-semibold transition ${
+                    side === option
+                      ? option === "BUY"
+                        ? "bg-emerald-500 text-white shadow-sm"
+                        : "bg-red-500 text-white shadow-sm"
+                      : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  {option === "BUY" ? "Long" : "Short"}
+                </button>
+              ))}
+            </div>
 
-        {/* Order book */}
-        <OrderBookPanel
-          book={book}
-          trades={tape}
-          lastTradePrice={tape[0]?.price ?? null}
-          className="min-h-0 overflow-hidden rounded-none border-0 bg-white dark:bg-zinc-950"
-          onSelectPrice={(next) => {
-            setPrice(String(next));
-            setMode("limit");
-          }}
-        />
+            <div className="mb-4 flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
+              {(["limit", "market"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setMode(option)}
+                  className={`border-b-2 px-2.5 py-2 text-xs font-medium capitalize ${
+                    mode === option
+                      ? "border-zinc-950 text-zinc-950 dark:border-zinc-50 dark:text-zinc-50"
+                      : "border-transparent text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
 
-        {/* Trade ticket */}
-        <section className="flex min-h-0 flex-col overflow-y-auto bg-white p-4 dark:bg-zinc-950">
-          <div className="mb-3 grid grid-cols-2 gap-1 rounded-md bg-zinc-100 p-1 dark:bg-zinc-900">
-            {(["BUY", "SELL"] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setSide(option)}
-                className={`h-9 rounded text-sm font-semibold transition ${
-                  side === option
-                    ? option === "BUY"
-                      ? "bg-emerald-500 text-white shadow-sm"
-                      : "bg-red-500 text-white shadow-sm"
-                    : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-                }`}
-              >
-                {option === "BUY" ? "Long" : "Short"}
-              </button>
-            ))}
-          </div>
-
-          <div className="mb-4 flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
-            {(["limit", "market"] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setMode(option)}
-                className={`border-b-2 px-2.5 py-2 text-xs font-medium capitalize ${
-                  mode === option
-                    ? "border-zinc-950 text-zinc-950 dark:border-zinc-50 dark:text-zinc-50"
-                    : "border-transparent text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                }`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-
-          <form className="flex flex-1 flex-col gap-3" onSubmit={placeOrder}>
+            <form className="flex flex-1 flex-col gap-3" onSubmit={placeOrder}>
               <div className="flex items-center justify-between text-[11px] text-zinc-400">
                 <span>Margin available</span>
                 <span className="tabular-nums text-zinc-700 dark:text-zinc-200">
@@ -750,147 +724,190 @@ export function PerpsPanel() {
               {message}
             </p>
           )}
-        </section>
-      </div>
+          </section>
+        }
+        bottom={
+          <section className="flex h-full min-h-0 flex-col px-3 pt-2">
+            <div className="mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3 border-b border-zinc-200 dark:border-zinc-800">
+              <div className="flex gap-6" role="tablist" aria-label="Perps desk">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={bottomTab === "position"}
+                  onClick={() => setBottomTab("position")}
+                  className={`-mb-px border-b-2 pb-2.5 text-sm font-medium transition-colors ${
+                    bottomTab === "position"
+                      ? "border-zinc-950 text-zinc-950 dark:border-zinc-50 dark:text-zinc-50"
+                      : "border-transparent text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  Position
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={bottomTab === "orders"}
+                  onClick={() => setBottomTab("orders")}
+                  className={`-mb-px border-b-2 pb-2.5 text-sm font-medium transition-colors ${
+                    bottomTab === "orders"
+                      ? "border-zinc-950 text-zinc-950 dark:border-zinc-50 dark:text-zinc-50"
+                      : "border-transparent text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  Orders
+                  <span
+                    className={`ml-2 tabular-nums ${
+                      bottomTab === "orders"
+                        ? "text-zinc-500"
+                        : "text-zinc-300 dark:text-zinc-600"
+                    }`}
+                  >
+                    {orders.length}
+                  </span>
+                </button>
+              </div>
+              {bottomTab === "position" ? (
+                <span className="mb-2.5 text-xs text-zinc-400">
+                  Mark {fmtNum(displayMark)}
+                  {fundingRateBps != null
+                    ? ` · Funding ${fundingRateBps} bps`
+                    : ""}
+                </span>
+              ) : (
+                <Link
+                  href="/dashboard/orders"
+                  className="mb-2.5 text-xs font-medium text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+                >
+                  Full history
+                </Link>
+              )}
+            </div>
 
-
-      {/* Position */}
-      <section className="border-t border-zinc-200 bg-white px-1 py-4 dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-            Position
-          </h2>
-          <span className="text-xs text-zinc-400">
-            Mark {fmtNum(displayMark)}
-            {fundingRateBps != null
-              ? ` · Funding ${fundingRateBps} bps`
-              : ""}
-          </span>
-        </div>
-        {!position ? (
-          <p className="py-4 text-center text-sm text-zinc-400 dark:text-zinc-500">
-            No open position. Long or short to open one.
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-            <TickerStat
-              label="Side"
-              value={position.size > 0 ? "Long" : "Short"}
-              tone={position.size > 0 ? "up" : "down"}
-            />
-            <TickerStat label="Size" value={fmtNum(Math.abs(position.size))} />
-            <TickerStat label="Entry" value={fmtNum(position.entryPrice)} />
-            <TickerStat label="Margin" value={fmtNum(position.margin)} />
-            <TickerStat
-              label="uPnL"
-              value={
-                upnl == null
-                  ? "—"
-                  : `${upnl >= 0 ? "+" : ""}${fmtNum(upnl)}`
-              }
-              tone={upnl == null ? undefined : upnl >= 0 ? "up" : "down"}
-            />
-            <TickerStat
-              label="Equity"
-              value={
-                equity == null || maintenance == null
-                  ? "—"
-                  : `${fmtNum(equity)} / ${fmtNum(maintenance)}`
-              }
-              tone={
-                equity == null || maintenance == null
-                  ? undefined
-                  : equity < maintenance
-                    ? "down"
-                    : "up"
-              }
-            />
-            <TickerStat label="Liq. price" value={fmtNum(liqPrice)} />
-          </div>
-        )}
-      </section>
-
-      {/* Orders */}
-      <section className="border-t border-zinc-200 bg-white px-1 py-4 dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-            Open / recent perp orders
-          </h2>
-          <Link
-            href="/dashboard/orders"
-            className="text-xs font-medium text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
-          >
-            Full history · {orders.length}
-          </Link>
-        </div>
-        {orders.length === 0 ? (
-          <p className="py-6 text-center text-sm text-zinc-400 dark:text-zinc-500">
-            No SOL-USD-PERP orders yet.
-          </p>
-        ) : (
-          <div className="max-h-[240px] divide-y divide-zinc-100 overflow-y-auto dark:divide-zinc-800">
-            {orders.map((order) => {
-              const open = OPEN_ORDER_STATUSES.includes(
-                order.status as (typeof OPEN_ORDER_STATUSES)[number],
-              );
-              const expanded = expandedOrderId === order.id;
-              return (
-                <div key={order.id} className="py-2.5 text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      className="text-left"
-                      onClick={() =>
-                        setExpandedOrderId(expanded ? null : order.id)
+            {bottomTab === "position" ? (
+              <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+                {!position ? (
+                  <p className="py-6 text-center text-sm text-zinc-400 dark:text-zinc-500">
+                    No open position. Long or short to open one.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+                    <TickerStat
+                      label="Side"
+                      value={position.size > 0 ? "Long" : "Short"}
+                      tone={position.size > 0 ? "up" : "down"}
+                    />
+                    <TickerStat
+                      label="Size"
+                      value={fmtNum(Math.abs(position.size))}
+                    />
+                    <TickerStat
+                      label="Entry"
+                      value={fmtNum(position.entryPrice)}
+                    />
+                    <TickerStat
+                      label="Margin"
+                      value={fmtNum(position.margin)}
+                    />
+                    <TickerStat
+                      label="uPnL"
+                      value={
+                        upnl == null
+                          ? "—"
+                          : `${upnl >= 0 ? "+" : ""}${fmtNum(upnl)}`
                       }
-                    >
-                      <p className="font-medium text-zinc-950 dark:text-zinc-50">
-                        <span
-                          className={
-                            order.side === "BUY"
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : "text-red-600 dark:text-red-400"
-                          }
-                        >
-                          {order.side === "BUY" ? "Long" : "Short"}
-                        </span>{" "}
-                        {order.type} {order.quantity} SOL @{" "}
-                        {order.price || "mkt"}
-                      </p>
-                      <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                        filled {order.filledQuantity}/{order.quantity}
-                        {order.failureReason
-                          ? ` · ${order.failureReason}`
-                          : ""}
-                      </p>
-                    </button>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                        {order.status}
-                      </span>
-                      {open && (
+                      tone={
+                        upnl == null ? undefined : upnl >= 0 ? "up" : "down"
+                      }
+                    />
+                    <TickerStat
+                      label="Equity"
+                      value={
+                        equity == null || maintenance == null
+                          ? "—"
+                          : `${fmtNum(equity)} / ${fmtNum(maintenance)}`
+                      }
+                      tone={
+                        equity == null || maintenance == null
+                          ? undefined
+                          : equity < maintenance
+                            ? "down"
+                            : "up"
+                      }
+                    />
+                    <TickerStat label="Liq. price" value={fmtNum(liqPrice)} />
+                  </div>
+                )}
+              </div>
+            ) : orders.length === 0 ? (
+              <p className="py-6 text-center text-sm text-zinc-400 dark:text-zinc-500">
+                No SOL-USD-PERP orders yet.
+              </p>
+            ) : (
+              <div className="min-h-0 flex-1 divide-y divide-zinc-100 overflow-y-auto pb-3 dark:divide-zinc-800">
+                {orders.map((order) => {
+                  const open = OPEN_ORDER_STATUSES.includes(
+                    order.status as (typeof OPEN_ORDER_STATUSES)[number],
+                  );
+                  const expanded = expandedOrderId === order.id;
+                  return (
+                    <div key={order.id} className="py-2.5 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
                         <button
                           type="button"
-                          onClick={() => cancelOrder(order.engineOrderId)}
-                          className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                          className="text-left"
+                          onClick={() =>
+                            setExpandedOrderId(expanded ? null : order.id)
+                          }
                         >
-                          Cancel
+                          <p className="font-medium text-zinc-950 dark:text-zinc-50">
+                            <span
+                              className={
+                                order.side === "BUY"
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : "text-red-600 dark:text-red-400"
+                              }
+                            >
+                              {order.side === "BUY" ? "Long" : "Short"}
+                            </span>{" "}
+                            {order.type} {order.quantity} SOL @{" "}
+                            {order.price || "mkt"}
+                          </p>
+                          <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                            filled {order.filledQuantity}/{order.quantity}
+                            {order.failureReason
+                              ? ` · ${order.failureReason}`
+                              : ""}
+                          </p>
                         </button>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                            {order.status}
+                          </span>
+                          {open && (
+                            <button
+                              type="button"
+                              onClick={() => cancelOrder(order.engineOrderId)}
+                              className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {expanded && (
+                        <OrderFills
+                          orderId={order.engineOrderId}
+                          fallback={order.fills}
+                        />
                       )}
                     </div>
-                  </div>
-                  {expanded && (
-                    <OrderFills
-                      orderId={order.engineOrderId}
-                      fallback={order.fills}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        }
+      />
     </div>
   );
 }

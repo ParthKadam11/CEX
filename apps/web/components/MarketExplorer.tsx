@@ -1,450 +1,319 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { TradeTickMessage } from "@cex/app-contracts";
-import { CandleChart } from "@/components/CandleChart";
-import { useMarketStream } from "@/hooks/useMarketStream";
-import { SPOT_VENUE } from "@/lib/markets";
-import {
-  buildLiveCandles,
-  formatTime,
-  normalizeCandle,
-  type Candle,
-  type HistoryTrade,
-  type LiveTapeTrade,
-  type MarketMeta,
-} from "@/lib/trading";
+import Link from "next/link";
 
-type BboSnapshot = {
-  time: string;
-  bestBid: number | null;
-  bestAsk: number | null;
-  engineSequence: number;
-};
-
-const HISTORY_PAGE = 20;
+const SECTIONS = [
+  { id: "what", label: "What is this?" },
+  { id: "start", label: "How to start" },
+  { id: "spot", label: "Spot trading" },
+  { id: "perps", label: "Perps trading" },
+  { id: "words", label: "Simple glossary" },
+] as const;
 
 export function MarketExplorer() {
-  const [meta, setMeta] = useState<MarketMeta | null>(null);
-  const [historyCandles, setHistoryCandles] = useState<Candle[]>([]);
-  const [trades, setTrades] = useState<HistoryTrade[]>([]);
-  const [bboHistory, setBboHistory] = useState<BboSnapshot[]>([]);
-  const [tape, setTape] = useState<LiveTapeTrade[]>([]);
-  const [historyTab, setHistoryTab] = useState<"trades" | "bbo">("trades");
-  const [historyPage, setHistoryPage] = useState(0);
-
-  const loadHistory = useCallback(async () => {
-    const q = `market=${encodeURIComponent(SPOT_VENUE.symbol)}`;
-    const [metaRes, candlesRes, tradesRes, bboRes] = await Promise.all([
-      fetch(`/api/market?${q}`, { cache: "no-store" }),
-      fetch(`/api/market/history/candles?${q}&limit=60`, { cache: "no-store" }),
-      fetch(`/api/market/history/trades?${q}&limit=100`, { cache: "no-store" }),
-      fetch(`/api/market/history/bbo?${q}&limit=100`, { cache: "no-store" }),
-    ]);
-
-    if (metaRes.ok) setMeta((await metaRes.json()) as MarketMeta);
-    if (candlesRes.ok) {
-      const body = (await candlesRes.json()) as { candles?: Candle[] };
-      setHistoryCandles(
-        Array.isArray(body.candles)
-          ? body.candles.map((c) => normalizeCandle(c))
-          : [],
-      );
-    }
-    if (tradesRes.ok) {
-      const body = (await tradesRes.json()) as { trades?: HistoryTrade[] };
-      const next = Array.isArray(body.trades) ? body.trades : [];
-      setTrades(next);
-      setTape((current) => {
-        if (current.length > 0) return current;
-        return next.map((trade) => ({
-          id: trade.tradeId,
-          price: Number(trade.price),
-          quantity: Number(trade.quantity),
-          at: new Date(trade.time).getTime(),
-        }));
-      });
-    }
-    if (bboRes.ok) {
-      const body = (await bboRes.json()) as { snapshots?: BboSnapshot[] };
-      setBboHistory(Array.isArray(body.snapshots) ? body.snapshots : []);
-    }
-  }, []);
-
-  const { book, connected } = useMarketStream({
-    market: SPOT_VENUE.symbol,
-    onTrade: (trade: TradeTickMessage) => {
-      setTape((current) =>
-        [
-          {
-            id: trade.tradeId,
-            price: Number(trade.price),
-            quantity: Number(trade.quantity),
-            at: Date.now(),
-          },
-          ...current.filter((row) => row.id !== trade.tradeId),
-        ].slice(0, 120),
-      );
-      void loadHistory();
-    },
-  });
-
-  const liveCandles = useMemo(
-    () => buildLiveCandles(tape, 60_000, 90),
-    [tape],
-  );
-  const chartCandles = useMemo(() => {
-    if (liveCandles.length === 0) return historyCandles;
-    if (historyCandles.length === 0) return liveCandles;
-    const byBucket = new Map(
-      historyCandles.map((c) => [c.bucket, normalizeCandle(c)] as const),
-    );
-    for (const c of liveCandles) byBucket.set(c.bucket, normalizeCandle(c));
-    return [...byBucket.values()]
-      .sort((a, b) => b.bucket.localeCompare(a.bucket))
-      .slice(0, 90);
-  }, [historyCandles, liveCandles]);
-  const chartInterval = liveCandles.length > 0 ? "1m live" : "1m history";
-
-  useEffect(() => {
-    const initial = window.setTimeout(() => void loadHistory(), 0);
-    const timer = window.setInterval(() => void loadHistory(), 5_000);
-    return () => {
-      window.clearTimeout(initial);
-      window.clearInterval(timer);
-    };
-  }, [loadHistory]);
-
-  // Bids: best (highest) first — descending price
-  const bids = useMemo(
-    () =>
-      [...book.bids].sort(
-        (a, b) => Number(b.price) - Number(a.price),
-      ),
-    [book.bids],
-  );
-  // Asks: best (lowest) first — ascending price
-  const asks = useMemo(
-    () =>
-      [...book.asks].sort(
-        (a, b) => Number(a.price) - Number(b.price),
-      ),
-    [book.asks],
-  );
-
-  const historyRows = historyTab === "trades" ? trades : bboHistory;
-  const historyPageCount = Math.max(
-    1,
-    Math.ceil(historyRows.length / HISTORY_PAGE),
-  );
-  const safeHistoryPage = Math.min(historyPage, historyPageCount - 1);
-  const historySlice = historyRows.slice(
-    safeHistoryPage * HISTORY_PAGE,
-    safeHistoryPage * HISTORY_PAGE + HISTORY_PAGE,
-  );
-
   return (
-    <div className="animate-fade-up w-full space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 pb-4 dark:border-zinc-800">
-        <div>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">Market data</p>
-          <h1 className="font-display text-3xl tracking-tight text-zinc-950 dark:text-zinc-50">
-            {meta?.market ?? "SOL-USD"}
-          </h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-4 text-sm">
-          <MetaChip label="Status" value={meta?.status ?? "OPEN"} />
-          <MetaChip label="Tick" value={meta?.tickSize ?? 1} />
-          <MetaChip label="Lot" value={meta?.lotSize ?? 1} />
-          <MetaChip label="Bid" value={book.bbo.bestBid ?? "—"} tone="bid" />
-          <MetaChip label="Ask" value={book.bbo.bestAsk ?? "—"} tone="ask" />
-          <span
-            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-              connected
-                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
-                : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-            }`}
-          >
-            {connected ? "Live" : "Connecting"}
-          </span>
-        </div>
-      </div>
+    <div className="animate-fade-up mx-auto w-full max-w-5xl py-8 sm:py-10">
+      <header className="mb-10 max-w-2xl border-b border-zinc-200 pb-8 dark:border-zinc-800">
+        <p className="text-sm text-zinc-400">Guide</p>
+        <h1 className="mt-2 font-display text-4xl tracking-tight text-zinc-950 dark:text-zinc-50">
+          Getting around
+        </h1>
+        <p className="mt-4 text-pretty text-base leading-relaxed text-zinc-500 dark:text-zinc-400">
+          New here? This page explains the project in plain language — what you
+          can do, and what the buttons mean. No engineering background needed.
+        </p>
+      </header>
 
-      <div className="grid h-[min(560px,70vh)] min-h-[420px] gap-3 overflow-hidden lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.85fr)]">
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-          <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
-            <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              Chart
-            </h2>
-            <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
-              {chartInterval} · zoom / pan on chart
-            </span>
-          </div>
-          <div className="min-h-0 flex-1">
-            <CandleChart
-              candles={chartCandles}
-              intervalLabel={chartInterval}
-              className="h-full"
-            />
-          </div>
-        </section>
-
-        {/* Live book — all levels, no trades tab */}
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-              Live book
-            </h2>
-            <span className="text-xs text-zinc-400 dark:text-zinc-500">
-              {bids.length} bids · {asks.length} asks
-            </span>
-          </div>
-          <p className="mb-3 shrink-0 text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-500">
-            Resting limit orders on the engine.{" "}
-            <span className="text-emerald-600 dark:text-emerald-400">
-              Bids
-            </span>{" "}
-            = buy interest, listed{" "}
-            <strong className="font-medium text-zinc-600 dark:text-zinc-300">
-              descending
-            </strong>{" "}
-            (highest / best bid first).{" "}
-            <span className="text-red-600 dark:text-red-400">Asks</span> = sell
-            interest, listed{" "}
-            <strong className="font-medium text-zinc-600 dark:text-zinc-300">
-              ascending
-            </strong>{" "}
-            (lowest / best ask first).
+      <div className="grid gap-12 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-16">
+        <nav
+          aria-label="On this page"
+          className="hidden lg:sticky lg:top-6 lg:block lg:self-start"
+        >
+          <p className="mb-3 text-xs font-medium tracking-wide text-zinc-400 uppercase">
+            On this page
           </p>
-
-          <div className="grid min-h-0 flex-1 grid-cols-2 gap-6 overflow-hidden text-sm">
-            <div className="flex min-h-0 flex-col overflow-hidden">
-              <div className="mb-1.5 flex shrink-0 items-baseline justify-between gap-2">
-                <div>
-                  <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                    Bids
-                  </p>
-                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                    Price ↓ descending
-                  </p>
-                </div>
-                <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                  Qty
-                </span>
-              </div>
-              <div className="ob-scroll ob-scroll-bid min-h-0 flex-1 space-y-0.5">
-                {bids.map((level) => (
-                  <div
-                    key={level.price}
-                    className="flex justify-between py-0.5 font-mono tabular-nums"
-                  >
-                    <span className="text-emerald-600 dark:text-emerald-400">
-                      {level.price}
-                    </span>
-                    <span className="text-zinc-600 dark:text-zinc-300">
-                      {level.quantity}
-                    </span>
-                  </div>
-                ))}
-                {bids.length === 0 && (
-                  <p className="text-zinc-300 dark:text-zinc-600">Empty</p>
-                )}
-              </div>
-            </div>
-            <div className="flex min-h-0 flex-col overflow-hidden">
-              <div className="mb-1.5 flex shrink-0 items-baseline justify-between gap-2">
-                <div>
-                  <p className="text-xs font-medium text-red-600 dark:text-red-400">
-                    Asks
-                  </p>
-                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                    Price ↑ ascending
-                  </p>
-                </div>
-                <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                  Qty
-                </span>
-              </div>
-              <div className="ob-scroll ob-scroll-ask min-h-0 flex-1 space-y-0.5">
-                {asks.map((level) => (
-                  <div
-                    key={level.price}
-                    className="flex justify-between py-0.5 font-mono tabular-nums"
-                  >
-                    <span className="text-red-600 dark:text-red-400">
-                      {level.price}
-                    </span>
-                    <span className="text-zinc-600 dark:text-zinc-300">
-                      {level.quantity}
-                    </span>
-                  </div>
-                ))}
-                {asks.length === 0 && (
-                  <p className="text-zinc-300 dark:text-zinc-600">Empty</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-            History
-          </h2>
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-md border border-zinc-200 p-0.5 text-xs dark:border-zinc-700">
-              {(["trades", "bbo"] as const).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => {
-                    setHistoryTab(option);
-                    setHistoryPage(0);
-                  }}
-                  className={`rounded px-2.5 py-1 font-medium uppercase ${
-                    historyTab === option
-                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                      : "text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
-                  }`}
+          <ul className="space-y-2 text-sm">
+            {SECTIONS.map((section) => (
+              <li key={section.id}>
+                <a
+                  href={`#${section.id}`}
+                  className="text-zinc-500 transition-colors hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
                 >
-                  {option}
-                </button>
-              ))}
-            </div>
-            <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
-              {historyRows.length} rows
-            </span>
-          </div>
-        </div>
-
-        {historyRows.length === 0 ? (
-          <Empty>
-            {historyTab === "trades"
-              ? "No durable trades yet."
-              : "No BBO snapshots yet."}
-          </Empty>
-        ) : historyTab === "trades" ? (
-          <div className="max-h-[320px] divide-y divide-zinc-100 overflow-y-auto text-sm dark:divide-zinc-800">
-            {(historySlice as HistoryTrade[]).map((trade) => (
-              <div
-                key={trade.tradeId}
-                className="flex flex-wrap items-center justify-between gap-3 py-2.5"
-              >
-                <span className="font-medium text-zinc-950 dark:text-zinc-50">
-                  {trade.quantity} @ {trade.price}
-                </span>
-                <span className="text-xs text-zinc-400 dark:text-zinc-500">
-                  {formatTime(trade.time)}
-                </span>
-              </div>
+                  {section.label}
+                </a>
+              </li>
             ))}
-          </div>
-        ) : (
-          <div className="max-h-[320px] divide-y divide-zinc-100 overflow-y-auto text-sm dark:divide-zinc-800">
-            {(historySlice as BboSnapshot[]).map((row) => (
-              <div
-                key={`${row.time}-${row.engineSequence}`}
-                className="flex flex-wrap items-center justify-between gap-3 py-2.5"
-              >
-                <span>
-                  <span className="text-emerald-600 dark:text-emerald-400">
-                    {row.bestBid ?? "—"}
-                  </span>
-                  {" / "}
-                  <span className="text-red-600 dark:text-red-400">
-                    {row.bestAsk ?? "—"}
-                  </span>
-                </span>
-                <span className="text-xs text-zinc-400 dark:text-zinc-500">
-                  {formatTime(row.time)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+          </ul>
+        </nav>
 
-        <Pager
-          page={safeHistoryPage}
-          pageCount={historyPageCount}
-          onPrev={() => setHistoryPage((p) => Math.max(0, p - 1))}
-          onNext={() =>
-            setHistoryPage((p) => Math.min(historyPageCount - 1, p + 1))
-          }
-        />
-      </section>
+        <article className="max-w-2xl space-y-14 text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">
+          <WikiSection id="what" title="What is this?">
+            <p>
+              CEX is a{" "}
+              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                practice exchange
+              </strong>
+              . You can buy and sell as if it were a real crypto exchange, but
+              the money is fake — paper balances you add yourself.
+            </p>
+            <p>
+              Think of it like a flight simulator for trading: the screens and
+              buttons feel real, so you can learn how markets work without risking
+              cash.
+            </p>
+            <p>
+              There are two places to trade:{" "}
+              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                Spot
+              </strong>{" "}
+              (simple buy/sell) and{" "}
+              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                Perps
+              </strong>{" "}
+              (borrowed-size bets that can go up or down). Both use SOL priced in
+              USD.
+            </p>
+          </WikiSection>
+
+          <WikiSection id="start" title="How to start">
+            <ol className="list-decimal space-y-3 pl-5">
+              <li>
+                Open{" "}
+                <Link
+                  href="/dashboard"
+                  className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+                >
+                  Home
+                </Link>
+                . That is your account overview — who you are, open orders, and
+                balances.
+              </li>
+              <li>
+                Add paper money with{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Add USD
+                </strong>{" "}
+                or{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Add SOL
+                </strong>
+                . Pick an amount and confirm. Nothing leaves a real bank.
+              </li>
+              <li>
+                Go to{" "}
+                <Link
+                  href="/spot"
+                  className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+                >
+                  Spot
+                </Link>{" "}
+                or{" "}
+                <Link
+                  href="/perps"
+                  className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+                >
+                  Perps
+                </Link>
+                , choose buy or sell (or long/short), enter a size, and place the
+                order.
+              </li>
+              <li>
+                Watch the chart, the order book (other people’s resting prices),
+                and your orders list update as trades happen.
+              </li>
+            </ol>
+            <p className="mt-4">
+              Prefer the full order history? Use the{" "}
+              <Link
+                href="/dashboard/orders"
+                className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+              >
+                Orders
+              </Link>{" "}
+              tab in the sidebar.
+            </p>
+          </WikiSection>
+
+          <WikiSection id="spot" title="Spot trading">
+            <p>
+              Spot is the straightforward market: you trade SOL for USD (or the
+              other way around) at the price people are offering.
+            </p>
+            <ul className="mt-4 list-disc space-y-2 pl-5">
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Buy
+                </strong>{" "}
+                — spend USD, receive SOL.
+              </li>
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Sell
+                </strong>{" "}
+                — spend SOL, receive USD.
+              </li>
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Limit order
+                </strong>{" "}
+                — “only trade at this price (or better).” It can wait on the book.
+              </li>
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Market order
+                </strong>{" "}
+                — “trade now at whatever the market will give me.”
+              </li>
+            </ul>
+            <p className="mt-4">
+              You can only spend what you have available. If some money is tied
+              up in an open order, it shows as locked on Home until that order
+              finishes or you cancel it.
+            </p>
+          </WikiSection>
+
+          <WikiSection id="perps" title="Perps trading">
+            <p>
+              Perpetuals (“perps”) let you bet that SOL’s price will rise or fall
+              without owning the coin the whole time. You put up USD as a
+              safety deposit (margin) and can control a larger size with leverage.
+            </p>
+            <ul className="mt-4 list-disc space-y-2 pl-5">
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Long
+                </strong>{" "}
+                — you profit if the price goes up.
+              </li>
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Short
+                </strong>{" "}
+                — you profit if the price goes down.
+              </li>
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Leverage
+                </strong>{" "}
+                — multiplies both gains and losses. Higher leverage means less
+                room for the price to move against you.
+              </li>
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Liquidation
+                </strong>{" "}
+                — if losses eat too much of your margin, the system closes the
+                position for you so you cannot go endlessly negative.
+              </li>
+            </ul>
+            <p className="mt-4">
+              On the Perps page, the bottom tabs show your{" "}
+              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                Position
+              </strong>{" "}
+              (what you are currently holding) and your{" "}
+              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                Orders
+              </strong>
+              .
+            </p>
+          </WikiSection>
+
+          <WikiSection id="words" title="Simple glossary">
+            <dl className="space-y-4">
+              <GlossaryTerm term="Order book">
+                A live list of buy and sell prices waiting to be matched. Bids
+                are buyers; asks are sellers.
+              </GlossaryTerm>
+              <GlossaryTerm term="Fill">
+                When your order actually trades — part or all of it gets matched.
+              </GlossaryTerm>
+              <GlossaryTerm term="Available / locked">
+                Available is free to use. Locked is reserved for an open order or
+                perp margin.
+              </GlossaryTerm>
+              <GlossaryTerm term="Mark price">
+                On perps, the fair price used to measure profit and whether you
+                are close to liquidation.
+              </GlossaryTerm>
+              <GlossaryTerm term="Funding">
+                A small periodic payment between longs and shorts that helps keep
+                the perp price near the spot market.
+              </GlossaryTerm>
+            </dl>
+            <p className="mt-6 text-zinc-500 dark:text-zinc-400">
+              Curious how the software is built behind the scenes? See{" "}
+              <Link
+                href="/dashboard/how-it-works"
+                className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+              >
+                How it works
+              </Link>
+              .
+            </p>
+          </WikiSection>
+
+          <footer className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
+            <p className="text-zinc-500 dark:text-zinc-400">
+              Jump in:{" "}
+              <Link
+                href="/dashboard"
+                className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+              >
+                Home
+              </Link>
+              {" · "}
+              <Link
+                href="/spot"
+                className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+              >
+                Spot
+              </Link>
+              {" · "}
+              <Link
+                href="/perps"
+                className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+              >
+                Perps
+              </Link>
+            </p>
+          </footer>
+        </article>
+      </div>
     </div>
   );
 }
 
-function Pager({
-  page,
-  pageCount,
-  onPrev,
-  onNext,
+function WikiSection({
+  id,
+  title,
+  children,
 }: {
-  page: number;
-  pageCount: number;
-  onPrev: () => void;
-  onNext: () => void;
+  id: string;
+  title: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="mt-3 flex shrink-0 items-center justify-between gap-3">
-      <button
-        type="button"
-        disabled={page <= 0}
-        onClick={onPrev}
-        className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-      >
-        Previous
-      </button>
-      <span className="text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
-        Page {page + 1} / {pageCount}
-      </span>
-      <button
-        type="button"
-        disabled={page >= pageCount - 1}
-        onClick={onNext}
-        className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-      >
-        Next
-      </button>
-    </div>
+    <section id={id} className="scroll-mt-8">
+      <h2 className="font-display text-2xl tracking-tight text-zinc-950 dark:text-zinc-50">
+        {title}
+      </h2>
+      <div className="mt-4 space-y-4">{children}</div>
+    </section>
   );
 }
 
-function MetaChip({
-  label,
-  value,
-  tone,
+function GlossaryTerm({
+  term,
+  children,
 }: {
-  label: string;
-  value: string | number;
-  tone?: "bid" | "ask";
+  term: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="text-right">
-      <p className="text-xs text-zinc-400 dark:text-zinc-500">{label}</p>
-      <p
-        className={`font-semibold ${
-          tone === "bid"
-            ? "text-emerald-600 dark:text-emerald-400"
-            : tone === "ask"
-              ? "text-red-600 dark:text-red-400"
-              : "text-zinc-950 dark:text-zinc-50"
-        }`}
-      >
-        {value}
-      </p>
+    <div>
+      <dt className="font-medium text-zinc-950 dark:text-zinc-50">{term}</dt>
+      <dd className="mt-1">{children}</dd>
     </div>
-  );
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="py-8 text-center text-sm text-zinc-400 dark:text-zinc-500">
-      {children}
-    </p>
   );
 }

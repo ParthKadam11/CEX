@@ -250,7 +250,7 @@ export function CandleChart({
   const up = display != null && display.close >= display.open;
 
   return (
-    <div className={`flex h-full min-h-[280px] flex-col ${className}`}>
+    <div className={`flex h-full min-h-0 flex-col ${className}`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pb-2 pt-2 text-[11px] tabular-nums">
         <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
           {intervalLabel}

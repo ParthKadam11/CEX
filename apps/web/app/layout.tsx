@@ -51,10 +51,9 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
+      <body className="min-h-full bg-background font-sans text-foreground">
         <Provider>
-          <Appbar />
-          {children}
+          <Appbar>{children}</Appbar>
         </Provider>
       </body>
     </html>

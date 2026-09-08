@@ -4,8 +4,8 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] bg-background">
-      <section className="mx-auto flex w-full max-w-[1600px] justify-center px-3 py-4 sm:px-4">
+    <main className="min-h-dvh bg-background">
+      <section className="mx-auto w-full max-w-[1600px] px-4 py-2 sm:px-6">
         {children}
       </section>
     </main>
