@@ -12,6 +12,7 @@ import {
   omsUrl,
 } from "@/lib/backend";
 import {
+  refundAllSimMarkets,
   resetSimRuntimeState,
   startSimHeartbeat,
   stopSimHeartbeat,
@@ -169,9 +170,17 @@ TRUNCATE TABLE "OrderFill", "Order", "CommandOutbox", "OmsProcessedEvent" CASCAD
       .map((k) => k.trim())
       .filter(Boolean);
     if (keys.length > 0) {
-      await dockerExec("infra-redis-1", ["redis-cli", "DEL", ...keys]);
+      // DEL many keys in chunks — Windows docker arg limits are small.
+      for (let i = 0; i < keys.length; i += 100) {
+        await dockerExec("infra-redis-1", [
+          "redis-cli",
+          "DEL",
+          ...keys.slice(i, i + 100),
+        ]);
+      }
     }
     // Recreate consumer groups used by gateway / OMS / ingester.
+    // Use "0" so any message written between DEL and CREATE is still readable.
     for (const [stream, group] of [
       ["orders:commands", "xpg"],
       ["orders:events", "oms"],
@@ -184,7 +193,7 @@ TRUNCATE TABLE "OrderFill", "Order", "CommandOutbox", "OmsProcessedEvent" CASCAD
           "CREATE",
           stream,
           group,
-          "$",
+          "0",
           "MKSTREAM",
         ]);
       } catch {
@@ -213,6 +222,20 @@ TRUNCATE TABLE "OrderFill", "Order", "CommandOutbox", "OmsProcessedEvent" CASCAD
     };
   } catch (error) {
     steps.omsHealth = {
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  // 7) Re-credit MM accounts before the heartbeat starts placing again.
+  try {
+    const funded = await refundAllSimMarkets();
+    steps.simFund = {
+      ok: funded.ok,
+      detail: JSON.stringify(funded.markets),
+    };
+  } catch (error) {
+    steps.simFund = {
       ok: false,
       detail: error instanceof Error ? error.message : String(error),
     };

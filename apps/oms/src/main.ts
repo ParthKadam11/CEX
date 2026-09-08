@@ -63,10 +63,22 @@ async function main(): Promise<void> {
         }
       } catch (error) {
         if (!eventsRunning) return;
-        console.error(
-          "[oms] event loop error:",
-          error instanceof Error ? error.message : error,
-        );
+        const message =
+          error instanceof Error ? error.message : String(error);
+        console.error("[oms] event loop error:", message);
+        if (message.includes("NOGROUP")) {
+          try {
+            await ensureEventGroup(redis);
+            console.log("[oms] recreated event consumer group after NOGROUP");
+          } catch (ensureError) {
+            console.error(
+              "[oms] ensureEventGroup failed:",
+              ensureError instanceof Error
+                ? ensureError.message
+                : ensureError,
+            );
+          }
+        }
         await sleep(1000);
       }
     }

@@ -37,7 +37,7 @@ const LADDER_DEPTH = 18;
 const SETTLE_MS = 20;
 const PRESENCE_TTL_MS = 45_000;
 /** Bump when MM accounts / funding change so hot-reload re-credits. */
-const FUND_EPOCH = 2;
+const FUND_EPOCH = 3;
 /** Bump when default MM behaviour changes (e.g. quotes-only). */
 const DEFAULTS_EPOCH = 2;
 
@@ -169,15 +169,19 @@ function ladderQty(offset: number): number {
 }
 
 async function inject(command: Record<string, unknown>): Promise<boolean> {
-  const response = await fetch(`${engineGatewayUrl}/dev/inject-command`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...engineGatewayHeaders(String(command.userId ?? "")),
-    },
-    body: JSON.stringify(command),
-  });
-  return response.ok || response.status === 202;
+  try {
+    const response = await fetch(`${engineGatewayUrl}/dev/inject-command`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...engineGatewayHeaders(String(command.userId ?? "")),
+      },
+      body: JSON.stringify(command),
+    });
+    return response.ok || response.status === 202;
+  } catch {
+    return false;
+  }
 }
 
 async function injectCredit(
@@ -265,9 +269,45 @@ function resolveMid(bbo: BookBbo, fallback: number): number {
   return fallback;
 }
 
+async function availableBalance(
+  userId: string,
+  asset: "USD" | "SOL",
+): Promise<number> {
+  try {
+    const response = await fetch(
+      `${engineGatewayUrl}/markets/${getSimMarket()}/balances`,
+      {
+        cache: "no-store",
+        headers: engineGatewayHeaders(userId),
+      },
+    );
+    if (!response.ok) return 0;
+    const body = (await response.json()) as {
+      balances?: { asset: string; available: number }[];
+    };
+    const row = (body.balances ?? []).find((b) => b.asset === asset);
+    return row && Number.isFinite(row.available) ? Number(row.available) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function hasWorkingBalance(): Promise<boolean> {
+  if (isPerpMarket()) {
+    return (await availableBalance(MM_BID_USER, "USD")) >= 1_000;
+  }
+  const [usd, sol] = await Promise.all([
+    availableBalance(MM_BID_USER, "USD"),
+    availableBalance(MM_ASK_USERS[0]!, "SOL"),
+  ]);
+  return usd >= 1_000 && sol >= 10;
+}
+
 async function ensureFunded(): Promise<void> {
   const s = state();
-  if (s.funded && s.fundEpoch === FUND_EPOCH) return;
+  if (s.funded && s.fundEpoch === FUND_EPOCH && (await hasWorkingBalance())) {
+    return;
+  }
 
   if (isPerpMarket()) {
     await Promise.all(
@@ -290,8 +330,13 @@ async function ensureFunded(): Promise<void> {
     ]);
   }
 
-  await sleep(SETTLE_MS * 3);
-  s.funded = true;
+  // Credits go through the gateway Redis queue — wait until the engine
+  // actually shows balances (nuclear wipe used to mark funded after 60ms).
+  for (let i = 0; i < 40; i++) {
+    if (await hasWorkingBalance()) break;
+    await sleep(100);
+  }
+  s.funded = await hasWorkingBalance();
   s.fundEpoch = FUND_EPOCH;
 }
 
@@ -576,6 +621,18 @@ export async function runHeartbeatTick(): Promise<{
   const intensity = resolveEffectiveIntensity();
   await ensureFunded();
   const s = state();
+  if (!s.funded) {
+    hb.lastError = "waiting for sim balances after credit";
+    return {
+      mid: s.lastMid || DEFAULT_MID,
+      placed: 0,
+      cancelled: 0,
+      traded: false,
+      intensity,
+      book: await readBook(),
+      prints: [],
+    };
+  }
   let book = await readBook();
   const bbo = book?.bbo ?? { bestBid: null, bestAsk: null };
   let mid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
@@ -811,6 +868,16 @@ export function getMarketMakerStatus() {
 
 /** Reset in-process sim counters so the next tick re-funds and re-seeds. */
 export function resetSimRuntimeState(): void {
+  const bag = globalSim.__cexMmSimByMarket;
+  if (bag) {
+    for (const row of bag.values()) {
+      row.funded = false;
+      row.fundEpoch = 0;
+      row.ticks = 0;
+      row.lastMid = DEFAULT_MID;
+    }
+  }
+  // Also reset the active market row (creates it if the bag was empty).
   const s = state();
   s.funded = false;
   s.fundEpoch = 0;
@@ -819,6 +886,32 @@ export function resetSimRuntimeState(): void {
   const hb = heartbeat();
   hb.lastError = null;
   hb.lastTickAt = null;
+}
+
+/**
+ * After a nuclear wipe: re-credit every sim market and wait until balances land.
+ * Call while the heartbeat is stopped so credits aren't buried behind places.
+ */
+export async function refundAllSimMarkets(): Promise<{
+  ok: boolean;
+  markets: Record<string, boolean>;
+}> {
+  resetSimRuntimeState();
+  const markets: Record<string, boolean> = {};
+  const previous = getSimMarket();
+  try {
+    for (const market of SIM_MARKETS) {
+      setSimMarket(market);
+      await ensureFunded();
+      markets[market] = state().funded;
+    }
+  } finally {
+    setSimMarket(previous);
+  }
+  return {
+    ok: Object.values(markets).every(Boolean),
+    markets,
+  };
 }
 
 /** Cancel every resting order owned by sim users and reset tick state. */

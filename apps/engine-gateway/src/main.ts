@@ -276,9 +276,21 @@ async function main(): Promise<void> {
         }
       } catch (err) {
         if (!commandsRunning) return;
-        log("error", "command loop error", {
-          error: err instanceof Error ? err.message : String(err),
-        });
+        const message = err instanceof Error ? err.message : String(err);
+        log("error", "command loop error", { error: message });
+        if (message.includes("NOGROUP")) {
+          try {
+            await ensureCommandGroup(redis);
+            log("info", "recreated command consumer group after NOGROUP");
+          } catch (ensureErr) {
+            log("error", "ensureCommandGroup failed", {
+              error:
+                ensureErr instanceof Error
+                  ? ensureErr.message
+                  : String(ensureErr),
+            });
+          }
+        }
         await sleep(1000);
       }
     }

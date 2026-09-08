@@ -4,6 +4,7 @@ import { persistEvents } from "./db.js";
 import {
   ackMessage,
   deadLetterMessage,
+  ensureGroup,
   readMessages,
   type MarketDataMessage,
 } from "./redis.js";
@@ -26,10 +27,24 @@ export async function runWorker(
       await processMessages(redis, pool, messages);
     } catch (error) {
       if (signal.aborted) return;
-      console.error(
-        "[ingester] worker error",
-        error instanceof Error ? error.message : String(error),
-      );
+      const message =
+        error instanceof Error ? error.message : String(error);
+      console.error("[ingester] worker error", message);
+      if (message.includes("NOGROUP")) {
+        try {
+          await ensureGroup(redis);
+          console.log(
+            "[ingester] recreated md consumer group after NOGROUP",
+          );
+        } catch (ensureError) {
+          console.error(
+            "[ingester] ensureGroup failed:",
+            ensureError instanceof Error
+              ? ensureError.message
+              : String(ensureError),
+          );
+        }
+      }
       await sleep(1_000, signal);
     }
   }

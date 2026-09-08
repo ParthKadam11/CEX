@@ -416,7 +416,7 @@ export function PerpsPanel() {
   return (
     <div className="flex w-full flex-col lg:h-full lg:min-h-0">
       {/* Ticker */}
-      <div className="flex shrink-0 flex-wrap items-end gap-x-4 gap-y-2 overflow-x-auto border-b border-zinc-200 px-1 py-3 dark:border-zinc-800 sm:gap-x-6 sm:gap-y-3">
+      <div className="flex shrink-0 flex-wrap items-end gap-x-4 gap-y-2 border-b border-zinc-200 px-1 py-3 dark:border-zinc-800 sm:gap-x-6 sm:gap-y-3">
         <div className="flex items-end gap-3">
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">

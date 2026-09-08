@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import type { MarketSymbol, OrderBookSnapshot } from "@cex/exchange-types";
+import { cn } from "@/lib/utils";
 
 const MAX_EVENTS = 40;
 
@@ -77,6 +79,8 @@ export function MarketMakerControls({
   const [spread, setSpread] = useState(2);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
   const onTickRef = useRef(onTickAction);
   onTickRef.current = onTickAction;
 
@@ -129,7 +133,10 @@ export function MarketMakerControls({
   useEffect(() => {
     if (!open) return;
     function onDoc(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
+      setOpen(false);
     }
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") setOpen(false);
@@ -139,6 +146,37 @@ export function MarketMakerControls({
     return () => {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current) return;
+
+    function place() {
+      const trigger = rootRef.current?.getBoundingClientRect();
+      if (!trigger) return;
+      const width = Math.min(22 * 16, window.innerWidth - 24);
+      const left = Math.min(
+        Math.max(12, trigger.right - width),
+        window.innerWidth - width - 12,
+      );
+      const top = Math.min(trigger.bottom + 8, window.innerHeight - 24);
+      setPanelStyle({
+        position: "fixed",
+        top,
+        left,
+        width,
+        maxHeight: Math.max(240, window.innerHeight - top - 16),
+        zIndex: 80,
+      });
+    }
+
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
     };
   }, [open]);
 
@@ -272,6 +310,201 @@ export function MarketMakerControls({
 
   const live = status?.enabled ?? false;
 
+  const panel =
+    open && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={panelRef}
+            style={panelStyle}
+            className="flex flex-col overflow-hidden rounded-md border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950"
+          >
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-100 px-3 py-2.5 dark:border-zinc-800">
+              <div>
+                <p className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
+                  Simulation
+                </p>
+                <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                  Synthetic quotes and flow for the book
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={live}
+                aria-label="Toggle market simulation"
+                disabled={busy}
+                onClick={() => void toggleHeartbeat()}
+                className={cn(
+                  "relative h-5 w-9 shrink-0 rounded-full transition-colors",
+                  live
+                    ? "bg-zinc-950 dark:bg-zinc-100"
+                    : "bg-zinc-300 dark:bg-zinc-600",
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform dark:bg-zinc-950",
+                    live ? "translate-x-4" : "translate-x-0",
+                  )}
+                />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto border-b border-zinc-100 px-3 py-3 dark:border-zinc-800">
+              <ControlRow label="Speed">
+                <div className="flex gap-1">
+                  {SPEED_OPTIONS.map((option) => (
+                    <Chip
+                      key={option.id}
+                      active={speedId === option.id}
+                      onClick={() => {
+                        setSpeedId(option.id);
+                        void syncConfig({ speedId: option.id });
+                      }}
+                      label={option.label}
+                    />
+                  ))}
+                </div>
+              </ControlRow>
+
+              <ControlRow label="Intensity">
+                <div className="flex gap-1">
+                  {INTENSITY_OPTIONS.map((option) => (
+                    <Chip
+                      key={option}
+                      active={intensity === option}
+                      onClick={() => {
+                        setIntensity(option);
+                        void syncConfig({ intensity: option });
+                      }}
+                      label={option}
+                    />
+                  ))}
+                </div>
+              </ControlRow>
+
+              <ControlRow label="Spread">
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4, 5, 6].map((value) => (
+                    <Chip
+                      key={value}
+                      active={spread === value}
+                      onClick={() => {
+                        setSpread(value);
+                        void syncConfig({ spread: value });
+                      }}
+                      label={String(value)}
+                    />
+                  ))}
+                </div>
+              </ControlRow>
+
+              <div className="flex flex-wrap gap-3 text-[11px]">
+                <label className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <input
+                    type="checkbox"
+                    checked={placeQuotes}
+                    onChange={(e) => {
+                      setPlaceQuotes(e.target.checked);
+                      void syncConfig({ placeQuotes: e.target.checked });
+                    }}
+                    className="rounded border-zinc-300 dark:border-zinc-600"
+                  />
+                  Place quotes
+                </label>
+                <label className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <input
+                    type="checkbox"
+                    checked={placeTrades}
+                    onChange={(e) => {
+                      setPlaceTrades(e.target.checked);
+                      void syncConfig({ placeTrades: e.target.checked });
+                    }}
+                    className="rounded border-zinc-300 dark:border-zinc-600"
+                  />
+                  Retail prints
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void runOnce()}
+                  className="h-8 rounded-md border border-zinc-200 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                >
+                  Run one tick
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void clearBook()}
+                  className="h-8 rounded-md border border-red-200 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40"
+                >
+                  Clear order book
+                </button>
+              </div>
+
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void nuclearReset()}
+                className="h-8 w-full rounded-md bg-red-600 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                Wipe all market data
+              </button>
+            </div>
+
+            <div className="shrink-0 px-3 py-2">
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-[11px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">
+                  Recent events
+                </p>
+                {busy && live ? (
+                  <span className="text-[10px] text-zinc-400">ticking…</span>
+                ) : null}
+              </div>
+              <div className="ob-scroll max-h-40 space-y-1.5 pr-1">
+                {events.length === 0 ? (
+                  <p className="py-5 text-center text-[11px] text-zinc-400 dark:text-zinc-500">
+                    Turn on the switch or run one tick.
+                  </p>
+                ) : (
+                  events.map((event) => (
+                    <div
+                      key={event.id}
+                      className="rounded-md bg-zinc-50 px-2 py-1.5 dark:bg-zinc-900/70"
+                    >
+                      <p
+                        className={cn(
+                          "text-[11px] leading-snug",
+                          event.tone === "err"
+                            ? "text-red-600 dark:text-red-400"
+                            : event.tone === "warn"
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-zinc-700 dark:text-zinc-200",
+                        )}
+                      >
+                        {event.text}
+                      </p>
+                      <p className="mt-0.5 text-[10px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                        {new Date(event.at).toLocaleTimeString(undefined, {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                          hour12: false,
+                        })}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <div ref={rootRef} className="relative flex items-center gap-2">
       <button
@@ -284,193 +517,7 @@ export function MarketMakerControls({
         <Settings2 className="size-3.5" aria-hidden />
         {live ? "Sim on" : "Sim"}
       </button>
-
-      {open && (
-        <div className="absolute top-full right-0 z-40 mt-2 w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-md border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950">
-          <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-3 py-2.5 dark:border-zinc-800">
-            <div>
-              <p className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
-                Simulation
-              </p>
-              <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
-                Synthetic quotes and flow for the book
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={live}
-              aria-label="Toggle market simulation"
-              disabled={busy}
-              onClick={() => void toggleHeartbeat()}
-              className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-                live ? "bg-zinc-950 dark:bg-zinc-100" : "bg-zinc-300 dark:bg-zinc-600"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform dark:bg-zinc-950 ${
-                  live ? "translate-x-4" : "translate-x-0"
-                }`}
-              />
-            </button>
-          </div>
-
-          <div className="space-y-3 border-b border-zinc-100 px-3 py-3 dark:border-zinc-800">
-            <ControlRow label="Speed">
-              <div className="flex gap-1">
-                {SPEED_OPTIONS.map((option) => (
-                  <Chip
-                    key={option.id}
-                    active={speedId === option.id}
-                    onClick={() => {
-                      setSpeedId(option.id);
-                      void syncConfig({ speedId: option.id });
-                    }}
-                    label={option.label}
-                  />
-                ))}
-              </div>
-            </ControlRow>
-
-            <ControlRow label="Intensity">
-              <div className="flex gap-1">
-                {INTENSITY_OPTIONS.map((option) => (
-                  <Chip
-                    key={option}
-                    active={intensity === option}
-                    onClick={() => {
-                      setIntensity(option);
-                      void syncConfig({ intensity: option });
-                    }}
-                    label={option}
-                  />
-                ))}
-              </div>
-            </ControlRow>
-
-            <ControlRow label="Spread">
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min={1}
-                  max={6}
-                  step={1}
-                  value={spread}
-                  onChange={(e) => {
-                    const next = Number(e.target.value);
-                    setSpread(next);
-                    void syncConfig({ spread: next });
-                  }}
-                  className="h-1 w-24 accent-zinc-700 dark:accent-zinc-300"
-                />
-                <span className="w-4 text-[11px] tabular-nums text-zinc-500">
-                  {spread}
-                </span>
-              </div>
-            </ControlRow>
-
-            <div className="flex flex-wrap gap-3 text-[11px]">
-              <label className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                <input
-                  type="checkbox"
-                  checked={placeQuotes}
-                  onChange={(e) => {
-                    setPlaceQuotes(e.target.checked);
-                    void syncConfig({ placeQuotes: e.target.checked });
-                  }}
-                  className="rounded border-zinc-300 dark:border-zinc-600"
-                />
-                Place quotes
-              </label>
-              <label className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                <input
-                  type="checkbox"
-                  checked={placeTrades}
-                  onChange={(e) => {
-                    setPlaceTrades(e.target.checked);
-                    void syncConfig({ placeTrades: e.target.checked });
-                  }}
-                  className="rounded border-zinc-300 dark:border-zinc-600"
-                />
-                Retail prints
-              </label>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void runOnce()}
-                className="h-8 rounded-md border border-zinc-200 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
-              >
-                Run one tick
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void clearBook()}
-                className="h-8 rounded-md border border-red-200 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40"
-              >
-                Clear order book
-              </button>
-            </div>
-
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void nuclearReset()}
-              className="h-8 w-full rounded-md bg-red-600 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50"
-            >
-              Wipe all market data
-            </button>
-          </div>
-
-          <div className="px-3 py-2">
-            <div className="mb-1.5 flex items-center justify-between">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-                Recent events
-              </p>
-              {busy && live && (
-                <span className="text-[10px] text-zinc-400">ticking…</span>
-              )}
-            </div>
-            <div className="ob-scroll max-h-40 space-y-1.5 pr-1">
-              {events.length === 0 ? (
-                <p className="py-5 text-center text-[11px] text-zinc-400 dark:text-zinc-500">
-                  Turn on the switch or run one tick.
-                </p>
-              ) : (
-                events.map((event) => (
-                  <div
-                    key={event.id}
-                    className="rounded-md bg-zinc-50 px-2 py-1.5 dark:bg-zinc-900/70"
-                  >
-                    <p
-                      className={`text-[11px] leading-snug ${
-                        event.tone === "err"
-                          ? "text-red-600 dark:text-red-400"
-                          : event.tone === "warn"
-                            ? "text-amber-600 dark:text-amber-400"
-                            : "text-zinc-700 dark:text-zinc-200"
-                      }`}
-                    >
-                      {event.text}
-                    </p>
-                    <p className="mt-0.5 text-[10px] tabular-nums text-zinc-400 dark:text-zinc-500">
-                      {new Date(event.at).toLocaleTimeString(undefined, {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                        hour12: false,
-                      })}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {panel}
     </div>
   );
 }
