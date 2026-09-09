@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     "@cex/app-contracts",
     "@cex/db",
     "@cex/exchange-types",
+    "@cex/solana",
   ],
   turbopack: {},
   images: {
