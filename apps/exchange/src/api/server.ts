@@ -89,7 +89,11 @@ export function createExchangeApp(
       isIdentifier(requestId) ? requestId : crypto.randomUUID(),
     );
 
-    if (c.req.path === "/health" || !options.gatewayToken) {
+    if (
+      c.req.path === "/health" ||
+      c.req.path === "/health/live" ||
+      !options.gatewayToken
+    ) {
       await next();
       return;
     }
@@ -115,13 +119,33 @@ export function createExchangeApp(
     );
   });
 
+  app.get("/health/live", (c) =>
+    c.json({
+      ok: true,
+      service: "exchange",
+      live: true,
+    }),
+  );
+
   app.get("/health", (c) => {
     const markets = [...runtimes.keys()];
-    return c.json({
-      ok: true,
-      markets,
-      market: markets[0] ?? null,
-    });
+    const ok = markets.length > 0;
+    return c.json(
+      {
+        ok,
+        service: "exchange",
+        markets,
+        market: markets[0] ?? null,
+        dependencies: {
+          markets: {
+            ok,
+            count: markets.length,
+            ...(ok ? {} : { detail: "NO_MARKETS" }),
+          },
+        },
+      },
+      ok ? 200 : 503,
+    );
   });
 
   // Dev hard-reset: empty book + balances + WAL (not for production).

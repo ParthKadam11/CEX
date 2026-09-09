@@ -1,6 +1,8 @@
 import { Hono, type Context } from "hono";
 import {
   isAppCommand,
+  OMS_EVENTS_GROUP,
+  ORDERS_EVENTS_STREAM,
   type PlaceCommand,
 } from "@cex/app-contracts";
 import {
@@ -8,6 +10,12 @@ import {
   isIdentifier,
   MAX_PAGE_LIMIT,
 } from "@cex/exchange-types";
+import {
+  checkConsumerGroup,
+  maxEventLag,
+  pingRedis,
+  type RedisHealthClient,
+} from "@cex/logger";
 import {
   OrderNotFoundError,
   OrderOwnershipError,
@@ -21,7 +29,11 @@ type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 500;
 
 export function createOmsApp(
   orderService: OrderService,
-  options: { internalToken?: string | null } = {},
+  options: {
+    internalToken?: string | null;
+    redis?: RedisHealthClient;
+    checkDb?: () => Promise<void>;
+  } = {},
 ) {
   const app = new Hono();
 
@@ -32,7 +44,11 @@ export function createOmsApp(
       isIdentifier(requestId) ? requestId : crypto.randomUUID(),
     );
 
-    if (!options.internalToken || c.req.path === "/health") {
+    if (
+      !options.internalToken ||
+      c.req.path === "/health" ||
+      c.req.path === "/health/live"
+    ) {
       await next();
       return;
     }
@@ -58,13 +74,49 @@ export function createOmsApp(
     );
   });
 
-
-  app.get("/health", (c) =>
-    c.json({
-      ok: true,
-      service: "oms",
-    }),
+  app.get("/health/live", (c) =>
+    c.json({ ok: true, service: "oms", live: true }),
   );
+
+  app.get("/health", async (c) => {
+    if (!options.redis || !options.checkDb) {
+      return c.json({ ok: true, service: "oms", mode: "shallow" });
+    }
+
+    let database = { ok: true as boolean, detail: undefined as string | undefined };
+    try {
+      await options.checkDb();
+    } catch (error) {
+      database = {
+        ok: false,
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+
+    const [redis, events] = await Promise.all([
+      pingRedis(options.redis),
+      checkConsumerGroup(
+        options.redis,
+        ORDERS_EVENTS_STREAM,
+        OMS_EVENTS_GROUP,
+        maxEventLag(),
+      ),
+    ]);
+
+    const ok = database.ok && redis.ok && events.ok;
+    return c.json(
+      {
+        ok,
+        service: "oms",
+        dependencies: {
+          database,
+          redis,
+          events,
+        },
+      },
+      ok ? 200 : 503,
+    );
+  });
 
   app.post("/orders", async (c) => {
     const userId = authenticatedUserId(c);

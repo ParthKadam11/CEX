@@ -23,6 +23,7 @@ async function main(): Promise<void> {
       {
         fetch: createHistoryApp(pool, {
           internalToken: config.internalToken,
+          redis,
         }).fetch,
         port: config.port,
       },

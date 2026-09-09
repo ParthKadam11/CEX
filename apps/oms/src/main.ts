@@ -133,6 +133,8 @@ async function main(): Promise<void> {
 
   const app = createOmsApp(orderService, {
     internalToken: config.internalToken,
+    redis,
+    checkDb: () => repository.health(),
   });
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     log.info("HTTP server listening", { port: info.port });

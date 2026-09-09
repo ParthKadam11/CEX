@@ -87,3 +87,15 @@ export function createLogger(service: string): Logger {
     error: (message, fields) => log("error", message, fields),
   };
 }
+
+export {
+  checkConsumerGroup,
+  maxCommandLag,
+  maxEventLag,
+  maxMdLag,
+  parseXInfoGroups,
+  pingRedis,
+  type DependencyCheck,
+  type RedisHealthClient,
+  type StreamGroupCheck,
+} from "./health.js";

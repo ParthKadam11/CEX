@@ -5,6 +5,16 @@ import {
   MAX_PAGE_LIMIT,
   type MarketSymbol,
 } from "@cex/exchange-types";
+import {
+  MARKET_DATA_CONSUMER_GROUP,
+  MARKET_DATA_STREAM,
+} from "@cex/app-contracts";
+import {
+  checkConsumerGroup,
+  maxMdLag,
+  pingRedis,
+  type RedisHealthClient,
+} from "@cex/logger";
 import type { Pool } from "pg";
 import { listBbo, listCandles, listTrades } from "./history.js";
 
@@ -12,12 +22,15 @@ const MARKETS: MarketSymbol[] = ["SOL-USD", "SOL-USD-PERP"];
 
 export function createHistoryApp(
   pool: Pool,
-  options: { internalToken: string },
+  options: {
+    internalToken: string;
+    redis?: RedisHealthClient;
+  },
 ) {
   const app = new Hono();
 
   app.use("*", async (c, next) => {
-    if (c.req.path === "/health") {
+    if (c.req.path === "/health" || c.req.path === "/health/live") {
       await next();
       return;
     }
@@ -27,13 +40,58 @@ export function createHistoryApp(
     await next();
   });
 
+  app.get("/health/live", (c) =>
+    c.json({ ok: true, service: "ingester", live: true }),
+  );
+
   app.get("/health", async (c) => {
+    let timescale = {
+      ok: true as boolean,
+      detail: undefined as string | undefined,
+    };
     try {
       await pool.query("SELECT 1");
-      return c.json({ ok: true, service: "ingester", markets: MARKETS });
-    } catch {
-      return errorResponse(c, 503, "TIMESCALE_UNAVAILABLE");
+    } catch (error) {
+      timescale = {
+        ok: false,
+        detail: error instanceof Error ? error.message : String(error),
+      };
     }
+
+    const redis = options.redis
+      ? await pingRedis(options.redis)
+      : { ok: true as boolean, detail: "not-configured" };
+    const marketData = options.redis
+      ? await checkConsumerGroup(
+          options.redis,
+          MARKET_DATA_STREAM,
+          MARKET_DATA_CONSUMER_GROUP,
+          maxMdLag(),
+        )
+      : {
+          ok: true as boolean,
+          stream: MARKET_DATA_STREAM,
+          group: MARKET_DATA_CONSUMER_GROUP,
+          exists: false,
+          lag: null,
+          pending: null,
+          detail: "not-configured",
+        };
+
+    const ok = timescale.ok && redis.ok && marketData.ok;
+    return c.json(
+      {
+        ok,
+        service: "ingester",
+        markets: MARKETS,
+        dependencies: {
+          timescale,
+          redis,
+          marketData,
+        },
+      },
+      ok ? 200 : 503,
+    );
   });
 
   app.get("/markets", (c) => c.json({ markets: MARKETS }));

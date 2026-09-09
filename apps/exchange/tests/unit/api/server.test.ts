@@ -313,8 +313,12 @@ describe("exchange HTTP + SSE", () => {
     const health = await (await app.request("/health")).json();
     expect(health).toEqual({
       ok: true,
+      service: "exchange",
       markets: ["SOL-USD", "SOL-USD-PERP"],
       market: "SOL-USD",
+      dependencies: {
+        markets: { ok: true, count: 2 },
+      },
     });
 
     const headers = { "content-type": "application/json" };

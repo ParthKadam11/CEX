@@ -1,11 +1,20 @@
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import type Redis from "ioredis";
-import { isAppCommand } from "@cex/app-contracts";
+import {
+  isAppCommand,
+  ORDERS_COMMANDS_STREAM,
+  XPG_COMMANDS_GROUP,
+} from "@cex/app-contracts";
 import {
   isIdentifier,
   type MarketSymbol,
 } from "@cex/exchange-types";
+import {
+  checkConsumerGroup,
+  maxCommandLag,
+  pingRedis,
+} from "@cex/logger";
 import type { EngineRegistry } from "../engine/registry.js";
 import type { GatewayMetrics } from "../metrics.js";
 import type { LiveBookHub } from "../redis/live-book.js";
@@ -42,6 +51,7 @@ export function createGatewayApp(options: GatewayAppOptions) {
     if (
       !options.internalToken ||
       c.req.path === "/health" ||
+      c.req.path === "/health/live" ||
       c.req.path === "/metrics"
     ) {
       await next();
@@ -313,29 +323,46 @@ export function createGatewayApp(options: GatewayAppOptions) {
     });
   });
 
+  app.get("/health/live", (c) =>
+    c.json({ ok: true, service: "engine-gateway", live: true }),
+  );
+
   app.get("/health", async (c) => {
-    const redisOk = options.redis.status === "ready";
+    const [redis, commands] = await Promise.all([
+      pingRedis(options.redis),
+      checkConsumerGroup(
+        options.redis,
+        ORDERS_COMMANDS_STREAM,
+        XPG_COMMANDS_GROUP,
+        maxCommandLag(),
+      ),
+    ]);
     const engineChecks = await Promise.all(
       options.engines.all().map(async (engine) => ({
+        market: engine.market,
         ok: await checkEngine(engine),
       })),
     );
     const engineOk = engineChecks.every((e) => e.ok);
     const sseOk = options.isSseConnected();
-    const ok = redisOk && engineOk && sseOk;
+    const ok = redis.ok && engineOk && sseOk && commands.ok;
 
-    return c.json({
-      ok,
-      service: "engine-gateway",
-      market: options.primaryMarket,
-      markets: options.engines.markets(),
-      dependencies: {
-        redis: redisOk,
-        engine: engineOk,
-        sse: sseOk,
+    return c.json(
+      {
+        ok,
+        service: "engine-gateway",
+        market: options.primaryMarket,
+        markets: options.engines.markets(),
+        dependencies: {
+          redis,
+          engine: { ok: engineOk, markets: engineChecks },
+          sse: { ok: sseOk },
+          commands,
+        },
+        metrics: options.metrics.snapshot(),
       },
-      metrics: options.metrics.snapshot(),
-    });
+      ok ? 200 : 503,
+    );
   });
 
   app.get("/metrics", (c) =>

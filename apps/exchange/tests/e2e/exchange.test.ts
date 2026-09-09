@@ -66,8 +66,12 @@ describe("Exchange E2E — feature checklist", () => {
       expect(res.status).toBe(200);
       expect(await body(res)).toEqual({
         ok: true,
+        service: "exchange",
         markets: ["SOL-USD"],
         market: "SOL-USD",
+        dependencies: {
+          markets: { ok: true, count: 1 },
+        },
       });
     });
   });
