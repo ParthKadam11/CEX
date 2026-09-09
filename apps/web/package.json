@@ -13,6 +13,7 @@
     "@cex/app-contracts": "workspace:*",
     "@cex/db": "workspace:*",
     "@cex/exchange-types": "workspace:*",
+    "@cex/solana": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lightweight-charts": "^5.2.1",

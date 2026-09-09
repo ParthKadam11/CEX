@@ -8,7 +8,8 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4"
@@ -16,6 +17,7 @@
   "devDependencies": {
     "@cex/typescript-config": "workspace:*",
     "@types/node": "^20.19.43",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

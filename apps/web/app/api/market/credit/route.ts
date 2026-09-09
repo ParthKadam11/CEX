@@ -38,6 +38,19 @@ export async function POST(request: NextRequest) {
   if (asset !== "SOL" && asset !== "USD") {
     return bffError(request, 400, "INVALID_ASSET");
   }
+  // Phase 0 decision: USD stays paper; SOL should come from Devnet deposits.
+  // Keep local paper SOL behind an explicit flag until Phase 2 watcher ships.
+  if (
+    asset === "SOL" &&
+    process.env.ALLOW_PAPER_SOL_CREDIT !== "true"
+  ) {
+    return bffError(
+      request,
+      403,
+      "PAPER_SOL_DISABLED",
+      "SOL credits come from Devnet deposits. Set ALLOW_PAPER_SOL_CREDIT=true for local paper mint.",
+    );
+  }
   if (market === "SOL-USD-PERP" && asset !== "USD") {
     return bffError(request, 400, "PERP_USD_ONLY");
   }

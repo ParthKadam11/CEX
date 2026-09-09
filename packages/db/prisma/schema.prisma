@@ -41,24 +41,25 @@ enum OmsOrderStatus {
 }
 
 model User {
-  id            String      @id @default(uuid())
-  username      String      @unique
-  email         String      @unique
-  name          String?
-  password      String?
-  profilePic    String?
-  solWalletId   String?
-  solwallet     SolWallet?
-  provider      Provider
-  orders        Order[]
+  id          String     @id @default(uuid())
+  username    String     @unique
+  email       String     @unique
+  name        String?
+  password    String?
+  profilePic  String?
+  solwallet   SolWallet?
+  provider    Provider
+  orders      Order[]
 }
 
+/// Per-user custodial Devnet deposit address. Secret is AES-GCM encrypted.
 model SolWallet {
-  id          String  @id @default(uuid())
-  publicKey   String
-  privateKey  String
-  userId      String  @unique
-  user        User    @relation(fields: [userId], references: [id])
+  id                  String   @id @default(uuid())
+  publicKey           String   @unique
+  encryptedPrivateKey String
+  createdAt           DateTime @default(now())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id])
 }
 
 model Order {
