@@ -21,4 +21,4 @@ if (process.env.NODE_ENV !== "production") {
 
 export default prisma;
 export { PrismaClient };
-export { Provider } from "../generated/prisma/enums";
+export { Provider, DepositStatus } from "../generated/prisma/enums";

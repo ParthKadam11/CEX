@@ -1,0 +1,31 @@
+{
+  "name": "@cex/deposit-watcher",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cex/app-contracts": "workspace:*",
+    "@cex/db": "workspace:*",
+    "@cex/logger": "workspace:*",
+    "@cex/solana": "workspace:*",
+    "@hono/node-server": "^2.1.1",
+    "@solana/web3.js": "^1.98.4",
+    "dotenv": "^17.4.2",
+    "hono": "^4.13.3",
+    "ioredis": "^5.8.2"
+  },
+  "devDependencies": {
+    "@cex/typescript-config": "workspace:*",
+    "@types/node": "^20.19.43",
+    "tsx": "^4.20.0",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
+  }
+}
