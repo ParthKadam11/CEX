@@ -32,11 +32,11 @@ export class CommandHandler {
   ) {}
 
   async handle(command: AppCommand): Promise<void> {
+    const ids = correlation(command, this.primaryMarket);
+
     if (await this.dedupe.isProcessed(command.commandId)) {
       this.metrics.increment("commandsDuplicate");
-      log("debug", "duplicate command skipped", {
-        commandId: command.commandId,
-      });
+      log("debug", "duplicate command skipped", ids);
       return;
     }
 
@@ -44,7 +44,7 @@ export class CommandHandler {
     if (cached) {
       this.metrics.increment("commandsOutcomeReplay");
       log("debug", "replaying saved command outcome", {
-        commandId: command.commandId,
+        ...ids,
         events: cached.length,
       });
       await this.publishAll(cached);
@@ -61,7 +61,7 @@ export class CommandHandler {
       this.metrics.increment("commandsFailed");
       const reason = err instanceof Error ? err.message : String(err);
       log("error", "command failed", {
-        commandId: command.commandId,
+        ...ids,
         type: command.type,
         error: reason,
       });
@@ -71,7 +71,7 @@ export class CommandHandler {
       const retained = await this.dedupe.loadOutcome(command.commandId);
       if (retained) {
         log("warn", "command outcome retained for retry", {
-          commandId: command.commandId,
+          ...ids,
           events: retained.length,
         });
         return;
@@ -84,7 +84,7 @@ export class CommandHandler {
         await this.dedupe.markProcessed(command.commandId);
       } catch (publishErr) {
         log("error", "failed to publish COMMAND_FAILED", {
-          commandId: command.commandId,
+          ...ids,
           error:
             publishErr instanceof Error
               ? publishErr.message
@@ -121,21 +121,23 @@ export class CommandHandler {
         command.asset,
         command.amount,
         command.commandId,
+        undefined,
+        command.requestId,
       );
       return [
-        {
+        withRequestId(command, {
           eventId: eventId(command.commandId, "CREDIT_OK"),
           commandId: command.commandId,
           type: "CREDIT_OK",
           userId: command.userId,
           market,
           timestamp: Date.now(),
-        },
+        }),
       ];
     } catch (err) {
       this.metrics.increment("commandsFailed");
       return [
-        {
+        withRequestId(command, {
           eventId: eventId(command.commandId, "CREDIT_FAILED"),
           commandId: command.commandId,
           type: "CREDIT_FAILED",
@@ -143,7 +145,7 @@ export class CommandHandler {
           market,
           reason: err instanceof Error ? err.message : String(err),
           timestamp: Date.now(),
-        },
+        }),
       ];
     }
   }
@@ -151,16 +153,20 @@ export class CommandHandler {
   private async executePlace(command: PlaceCommand): Promise<AppOrderEvent[]> {
     const engine = this.engines.get(command.market);
     const order = toEngineOrder(command);
-    const result = await engine.place(order);
+    const result = await engine.place(order, undefined, command.requestId);
     return placeEvents(command, result);
   }
 
   private async executeCancel(command: CancelCommand): Promise<AppOrderEvent[]> {
     const engine = this.engines.get(command.market);
-    const result = await engine.cancel(command.orderId);
+    const result = await engine.cancel(
+      command.orderId,
+      undefined,
+      command.requestId,
+    );
     if (result.cancelled) {
       return [
-        {
+        withRequestId(command, {
           eventId: eventId(command.commandId, "CANCELLED"),
           commandId: command.commandId,
           type: "CANCELLED",
@@ -171,12 +177,12 @@ export class CommandHandler {
           order: result.order,
           status: result.order?.status,
           timestamp: Date.now(),
-        },
+        }),
       ];
     }
 
     return [
-      {
+      withRequestId(command, {
         eventId: eventId(command.commandId, "COMMAND_FAILED"),
         commandId: command.commandId,
         type: "COMMAND_FAILED",
@@ -186,7 +192,7 @@ export class CommandHandler {
         clientOrderId: command.clientOrderId,
         reason: result.reason ?? "CANCEL_FAILED",
         timestamp: Date.now(),
-      },
+      }),
     ];
   }
 
@@ -194,7 +200,7 @@ export class CommandHandler {
     command: AppCommand,
     reason: string,
   ): AppOrderEvent {
-    return {
+    return withRequestId(command, {
       eventId: eventId(command.commandId, "COMMAND_FAILED"),
       commandId: command.commandId,
       type: "COMMAND_FAILED",
@@ -207,7 +213,7 @@ export class CommandHandler {
           : undefined,
       reason,
       timestamp: Date.now(),
-    };
+    });
   }
 
   private async publishAll(events: AppOrderEvent[]): Promise<void> {
@@ -221,12 +227,13 @@ export class CommandHandler {
         event.type === "CREDIT_FAILED";
       log(noisyFailure ? "warn" : "debug", "command event published", {
         type: event.type,
+        requestId: event.requestId,
         commandId: event.commandId,
         orderId: event.orderId,
         eventId: event.eventId,
-        ...(noisyFailure && "reason" in event && event.reason
-          ? { reason: event.reason }
-          : {}),
+        market: event.market,
+        userId: event.userId,
+        ...(noisyFailure && event.reason ? { reason: event.reason } : {}),
       });
     }
   }
@@ -238,7 +245,7 @@ function placeEvents(
 ): AppOrderEvent[] {
   if (!result.accepted) {
     return [
-      {
+      withRequestId(command, {
         eventId: eventId(command.commandId, "REJECTED"),
         commandId: command.commandId,
         type: "REJECTED",
@@ -250,12 +257,12 @@ function placeEvents(
         status: result.order.status,
         reason: result.reason ?? "REJECTED",
         timestamp: Date.now(),
-      },
+      }),
     ];
   }
 
   const events: AppOrderEvent[] = [
-    {
+    withRequestId(command, {
       eventId: eventId(command.commandId, "ACCEPTED"),
       commandId: command.commandId,
       type: "ACCEPTED",
@@ -266,50 +273,88 @@ function placeEvents(
       order: result.order,
       status: result.order.status,
       timestamp: Date.now(),
-    },
+    }),
   ];
 
   if (
     result.order.status === "OPEN" ||
     result.order.status === "PARTIALLY_FILLED"
   ) {
-    events.push({
-      eventId: eventId(command.commandId, "RESTING"),
-      commandId: command.commandId,
-      type: "RESTING",
-      userId: command.userId,
-      market: command.market,
-      orderId: result.order.orderId,
-      clientOrderId: command.clientOrderId,
-      order: result.order,
-      status: result.order.status,
-      timestamp: Date.now(),
-    });
+    events.push(
+      withRequestId(command, {
+        eventId: eventId(command.commandId, "RESTING"),
+        commandId: command.commandId,
+        type: "RESTING",
+        userId: command.userId,
+        market: command.market,
+        orderId: result.order.orderId,
+        clientOrderId: command.clientOrderId,
+        order: result.order,
+        status: result.order.status,
+        timestamp: Date.now(),
+      }),
+    );
   }
 
   for (const position of result.positions ?? []) {
-    events.push({
-      eventId: eventId(
-        command.commandId,
-        "POSITION",
-        `${position.userId}:${position.market}`,
-      ),
-      commandId: command.commandId,
-      type: "POSITION",
-      userId: position.userId,
-      market: position.market,
-      position: {
-        size: position.size,
-        entryPrice: position.entryPrice,
-        margin: position.margin,
-        leverage: position.leverage,
-        updatedAt: position.updatedAt,
-      },
-      timestamp: position.updatedAt || Date.now(),
-    });
+    events.push(
+      withRequestId(command, {
+        eventId: eventId(
+          command.commandId,
+          "POSITION",
+          `${position.userId}:${position.market}`,
+        ),
+        commandId: command.commandId,
+        type: "POSITION",
+        userId: position.userId,
+        market: position.market,
+        position: {
+          size: position.size,
+          entryPrice: position.entryPrice,
+          margin: position.margin,
+          leverage: position.leverage,
+          updatedAt: position.updatedAt,
+        },
+        timestamp: position.updatedAt || Date.now(),
+      }),
+    );
   }
 
   return events;
+}
+
+function withRequestId(
+  command: AppCommand,
+  event: AppOrderEvent,
+): AppOrderEvent {
+  return command.requestId
+    ? { ...event, requestId: command.requestId }
+    : event;
+}
+
+function correlation(
+  command: AppCommand,
+  primaryMarket: MarketSymbol,
+): {
+  requestId?: string;
+  commandId: string;
+  orderId?: string;
+  market: MarketSymbol;
+  userId: string;
+} {
+  return {
+    requestId: command.requestId,
+    commandId: command.commandId,
+    orderId:
+      command.type === "PLACE" || command.type === "CANCEL"
+        ? command.orderId
+        : undefined,
+    market:
+      command.type === "CREDIT"
+        ? (command.market ?? primaryMarket)
+        : command.market,
+    userId: command.userId,
+  };
 }
 
 function eventId(

@@ -71,12 +71,16 @@ export class EngineClient {
     amount: number,
     commandId?: string,
     signal?: AbortSignal,
+    requestId?: string,
   ): Promise<CreditResult & { idempotent?: boolean }> {
     const res = await this.request(
       `/v1/markets/${this.market}/credit`,
       {
         method: "POST",
-        headers: { ...this.headers(), "content-type": "application/json" },
+        headers: {
+          ...this.headers(requestId),
+          "content-type": "application/json",
+        },
         body: JSON.stringify({
           userId,
           asset,
@@ -99,12 +103,19 @@ export class EngineClient {
     return body;
   }
 
-  async place(order: Order, signal?: AbortSignal): Promise<PlacementResult> {
+  async place(
+    order: Order,
+    signal?: AbortSignal,
+    requestId?: string,
+  ): Promise<PlacementResult> {
     const res = await this.request(
       `/v1/markets/${this.market}/orders`,
       {
         method: "POST",
-        headers: { ...this.headers(), "content-type": "application/json" },
+        headers: {
+          ...this.headers(requestId),
+          "content-type": "application/json",
+        },
         body: JSON.stringify({
           orderId: order.orderId,
           userId: order.userId,
@@ -139,10 +150,14 @@ export class EngineClient {
     return body;
   }
 
-  async cancel(orderId: string, signal?: AbortSignal): Promise<CancelResult> {
+  async cancel(
+    orderId: string,
+    signal?: AbortSignal,
+    requestId?: string,
+  ): Promise<CancelResult> {
     const res = await this.request(
       `/v1/markets/${this.market}/orders/${orderId}`,
-      { method: "DELETE", headers: this.headers() },
+      { method: "DELETE", headers: this.headers(requestId) },
       false,
       signal,
     );
@@ -378,8 +393,11 @@ export class EngineClient {
     return this.headers();
   }
 
-  private headers(): Record<string, string> {
-    return { "x-gateway-token": this.gatewayToken };
+  private headers(requestId?: string): Record<string, string> {
+    return {
+      "x-gateway-token": this.gatewayToken,
+      "x-request-id": requestId?.trim() || crypto.randomUUID(),
+    };
   }
 
   private async request(

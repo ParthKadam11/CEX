@@ -78,6 +78,8 @@ export type PlaceCommand = {
   leverage?: number;
   // Optional engine order id; otherwise XPG/engine may assign.
   orderId?: string;
+  /** HTTP / client correlation id (threaded web → OMS → gateway → events). */
+  requestId?: string;
   timestamp: number;
 };
 
@@ -88,6 +90,8 @@ export type CancelCommand = {
   clientOrderId?: string;
   orderId: string;
   market: MarketSymbol;
+  /** HTTP / client correlation id. */
+  requestId?: string;
   timestamp: number;
 };
 
@@ -100,6 +104,8 @@ export type CreditCommand = {
   amount: number;
   /** Target engine market; defaults to SOL-USD when omitted. */
   market?: MarketSymbol;
+  /** HTTP / client correlation id. */
+  requestId?: string;
   timestamp: number;
 };
 
@@ -111,6 +117,9 @@ export function isAppCommand(value: unknown): value is AppCommand {
     !isIdentifier(value.commandId) ||
     !isIdentifier(value.userId)
   ) {
+    return false;
+  }
+  if (value.requestId !== undefined && !isIdentifier(value.requestId)) {
     return false;
   }
 
@@ -189,6 +198,8 @@ export type AppOrderEventType =
 export type AppOrderEvent = {
   eventId: string;
   commandId?: string;
+  /** Propagated from the originating AppCommand when present. */
+  requestId?: string;
   type: AppOrderEventType;
   userId: string;
   market: MarketSymbol;

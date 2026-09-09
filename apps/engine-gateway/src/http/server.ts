@@ -362,8 +362,14 @@ export function createGatewayApp(options: GatewayAppOptions) {
       return errorResponse(c, 400, "INVALID_COMMAND");
     }
 
-    const streamId = await injectCommand(options.redis, body);
-    return c.json({ ok: true, streamId }, 202);
+    const requestId = c.req.header("x-request-id");
+    const command =
+      requestId && !body.requestId
+        ? { ...body, requestId }
+        : body;
+
+    const streamId = await injectCommand(options.redis, command);
+    return c.json({ ok: true, streamId, requestId: command.requestId }, 202);
   });
 
   app.post("/dev/reset", async (c) => {

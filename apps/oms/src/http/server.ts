@@ -77,7 +77,11 @@ export function createOmsApp(
       return errorResponse(c, 400, "INVALID_JSON");
     }
 
-    const command = parsePlaceCommand(body, userId);
+    const command = parsePlaceCommand(
+      body,
+      userId,
+      c.req.header("x-request-id"),
+    );
     if (!command) return errorResponse(c, 400, "INVALID_ORDER");
 
     try {
@@ -135,6 +139,7 @@ export function createOmsApp(
         typeof body.clientOrderId === "string"
           ? body.clientOrderId
           : undefined,
+        c.req.header("x-request-id"),
       );
       log.info("order cancel accepted", {
         requestId: c.req.header("x-request-id"),
@@ -199,6 +204,7 @@ export function createOmsApp(
 function parsePlaceCommand(
   value: unknown,
   userId: string,
+  requestId?: string | null,
 ): PlaceCommand | null {
   if (!isRecord(value)) return null;
 
@@ -210,6 +216,7 @@ function parsePlaceCommand(
     timestamp: Date.now(),
     orderId:
       value.orderId === undefined ? crypto.randomUUID() : value.orderId,
+    ...(requestId ? { requestId } : {}),
   };
 
   if (!isAppCommand(candidate) || candidate.type !== "PLACE") return null;

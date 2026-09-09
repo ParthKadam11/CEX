@@ -69,6 +69,11 @@ describe("application command validation", () => {
     ).toBe(true);
   });
 
+  it("threads optional requestId and rejects bad ones", () => {
+    expect(isAppCommand({ ...basePlace, requestId: "req-1" })).toBe(true);
+    expect(isAppCommand({ ...basePlace, requestId: "bad id" })).toBe(false);
+  });
+
   it("only accepts FOK_BUDGET for market buys with a budget", () => {
     expect(
       isAppCommand({

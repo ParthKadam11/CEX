@@ -86,6 +86,7 @@ describe("OMS HTTP authentication", () => {
       "owner",
       "engine-order",
       undefined,
+      undefined,
     );
   });
 

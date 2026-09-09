@@ -59,6 +59,7 @@ async function main(): Promise<void> {
             const event = message.event;
             await repository.applyEvent(event);
             log.debug("order event applied", {
+              requestId: event.requestId,
               eventId: event.eventId,
               commandId: event.commandId,
               orderId: event.orderId,
@@ -106,6 +107,10 @@ async function main(): Promise<void> {
             await orderService.publishOutboxEntry(entry.payload);
           } catch (error) {
             log.error("outbox publish failed", {
+              requestId:
+                "requestId" in entry.payload
+                  ? entry.payload.requestId
+                  : undefined,
               commandId: entry.payload.commandId,
               orderId:
                 "orderId" in entry.payload

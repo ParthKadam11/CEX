@@ -170,13 +170,20 @@ function ladderQty(offset: number): number {
 
 async function inject(command: Record<string, unknown>): Promise<boolean> {
   try {
+    const requestId = crypto.randomUUID();
     const response = await fetch(`${engineGatewayUrl}/dev/inject-command`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        ...engineGatewayHeaders(String(command.userId ?? "")),
+        ...engineGatewayHeaders(String(command.userId ?? ""), requestId),
       },
-      body: JSON.stringify(command),
+      body: JSON.stringify({
+        ...command,
+        requestId:
+          typeof command.requestId === "string"
+            ? command.requestId
+            : requestId,
+      }),
     });
     return response.ok || response.status === 202;
   } catch {

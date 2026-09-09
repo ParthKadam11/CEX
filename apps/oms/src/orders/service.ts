@@ -113,6 +113,7 @@ export class OrderService {
     userId: string,
     engineOrderId: string,
     clientOrderId?: string,
+    requestId?: string | null,
   ) {
     const order = await this.repository.findByEngineOrderId(engineOrderId);
     if (!order) throw new OrderNotFoundError();
@@ -126,11 +127,21 @@ export class OrderService {
     if (order.status === OmsOrderStatus.CANCEL_REQUESTED) {
       return {
         order,
-        command: cancelCommandFromOrder(order, userId, clientOrderId),
+        command: cancelCommandFromOrder(
+          order,
+          userId,
+          clientOrderId,
+          requestId,
+        ),
       };
     }
 
-    const command = cancelCommandFromOrder(order, userId, clientOrderId);
+    const command = cancelCommandFromOrder(
+      order,
+      userId,
+      clientOrderId,
+      requestId,
+    );
     const updated = await this.repository.requestCancel(
       order.id,
       command.commandId,
@@ -143,7 +154,12 @@ export class OrderService {
       if (latest.status === OmsOrderStatus.CANCEL_REQUESTED) {
         return {
           order: latest,
-          command: cancelCommandFromOrder(latest, userId, clientOrderId),
+          command: cancelCommandFromOrder(
+            latest,
+            userId,
+            clientOrderId,
+            requestId,
+          ),
         };
       }
       throw new OrderNotCancellableError();
@@ -194,6 +210,7 @@ function cancelCommandFromOrder(
   },
   userId: string,
   clientOrderId?: string,
+  requestId?: string | null,
 ): CancelCommand {
   return {
     commandId: order.cancelCommandId ?? crypto.randomUUID(),
@@ -202,6 +219,7 @@ function cancelCommandFromOrder(
     clientOrderId,
     orderId: order.engineOrderId,
     market: order.market as MarketSymbol,
+    ...(requestId ? { requestId } : {}),
     timestamp: Date.now(),
   };
 }
