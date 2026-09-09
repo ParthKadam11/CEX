@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import type { Balance } from "@cex/exchange-types";
 import { SPOT_VENUE } from "@/lib/markets";
+import { SolDepositPanel } from "@/components/SolDepositPanel";
 import {
   balanceFor,
   errorMessage,
@@ -75,7 +76,11 @@ export function DashboardHome() {
       setMessage(errorMessage(body) ?? "Credit failed");
       return;
     }
-    setMessage(`Added ${amount.toLocaleString()} ${asset}`);
+    setMessage(
+      creditAsset === "SOL"
+        ? `Demo minted ${amount.toLocaleString()} SOL`
+        : `Added ${amount.toLocaleString()} USD`,
+    );
     setCreditAsset(null);
     setCreditAmount("");
     window.setTimeout(() => void refresh(), 400);
@@ -133,7 +138,9 @@ export function DashboardHome() {
           <h1 className="font-display text-2xl tracking-tight text-zinc-950 dark:text-zinc-50">
             {name}
           </h1>
-          <p className="text-sm text-zinc-400">Spot paper ledger</p>
+          <p className="text-sm text-zinc-400">
+            Exchange SOL + paper USD
+          </p>
         </div>
       </div>
 
@@ -232,15 +239,24 @@ export function DashboardHome() {
         </section>
 
         <aside className="order-1 space-y-4 lg:order-2 lg:pt-1">
-          <div className="flex items-baseline justify-between gap-3">
+          <SolDepositPanel
+            exchangeSolAvailable={sol.available}
+            exchangeSolLocked={sol.locked}
+            paperUsdAvailable={usd.available}
+            paperUsdLocked={usd.locked}
+          />
+
+          <div className="flex items-baseline justify-between gap-3 pt-1">
             <h2 className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
-              Balances
+              Fund
             </h2>
-            <p className="text-xs text-zinc-400">Available / locked</p>
+            <p className="text-xs text-zinc-400">Paper tools</p>
           </div>
 
           <BalanceCard
             asset="USD"
+            subtitle="Paper quote"
+            addLabel="Add USD"
             available={usd.available}
             locked={usd.locked}
             onAdd={() => startCredit("USD")}
@@ -249,6 +265,8 @@ export function DashboardHome() {
           />
           <BalanceCard
             asset="SOL"
+            subtitle="Demo mint only"
+            addLabel="Demo mint"
             available={sol.available}
             locked={sol.locked}
             onAdd={() => startCredit("SOL")}
@@ -259,8 +277,15 @@ export function DashboardHome() {
           {creditAsset && (
             <div className="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
               <p className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
-                Add {creditAsset}
+                {creditAsset === "SOL" ? "Demo mint SOL" : "Add USD"}
               </p>
+              {creditAsset === "SOL" ? (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Prefer Devnet deposits above. Demo mint needs{" "}
+                  <code className="text-[10px]">ALLOW_PAPER_SOL_CREDIT=true</code>
+                  .
+                </p>
+              ) : null}
               <input
                 id="credit-amount"
                 type="text"
@@ -350,6 +375,8 @@ function OrdersTabButton({
 
 function BalanceCard({
   asset,
+  subtitle,
+  addLabel,
   available,
   locked,
   onAdd,
@@ -357,6 +384,8 @@ function BalanceCard({
   adding,
 }: {
   asset: string;
+  subtitle: string;
+  addLabel: string;
   available: number;
   locked: number;
   onAdd: () => void;
@@ -373,6 +402,7 @@ function BalanceCard({
           <p className="text-xs font-medium tracking-wide text-zinc-400 uppercase">
             {asset}
           </p>
+          <p className="mt-0.5 text-[11px] text-zinc-400">{subtitle}</p>
           <p className="mt-2 font-display text-3xl tracking-tight text-zinc-950 tabular-nums dark:text-zinc-50">
             {available.toLocaleString()}
           </p>
@@ -389,7 +419,7 @@ function BalanceCard({
               : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 dark:hover:bg-zinc-900 dark:hover:text-zinc-50",
           )}
         >
-          Add {asset}
+          {addLabel}
         </button>
       </div>
 

@@ -131,8 +131,8 @@ export function HowItWorks() {
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   Web
                 </strong>{" "}
-                — Next.js UI with auth, paper credit, Spot/Perps desks, and BFF
-                proxies.
+                — Next.js UI with auth, Devnet deposits, paper USD credit,
+                Spot/Perps desks, and BFF proxies.
               </li>
             </ul>
           </DocSection>

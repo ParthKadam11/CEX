@@ -7,6 +7,7 @@ import type { Balance, OrderBookSnapshot } from "@cex/exchange-types";
 import { CandleChart } from "@/components/CandleChart";
 import { MarketMakerControls } from "@/components/MarketMakerControls";
 import { OrderBookPanel } from "@/components/OrderBookPanel";
+import { SolDepositPanel } from "@/components/SolDepositPanel";
 import { TradeDeskLayout } from "@/components/TradeDeskLayout";
 import { useMarketStream } from "@/hooks/useMarketStream";
 import { SPOT_VENUE } from "@/lib/markets";
@@ -351,13 +352,13 @@ export function TradingPanel() {
         <TickerStat label="Bid" value={fmtNum(book.bbo.bestBid)} tone="up" />
         <TickerStat label="Ask" value={fmtNum(book.bbo.bestAsk)} tone="down" />
         <TickerStat
-          label="USD"
+          label="Paper USD"
           value={`${usd.available.toLocaleString()}${
             usd.locked > 0 ? ` (${usd.locked.toLocaleString()} locked)` : ""
           }`}
         />
         <TickerStat
-          label="SOL"
+          label="Exchange SOL"
           value={`${sol.available.toLocaleString()}${
             sol.locked > 0 ? ` (${sol.locked.toLocaleString()} locked)` : ""
           }`}
@@ -486,35 +487,13 @@ export function TradingPanel() {
             </div>
 
             <form className="flex flex-1 flex-col gap-3" onSubmit={placeOrder}>
-              <div className="rounded-md border border-zinc-100 px-3 py-2.5 dark:border-zinc-800">
-                <p className="text-[10px] font-medium tracking-wide text-zinc-400 uppercase">
-                  Balances
-                </p>
-                <div className="mt-1.5 flex justify-between gap-3 text-[11px] tabular-nums">
-                  <span className="text-zinc-500">USD</span>
-                  <span className="text-zinc-950 dark:text-zinc-50">
-                    {usd.available.toLocaleString()}
-                    {usd.locked > 0 ? (
-                      <span className="text-zinc-400">
-                        {" "}
-                        / {usd.locked.toLocaleString()} locked
-                      </span>
-                    ) : null}
-                  </span>
-                </div>
-                <div className="mt-1 flex justify-between gap-3 text-[11px] tabular-nums">
-                  <span className="text-zinc-500">SOL</span>
-                  <span className="text-zinc-950 dark:text-zinc-50">
-                    {sol.available.toLocaleString()}
-                    {sol.locked > 0 ? (
-                      <span className="text-zinc-400">
-                        {" "}
-                        / {sol.locked.toLocaleString()} locked
-                      </span>
-                    ) : null}
-                  </span>
-                </div>
-              </div>
+              <SolDepositPanel
+                compact
+                exchangeSolAvailable={sol.available}
+                exchangeSolLocked={sol.locked}
+                paperUsdAvailable={usd.available}
+                paperUsdLocked={usd.locked}
+              />
 
               {mode === "limit" && (
                 <div>
