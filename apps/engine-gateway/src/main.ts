@@ -231,7 +231,7 @@ async function main(): Promise<void> {
           return;
         }
 
-        log("info", "SSE event received", { kind: event.kind });
+        log("debug", "SSE event received", { kind: event.kind });
       },
       {
         onConnectionChange: (connected) => {

@@ -21,7 +21,7 @@ export async function publishBboSnapshot(
   });
   await publishBbo(redis, message);
   metrics.increment("bboPublished");
-  log("info", "BBO published", { market: message.market });
+  log("debug", "BBO published", { market: message.market });
 }
 
 export async function publishTradeTick(
@@ -47,7 +47,7 @@ export async function publishTradeTick(
   });
   await publishTrade(redis, payload);
   metrics.increment("tradesPublished");
-  log("info", "trade published", {
+  log("debug", "trade published", {
     market: trade.market,
     tradeId: trade.tradeId,
   });

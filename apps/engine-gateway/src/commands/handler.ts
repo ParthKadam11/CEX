@@ -34,7 +34,7 @@ export class CommandHandler {
   async handle(command: AppCommand): Promise<void> {
     if (await this.dedupe.isProcessed(command.commandId)) {
       this.metrics.increment("commandsDuplicate");
-      log("info", "duplicate command skipped", {
+      log("debug", "duplicate command skipped", {
         commandId: command.commandId,
       });
       return;
@@ -43,7 +43,7 @@ export class CommandHandler {
     const cached = await this.dedupe.loadOutcome(command.commandId);
     if (cached) {
       this.metrics.increment("commandsOutcomeReplay");
-      log("info", "replaying saved command outcome", {
+      log("debug", "replaying saved command outcome", {
         commandId: command.commandId,
         events: cached.length,
       });
@@ -214,11 +214,19 @@ export class CommandHandler {
     for (const event of events) {
       await publishOrderEvent(this.redis, event);
       this.metrics.increment("eventsPublished");
-      log("info", "command event published", {
+      // Hot path: only surface rejects/failures at warn; success stays debug.
+      const noisyFailure =
+        event.type === "REJECTED" ||
+        event.type === "COMMAND_FAILED" ||
+        event.type === "CREDIT_FAILED";
+      log(noisyFailure ? "warn" : "debug", "command event published", {
         type: event.type,
         commandId: event.commandId,
         orderId: event.orderId,
         eventId: event.eventId,
+        ...(noisyFailure && "reason" in event && event.reason
+          ? { reason: event.reason }
+          : {}),
       });
     }
   }
