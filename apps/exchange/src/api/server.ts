@@ -20,6 +20,7 @@ import { MarketRuntime } from "../market/runtime.js";
 import { isPositiveUnit, isUnit, marketSpec } from "../market/units.js";
 import { enrichPositionRisk } from "../risk/liquidation.js";
 import { CreditIdempotencyConflictError } from "../account/balanceService.js";
+import { log } from "../logger.js";
 
 function isMarket(value: string): value is MarketSymbol {
   return isMarketSymbol(value);
@@ -99,14 +100,20 @@ export function createExchangeApp(
     await next();
   });
 
-  app.onError((error, c) =>
-    errorResponse(
+  app.onError((error, c) => {
+    log.error("unhandled request error", {
+      requestId: c.req.header("x-request-id"),
+      path: c.req.path,
+      method: c.req.method,
+      error,
+    });
+    return errorResponse(
       c,
       500,
       "INTERNAL_ERROR",
       error instanceof Error ? error.message : "INTERNAL_ERROR",
-    ),
-  );
+    );
+  });
 
   app.get("/health", (c) => {
     const markets = [...runtimes.keys()];
@@ -325,6 +332,13 @@ export function createExchangeApp(
 
     const result = await runtime.place(order);
     if (!result.accepted) {
+      log.warn("order rejected", {
+        requestId: c.req.header("x-request-id"),
+        orderId: order.orderId,
+        market,
+        userId,
+        reason: result.reason ?? "ORDER_REJECTED",
+      });
       return c.json(
         {
           ...errorBody(c, result.reason ?? "ORDER_REJECTED"),
@@ -335,6 +349,12 @@ export function createExchangeApp(
         400,
       );
     }
+    log.debug("order accepted", {
+      requestId: c.req.header("x-request-id"),
+      orderId: order.orderId,
+      market,
+      userId,
+    });
     return c.json(result, 200);
   });
 

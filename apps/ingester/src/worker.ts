@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import type { IngesterConfig } from "./config.js";
 import { persistEvents } from "./db.js";
+import { log } from "./logger.js";
 import {
   ackMessage,
   deadLetterMessage,
@@ -29,20 +30,13 @@ export async function runWorker(
       if (signal.aborted) return;
       const message =
         error instanceof Error ? error.message : String(error);
-      console.error("[ingester] worker error", message);
+      log.error("worker error", { error: message });
       if (message.includes("NOGROUP")) {
         try {
           await ensureGroup(redis);
-          console.log(
-            "[ingester] recreated md consumer group after NOGROUP",
-          );
+          log.info("recreated md consumer group after NOGROUP");
         } catch (ensureError) {
-          console.error(
-            "[ingester] ensureGroup failed:",
-            ensureError instanceof Error
-              ? ensureError.message
-              : String(ensureError),
-          );
+          log.error("ensureGroup failed", { error: ensureError });
         }
       }
       await sleep(1_000, signal);
@@ -62,6 +56,10 @@ async function processMessages(
     } else {
       await deadLetterMessage(redis, message);
       await ackMessage(redis, message.id);
+      log.warn("market data event dead-lettered", {
+        messageId: message.id,
+        reason: message.reason,
+      });
     }
   }
 
@@ -70,6 +68,7 @@ async function processMessages(
     pool,
     valid.map((message) => message.event),
   );
+  log.debug("market data batch persisted", { count: valid.length });
   for (const message of valid) {
     await ackMessage(redis, message.id);
   }

@@ -3,6 +3,7 @@ import path from "node:path";
 import { serve } from "@hono/node-server";
 import { config as loadDotenv } from "dotenv";
 import { loadConfig } from "./config.js";
+import { log } from "./logger.js";
 import { createRedis } from "./redis/client.js";
 import {
   ackEvent,
@@ -38,7 +39,7 @@ async function main(): Promise<void> {
   }
 
   await ensureEventGroup(redis);
-  console.log("[oms] event consumer group ready");
+  log.info("event consumer group ready");
 
   let eventsRunning = true;
   const eventLoop = (async () => {
@@ -55,9 +56,22 @@ async function main(): Promise<void> {
 
         for (const message of events) {
           if ("event" in message) {
-            await repository.applyEvent(message.event);
+            const event = message.event;
+            await repository.applyEvent(event);
+            log.debug("order event applied", {
+              eventId: event.eventId,
+              commandId: event.commandId,
+              orderId: event.orderId,
+              market: event.market,
+              userId: event.userId,
+              type: event.type,
+            });
           } else {
             await deadLetterEvent(redis, message);
+            log.warn("order event dead-lettered", {
+              reason: message.reason,
+              messageId: message.id,
+            });
           }
           await ackEvent(redis, message.id);
         }
@@ -65,18 +79,13 @@ async function main(): Promise<void> {
         if (!eventsRunning) return;
         const message =
           error instanceof Error ? error.message : String(error);
-        console.error("[oms] event loop error:", message);
+        log.error("event loop error", { error: message });
         if (message.includes("NOGROUP")) {
           try {
             await ensureEventGroup(redis);
-            console.log("[oms] recreated event consumer group after NOGROUP");
+            log.info("recreated event consumer group after NOGROUP");
           } catch (ensureError) {
-            console.error(
-              "[oms] ensureEventGroup failed:",
-              ensureError instanceof Error
-                ? ensureError.message
-                : ensureError,
-            );
+            log.error("ensureEventGroup failed", { error: ensureError });
           }
         }
         await sleep(1000);
@@ -96,19 +105,22 @@ async function main(): Promise<void> {
           try {
             await orderService.publishOutboxEntry(entry.payload);
           } catch (error) {
-            console.error(
-              "[oms] outbox publish failed:",
-              error instanceof Error ? error.message : error,
-            );
+            log.error("outbox publish failed", {
+              commandId: entry.payload.commandId,
+              orderId:
+                "orderId" in entry.payload
+                  ? entry.payload.orderId
+                  : undefined,
+              market:
+                "market" in entry.payload ? entry.payload.market : undefined,
+              error,
+            });
           }
         }
         await sleep(entries.length === 0 ? 2_000 : 250);
       } catch (error) {
         if (!outboxRunning) return;
-        console.error(
-          "[oms] outbox loop error:",
-          error instanceof Error ? error.message : error,
-        );
+        log.error("outbox loop error", { error });
         await sleep(2_000);
       }
     }
@@ -118,10 +130,11 @@ async function main(): Promise<void> {
     internalToken: config.internalToken,
   });
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
-    console.log(`oms listening on http://localhost:${info.port}`);
+    log.info("HTTP server listening", { port: info.port });
   });
 
   const shutdown = async () => {
+    log.info("shutting down");
     eventsRunning = false;
     outboxRunning = false;
     server.close();
@@ -142,7 +155,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(error);
+  log.error("fatal startup error", { error });
   process.exit(1);
 });
 

@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import { createPool, runMigrations } from "./db.js";
 import { loadConfig } from "./config.js";
+import { log } from "./logger.js";
 import { createRedis, ensureGroup } from "./redis.js";
 import { runWorker } from "./worker.js";
 import { createHistoryApp } from "./http.js";
@@ -26,13 +27,12 @@ async function main(): Promise<void> {
         port: config.port,
       },
       (info) => {
-        console.log(
-          `[ingester] ready on http://localhost:${info.port}`,
-        );
+        log.info("HTTP server listening", { port: info.port });
       },
     );
     await runWorker(redis, pool, config, abortController.signal);
   } finally {
+    log.info("shutting down");
     abortController.abort();
     server?.close();
     redis.disconnect();
@@ -43,9 +43,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(
-    "[ingester] fatal error",
-    error instanceof Error ? error.message : String(error),
-  );
+  log.error("fatal startup error", { error });
   process.exitCode = 1;
 });

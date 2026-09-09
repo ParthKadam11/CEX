@@ -3,6 +3,7 @@ import { isMarketSymbol, type MarketSymbol } from "@cex/exchange-types";
 import { serve } from "@hono/node-server";
 import { EventBus } from "./api/eventBus.js";
 import { createExchangeApp } from "./api/server.js";
+import { log } from "./logger.js";
 import { MarketRuntime } from "./market/runtime.js";
 
 /*
@@ -37,6 +38,7 @@ for (const market of markets) {
 const app = createExchangeApp(runtimes, bus, { gatewayToken });
 
 const shutdown = () => {
+  log.info("shutting down");
   void Promise.all([...runtimes.values()].map((rt) => rt.close())).finally(
     () => process.exit(0),
   );
@@ -45,9 +47,11 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 serve({ fetch: app.fetch, port }, (info) => {
-  console.log(
-    `exchange listening on http://localhost:${info.port} markets=[${[...runtimes.keys()].join(", ")}] data=${dataDir}`,
-  );
+  log.info("HTTP server listening", {
+    port: info.port,
+    markets: [...runtimes.keys()],
+    dataDir,
+  });
 });
 
 /**

@@ -15,6 +15,7 @@ import {
   OrderNotCancellableError,
   OrderService,
 } from "../orders/service.js";
+import { log } from "../logger.js";
 
 type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 500;
 
@@ -42,14 +43,21 @@ export function createOmsApp(
     await next();
   });
 
-  app.onError((error, c) =>
-    errorResponse(
+  app.onError((error, c) => {
+    log.error("unhandled request error", {
+      requestId: c.req.header("x-request-id"),
+      path: c.req.path,
+      method: c.req.method,
+      error,
+    });
+    return errorResponse(
       c,
       500,
       "INTERNAL_ERROR",
       error instanceof Error ? error.message : "INTERNAL_ERROR",
-    ),
-  );
+    );
+  });
+
 
   app.get("/health", (c) =>
     c.json({
@@ -74,6 +82,14 @@ export function createOmsApp(
 
     try {
       const result = await orderService.place(command);
+      log.info("order place accepted", {
+        requestId: c.req.header("x-request-id"),
+        commandId: result.command.commandId,
+        orderId: result.order.engineOrderId,
+        market: result.order.market,
+        userId,
+        existing: result.existing,
+      });
       return c.json(
         {
           order: result.order,
@@ -120,6 +136,13 @@ export function createOmsApp(
           ? body.clientOrderId
           : undefined,
       );
+      log.info("order cancel accepted", {
+        requestId: c.req.header("x-request-id"),
+        commandId: result.command.commandId,
+        orderId,
+        userId,
+        market: result.order.market,
+      });
       return c.json(
         {
           order: result.order,
@@ -215,6 +238,11 @@ function errorResponse(
 
   const error = statusOrError;
   if (error instanceof IdempotencyConflictError) {
+    log.warn("order request conflict", {
+      requestId: context.req.header("x-request-id"),
+      path: context.req.path,
+      code: error.message,
+    });
     return context.json(errorBody(context, error.message), 409);
   }
   if (error instanceof Error && error.message === "INVALID_CURSOR") {
@@ -229,6 +257,11 @@ function errorResponse(
   if (error instanceof OrderNotCancellableError) {
     return context.json(errorBody(context, error.message), 409);
   }
+  log.error("order request failed", {
+    requestId: context.req.header("x-request-id"),
+    path: context.req.path,
+    error,
+  });
   return context.json(
     errorBody(
       context,
