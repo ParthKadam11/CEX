@@ -56,6 +56,37 @@ export function assertDevnetOnly(url = rpcUrl()): void {
   }
 }
 
+/** Stable engine CREDIT commandId for a Devnet deposit signature. */
+export function depositCreditCommandId(signature: string): string {
+  return `deposit:${signature}`;
+}
+
+/** Engine DEBIT commandId for a withdrawal row. */
+export function withdrawDebitCommandId(withdrawalId: string): string {
+  return `withdraw:${withdrawalId}`;
+}
+
+/** Engine CREDIT commandId used to refund a failed on-chain send. */
+export function withdrawRefundCommandId(withdrawalId: string): string {
+  return `withdraw-refund:${withdrawalId}`;
+}
+
+/** Already finalized on-chain — retries must not send again. */
+export function withdrawAlreadySent(
+  status: string,
+  signature: string | null | undefined,
+): boolean {
+  return (
+    Boolean(signature) &&
+    (status === "SENT" || status === "CONFIRMED")
+  );
+}
+
+/** Debit landed but chain send not finished — resume send only. */
+export function withdrawNeedsChainSend(status: string): boolean {
+  return status === "DEBITED";
+}
+
 export function createConnection(
   commitment: Commitment = "confirmed",
 ): Connection {

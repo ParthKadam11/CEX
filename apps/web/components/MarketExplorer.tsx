@@ -123,11 +123,8 @@ export function MarketExplorer() {
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   Add USD
                 </strong>{" "}
-                for paper quote balance (optional{" "}
-                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Demo mint
-                </strong>{" "}
-                for SOL when enabled).
+                for paper quote balance. Demo mint for SOL stays off during
+                meetups unless explicitly enabled.
               </li>
               <li>
                 Go to{" "}

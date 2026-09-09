@@ -7,7 +7,8 @@ import {
 
 /**
  * Debit exchange SOL then send Devnet SOL from the custodial deposit wallet.
- * Body: { destination: string, lots: number }
+ * Body: { destination: string, lots: number, idempotencyKey?: string }
+ * Header Idempotency-Key is also accepted.
  */
 export async function POST(request: NextRequest) {
   const userId = await getAuthenticatedUserId();
@@ -27,6 +28,10 @@ export async function POST(request: NextRequest) {
   const destination =
     typeof body.destination === "string" ? body.destination : "";
   const lots = Number(body.lots ?? body.amount);
+  const idempotencyKey =
+    (typeof body.idempotencyKey === "string" && body.idempotencyKey) ||
+    request.headers.get("idempotency-key") ||
+    undefined;
 
   try {
     const result = await executeWithdraw({
@@ -34,6 +39,7 @@ export async function POST(request: NextRequest) {
       destination,
       lots,
       requestId: request.headers.get("x-request-id") ?? undefined,
+      idempotencyKey,
     });
 
     if (result.status === "FAILED") {
@@ -57,7 +63,9 @@ export async function POST(request: NextRequest) {
         error.code === "INSUFFICIENT_BALANCE" ||
         error.code === "INSUFFICIENT_ONCHAIN" ||
         error.code === "INVALID_AMOUNT" ||
-        error.code === "INVALID_DESTINATION"
+        error.code === "INVALID_DESTINATION" ||
+        error.code === "INVALID_IDEMPOTENCY_KEY" ||
+        error.code === "IDEMPOTENCY_CONFLICT"
           ? 400
           : 502;
       return bffError(request, status, error.code, error.message);

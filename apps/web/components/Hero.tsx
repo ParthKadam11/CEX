@@ -56,7 +56,7 @@ export function Hero() {
           {[
             {
               title: "Balances",
-              body: "Paper SOL and USD on the engine ledger — fund and trade.",
+              body: "Devnet SOL deposits credit Exchange balance; Paper USD stays for quotes.",
             },
             {
               title: "Spot & Perps",

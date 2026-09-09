@@ -19,7 +19,7 @@ export function HowItWorks() {
           How it works
         </h1>
         <p className="mt-4 text-pretty text-base leading-relaxed text-zinc-500 dark:text-zinc-400">
-          The technical side of this paper exchange: which services own what,
+          The technical side of this exchange: which services own what,
           and why the design makes matching, reconnects, and crashes visible.
         </p>
         <p className="mt-3 text-sm text-zinc-400">

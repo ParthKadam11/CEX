@@ -34,6 +34,8 @@ export function DashboardHome() {
   const [creditAsset, setCreditAsset] = useState<"USD" | "SOL" | null>(null);
   const [creditAmount, setCreditAmount] = useState("");
   const [ordersTab, setOrdersTab] = useState<OrdersTab>("open");
+  const showDemoSolMint =
+    process.env.NEXT_PUBLIC_ALLOW_PAPER_SOL_CREDIT === "true";
 
   useEffect(() => {
     void refresh();
@@ -251,12 +253,12 @@ export function DashboardHome() {
             <h2 className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
               Fund
             </h2>
-            <p className="text-xs text-zinc-400">Paper tools</p>
+            <p className="text-xs text-zinc-400">Paper USD + optional demo</p>
           </div>
 
           <BalanceCard
-            asset="USD"
-            subtitle="Paper quote"
+            asset="Paper USD"
+            subtitle="Quote currency"
             addLabel="Add USD"
             available={usd.available}
             locked={usd.locked}
@@ -264,16 +266,18 @@ export function DashboardHome() {
             funding={funding}
             adding={creditAsset === "USD"}
           />
-          <BalanceCard
-            asset="SOL"
-            subtitle="Demo mint only"
-            addLabel="Demo mint"
-            available={sol.available}
-            locked={sol.locked}
-            onAdd={() => startCredit("SOL")}
-            funding={funding}
-            adding={creditAsset === "SOL"}
-          />
+          {showDemoSolMint ? (
+            <BalanceCard
+              asset="Exchange SOL"
+              subtitle="Demo mint (local only)"
+              addLabel="Demo mint"
+              available={sol.available}
+              locked={sol.locked}
+              onAdd={() => startCredit("SOL")}
+              funding={funding}
+              adding={creditAsset === "SOL"}
+            />
+          ) : null}
 
           {creditAsset && (
             <div className="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">

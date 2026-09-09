@@ -66,6 +66,9 @@ export function SolDepositPanel({
   const [withdrawExplorerUrl, setWithdrawExplorerUrl] = useState<string | null>(
     null,
   );
+  const [withdrawIdempotencyKey, setWithdrawIdempotencyKey] = useState(() =>
+    crypto.randomUUID(),
+  );
 
   const refresh = useCallback(async () => {
     const [addrRes, depRes, wdRes] = await Promise.all([
@@ -153,8 +156,15 @@ export function SolDepositPanel({
     setWithdrawExplorerUrl(null);
     const response = await fetch("/api/solana/withdraw", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ destination: destination.trim(), lots }),
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": withdrawIdempotencyKey,
+      },
+      body: JSON.stringify({
+        destination: destination.trim(),
+        lots,
+        idempotencyKey: withdrawIdempotencyKey,
+      }),
     });
     const body = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
@@ -180,6 +190,7 @@ export function SolDepositPanel({
     setWithdrawMsg("Withdraw confirmed — view on explorer");
     setWithdrawExplorerUrl(body.explorerUrl ?? null);
     setWithdrawLots("1");
+    setWithdrawIdempotencyKey(crypto.randomUUID());
     void refresh();
     onBalancesChanged?.();
   }

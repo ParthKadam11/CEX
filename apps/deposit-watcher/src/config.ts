@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { config as loadDotenv } from "dotenv";
+import { assertDevnetOnly } from "@cex/solana";
 
 export type WatcherConfig = {
   port: number;
@@ -28,6 +29,9 @@ export function loadEnvironment(): void {
 export function loadConfig(): WatcherConfig {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is required");
+
+  // Fail closed at boot if RPC points at mainnet (or non-devnet without override).
+  assertDevnetOnly();
 
   const confirmations =
     process.env.DEPOSIT_COMMITMENT === "finalized" ? "finalized" : "confirmed";

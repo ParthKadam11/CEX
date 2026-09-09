@@ -1,8 +1,10 @@
 import { DepositStatus, prisma } from "@cex/db";
 import { createLogger } from "@cex/logger";
 import type { CreditCommand } from "@cex/app-contracts";
+import { depositCreditCommandId } from "@cex/solana";
 import type { Redis } from "ioredis";
 import type { WatcherConfig } from "./config.js";
+import { shouldSkipDepositCredit } from "./idempotency.js";
 import {
   listNewSignatures,
   lotsFromLamports,
@@ -93,7 +95,7 @@ async function scanWallet(
     if (!transfer) continue;
 
     const lots = lotsFromLamports(transfer.lamports, config.minLots);
-    const commandId = `deposit:${transfer.signature}`;
+    const commandId = depositCreditCommandId(transfer.signature);
 
     try {
       await prisma.deposit.create({
@@ -156,8 +158,7 @@ export async function creditDeposit(
 ): Promise<boolean> {
   const deposit = await prisma.deposit.findUnique({ where: { id: depositId } });
   if (!deposit) return false;
-  if (deposit.status === DepositStatus.CREDITED) return false;
-  if (deposit.status === DepositStatus.IGNORED) return false;
+  if (shouldSkipDepositCredit(deposit.status)) return false;
   if (deposit.lots < 1) {
     await prisma.deposit.update({
       where: { id: depositId },
@@ -169,7 +170,7 @@ export async function creditDeposit(
     return false;
   }
 
-  const commandId = deposit.commandId ?? `deposit:${deposit.signature}`;
+  const commandId = deposit.commandId ?? depositCreditCommandId(deposit.signature);
 
   await prisma.deposit.update({
     where: { id: depositId },

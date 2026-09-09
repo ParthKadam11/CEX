@@ -115,6 +115,8 @@ model Withdrawal {
   status        WithdrawalStatus @default(PENDING)
   debitCommandId String?         @unique
   refundCommandId String?        @unique
+  /// Client retry key — same key returns the prior withdrawal (no double-send).
+  idempotencyKey String?         @unique
   signature     String?          @unique
   failureReason String?
   createdAt     DateTime         @default(now())

@@ -3,6 +3,7 @@ import { Ledger } from "../../../src/account/ledger.js";
 import {
   BalanceService,
   CreditIdempotencyConflictError,
+  DebitIdempotencyConflictError,
 } from "../../../src/account/balanceService.js";
 
 describe("Ledger", () => {
@@ -201,5 +202,33 @@ describe("BalanceService", () => {
         refId: "cmd-1",
       }),
     ).toThrow(CreditIdempotencyConflictError);
+  });
+
+  it("debit with commandId is idempotent on retry", () => {
+    const svc = new BalanceService();
+    svc.credit("u1", "SOL", 10, "DEPOSIT", {
+      refType: "DEPOSIT",
+      refId: "dep-1",
+    });
+    const first = svc.debit("u1", "SOL", 3, "WITHDRAW", {
+      refType: "WITHDRAW",
+      refId: "wd-1",
+    });
+    const second = svc.debit("u1", "SOL", 3, "WITHDRAW", {
+      refType: "WITHDRAW",
+      refId: "wd-1",
+    });
+
+    expect(first.idempotent).toBeUndefined();
+    expect(second.idempotent).toBe(true);
+    expect(svc.get("u1", "SOL").available).toBe(7);
+    expect(svc.ledger.forRef("WITHDRAW", "wd-1")).toHaveLength(1);
+
+    expect(() =>
+      svc.debit("u1", "SOL", 1, "WITHDRAW", {
+        refType: "WITHDRAW",
+        refId: "wd-1",
+      }),
+    ).toThrow(DebitIdempotencyConflictError);
   });
 });
