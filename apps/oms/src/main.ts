@@ -102,7 +102,8 @@ async function main(): Promise<void> {
         const entries = await orderService.relayOutbox();
         for (const entry of entries) {
           if (!isOutboxCommand(entry.payload)) continue;
-          if (entry.payload.type === "CREDIT") continue;
+          if (entry.payload.type === "CREDIT" || entry.payload.type === "DEBIT")
+            continue;
           try {
             await orderService.publishOutboxEntry(entry.payload);
           } catch (error) {

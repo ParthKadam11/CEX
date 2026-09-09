@@ -174,6 +174,12 @@ export class MarketRuntime {
     );
   }
 
+  debit(userId: string, asset: AssetId, amount: number, commandId?: string) {
+    return this.enqueue(() =>
+      this.debitNow(userId, asset, amount, commandId),
+    );
+  }
+
   place(order: Order): Promise<PlacementResult> {
     return this.enqueue(() => this.placeNow(order));
   }
@@ -304,6 +310,44 @@ export class MarketRuntime {
     if (!this.replaying && this.bus) {
       this.bus.publish({
         kind: "CREDIT",
+        market: this.market,
+        userId,
+        asset,
+        amount,
+      });
+    }
+    return result;
+  }
+
+  private debitNow(
+    userId: string,
+    asset: AssetId,
+    amount: number,
+    commandId?: string,
+  ) {
+    const result = this.placement.balances.debit(
+      userId,
+      asset,
+      amount,
+      "WITHDRAW",
+      commandId
+        ? { refType: "WITHDRAW", refId: commandId }
+        : undefined,
+    );
+    if (result.idempotent) {
+      return result;
+    }
+    this.persist({
+      type: "DEBIT",
+      userId,
+      asset,
+      amount,
+      timestamp: Date.now(),
+      ...(commandId ? { commandId } : {}),
+    });
+    if (!this.replaying && this.bus) {
+      this.bus.publish({
+        kind: "DEBIT",
         market: this.market,
         userId,
         asset,
@@ -483,6 +527,17 @@ export class MarketRuntime {
           "DEPOSIT",
           command.commandId
             ? { refType: "DEPOSIT", refId: command.commandId }
+            : undefined,
+        );
+        return;
+      case "DEBIT":
+        this.placement.balances.debit(
+          command.userId,
+          command.asset,
+          command.amount,
+          "WITHDRAW",
+          command.commandId
+            ? { refType: "WITHDRAW", refId: command.commandId }
             : undefined,
         );
         return;

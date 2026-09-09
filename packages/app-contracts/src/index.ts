@@ -58,7 +58,7 @@ export function mdTradeChannel(market: MarketSymbol = "SOL-USD"): string {
   return `md:${market}:trade`;
 }
 
-export type AppCommandType = "PLACE" | "CANCEL" | "CREDIT";
+export type AppCommandType = "PLACE" | "CANCEL" | "CREDIT" | "DEBIT";
 
 export type PlaceCommand = {
   commandId: string;
@@ -109,7 +109,25 @@ export type CreditCommand = {
   timestamp: number;
 };
 
-export type AppCommand = PlaceCommand | CancelCommand | CreditCommand;
+export type DebitCommand = {
+  commandId: string;
+  type: "DEBIT";
+  userId: string;
+  asset: AssetId;
+  // Integer asset units.
+  amount: number;
+  /** Target engine market; defaults to SOL-USD when omitted. */
+  market?: MarketSymbol;
+  /** HTTP / client correlation id. */
+  requestId?: string;
+  timestamp: number;
+};
+
+export type AppCommand =
+  | PlaceCommand
+  | CancelCommand
+  | CreditCommand
+  | DebitCommand;
 
 export function isAppCommand(value: unknown): value is AppCommand {
   if (!isRecord(value)) return false;
@@ -123,7 +141,7 @@ export function isAppCommand(value: unknown): value is AppCommand {
     return false;
   }
 
-  if (value.type === "CREDIT") {
+  if (value.type === "CREDIT" || value.type === "DEBIT") {
     return (
       (value.asset === "SOL" || value.asset === "USD") &&
       isBoundedPositiveInteger(value.amount, MAX_QUOTE_BUDGET) &&
@@ -190,6 +208,8 @@ export type AppOrderEventType =
   | "CANCELLED"
   | "CREDIT_OK"
   | "CREDIT_FAILED"
+  | "DEBIT_OK"
+  | "DEBIT_FAILED"
   | "COMMAND_FAILED"
   | "POSITION"
   | "LIQUIDATION"

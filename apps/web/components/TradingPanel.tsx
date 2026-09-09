@@ -486,15 +486,18 @@ export function TradingPanel() {
               ))}
             </div>
 
-            <form className="flex flex-1 flex-col gap-3" onSubmit={placeOrder}>
+            <div className="mb-3">
               <SolDepositPanel
                 compact
                 exchangeSolAvailable={sol.available}
                 exchangeSolLocked={sol.locked}
                 paperUsdAvailable={usd.available}
                 paperUsdLocked={usd.locked}
+                onBalancesChanged={() => void loadBalances()}
               />
+            </div>
 
+            <form className="flex flex-1 flex-col gap-3" onSubmit={placeOrder}>
               {mode === "limit" && (
                 <div>
                   <div className="mb-1.5 flex items-center justify-between">

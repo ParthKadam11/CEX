@@ -51,6 +51,7 @@ model User {
   provider    Provider
   orders      Order[]
   deposits    Deposit[]
+  withdrawals Withdrawal[]
 }
 
 /// Per-user custodial Devnet deposit address. Secret is AES-GCM encrypted.
@@ -90,6 +91,37 @@ model Deposit {
   updatedAt     DateTime      @updatedAt
   creditedAt    DateTime?
   user          User          @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+enum WithdrawalStatus {
+  PENDING
+  DEBITING
+  DEBITED
+  SENT
+  CONFIRMED
+  FAILED
+}
+
+/// Exchange SOL debit → Devnet transfer from custodial deposit wallet.
+model Withdrawal {
+  id            String           @id @default(uuid())
+  userId        String
+  destination   String
+  lots          Int
+  lamports      BigInt
+  status        WithdrawalStatus @default(PENDING)
+  debitCommandId String?         @unique
+  refundCommandId String?        @unique
+  signature     String?          @unique
+  failureReason String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  sentAt        DateTime?
+  confirmedAt   DateTime?
+  user          User             @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
   @@index([status, createdAt])

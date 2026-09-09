@@ -84,6 +84,15 @@ export function keypairFromSecretKey(secretKey: Uint8Array): Keypair {
   return Keypair.fromSecretKey(secretKey);
 }
 
+/** Returns base58 pubkey or throws INVALID_PUBLIC_KEY. */
+export function parsePublicKey(address: string): string {
+  try {
+    return new PublicKey(address.trim()).toBase58();
+  } catch {
+    throw new Error("INVALID_PUBLIC_KEY");
+  }
+}
+
 export async function getLamportsBalance(address: string): Promise<number> {
   const conn = createConnection();
   return conn.getBalance(new PublicKey(address));

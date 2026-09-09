@@ -354,6 +354,19 @@ function parseExchangeEvent(value: unknown): ExchangeStreamEvent | null {
             streamSeq: value.streamSeq,
           }
         : null;
+    case "DEBIT":
+      return typeof value.userId === "string" &&
+        isAssetId(value.asset) &&
+        typeof value.amount === "number"
+        ? {
+            kind: "DEBIT",
+            market: value.market,
+            userId: value.userId,
+            asset: value.asset,
+            amount: value.amount,
+            streamSeq: value.streamSeq,
+          }
+        : null;
     case "TRADE":
       return isTrade(value.trade)
         ? {

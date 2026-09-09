@@ -22,6 +22,17 @@ type DepositRow = {
   creditedAt: string | null;
 };
 
+type WithdrawalRow = {
+  id: string;
+  destination: string;
+  lots: number;
+  status: string;
+  signature: string | null;
+  explorerUrl: string | null;
+  failureReason: string | null;
+  createdAt: string;
+};
+
 type SolDepositPanelProps = {
   exchangeSolAvailable: number;
   exchangeSolLocked?: number;
@@ -29,6 +40,7 @@ type SolDepositPanelProps = {
   paperUsdLocked?: number;
   className?: string;
   compact?: boolean;
+  onBalancesChanged?: () => void;
 };
 
 export function SolDepositPanel({
@@ -38,18 +50,28 @@ export function SolDepositPanel({
   paperUsdLocked = 0,
   className,
   compact = false,
+  onBalancesChanged,
 }: SolDepositPanelProps) {
   const [address, setAddress] = useState<DepositAddress | null>(null);
   const [deposits, setDeposits] = useState<DepositRow[]>([]);
+  const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
   const [pending, setPending] = useState(0);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [destination, setDestination] = useState("");
+  const [withdrawLots, setWithdrawLots] = useState("1");
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawMsg, setWithdrawMsg] = useState("");
+  const [withdrawExplorerUrl, setWithdrawExplorerUrl] = useState<string | null>(
+    null,
+  );
 
   const refresh = useCallback(async () => {
-    const [addrRes, depRes] = await Promise.all([
+    const [addrRes, depRes, wdRes] = await Promise.all([
       fetch("/api/solana/deposit-address", { cache: "no-store" }),
       fetch("/api/solana/deposits?limit=8", { cache: "no-store" }),
+      fetch("/api/solana/withdrawals?limit=8", { cache: "no-store" }),
     ]);
 
     if (addrRes.ok) {
@@ -83,6 +105,13 @@ export function SolDepositPanel({
       setDeposits(Array.isArray(body.deposits) ? body.deposits : []);
     }
 
+    if (wdRes.ok) {
+      const body = (await wdRes.json()) as {
+        withdrawals?: WithdrawalRow[];
+      };
+      setWithdrawals(Array.isArray(body.withdrawals) ? body.withdrawals : []);
+    }
+
     setLoading(false);
   }, []);
 
@@ -106,6 +135,55 @@ export function SolDepositPanel({
     }
   }
 
+  async function submitWithdraw() {
+    const lots = Number(withdrawLots.replace(/,/g, "").trim());
+    if (!Number.isSafeInteger(lots) || lots <= 0) {
+      setWithdrawMsg("Enter whole SOL lots ≥ 1");
+      setWithdrawExplorerUrl(null);
+      return;
+    }
+    if (!destination.trim()) {
+      setWithdrawMsg("Enter a destination address");
+      setWithdrawExplorerUrl(null);
+      return;
+    }
+
+    setWithdrawing(true);
+    setWithdrawMsg("");
+    setWithdrawExplorerUrl(null);
+    const response = await fetch("/api/solana/withdraw", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ destination: destination.trim(), lots }),
+    });
+    const body = (await response.json().catch(() => ({}))) as {
+      ok?: boolean;
+      status?: string;
+      explorerUrl?: string | null;
+      failureReason?: string | null;
+      error?: { message?: string; code?: string };
+    };
+    setWithdrawing(false);
+
+    if (!response.ok || body.ok === false) {
+      setWithdrawMsg(
+        body.failureReason ??
+          body.error?.message ??
+          body.error?.code ??
+          "Withdraw failed",
+      );
+      void refresh();
+      onBalancesChanged?.();
+      return;
+    }
+
+    setWithdrawMsg("Withdraw confirmed — view on explorer");
+    setWithdrawExplorerUrl(body.explorerUrl ?? null);
+    setWithdrawLots("1");
+    void refresh();
+    onBalancesChanged?.();
+  }
+
   return (
     <div
       className={cn(
@@ -117,10 +195,10 @@ export function SolDepositPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-[10px] font-medium tracking-wide text-zinc-400 uppercase">
-            Devnet deposit
+            Devnet SOL
           </p>
           <p className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-            Send Solana Devnet SOL → exchange balance
+            Deposit in · withdraw out
           </p>
         </div>
         <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
@@ -201,6 +279,55 @@ export function SolDepositPanel({
         <p className="mt-2 text-[11px] text-red-600 dark:text-red-400">{error}</p>
       ) : null}
 
+      <div className="mt-3 space-y-2 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+        <p className="text-[10px] font-medium tracking-wide text-zinc-400 uppercase">
+          Withdraw SOL
+        </p>
+        <input
+          type="text"
+          value={destination}
+          onChange={(e) => setDestination(e.target.value)}
+          placeholder="Destination address"
+          disabled={withdrawing}
+          className="h-8 w-full rounded border border-zinc-200 bg-transparent px-2 font-mono text-[11px] text-zinc-950 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:text-zinc-50"
+        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={withdrawLots}
+            onChange={(e) => setWithdrawLots(e.target.value)}
+            placeholder="Lots"
+            disabled={withdrawing}
+            className="h-8 w-20 rounded border border-zinc-200 bg-transparent px-2 text-[11px] tabular-nums text-zinc-950 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:text-zinc-50"
+          />
+          <button
+            type="button"
+            disabled={withdrawing || exchangeSolAvailable < 1}
+            onClick={() => void submitWithdraw()}
+            className="h-8 flex-1 rounded bg-zinc-950 text-[11px] font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+          >
+            {withdrawing ? "Sending…" : "Withdraw"}
+          </button>
+        </div>
+        {withdrawMsg ? (
+          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+            {withdrawExplorerUrl ? (
+              <a
+                href={withdrawExplorerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-zinc-950 underline-offset-2 hover:underline dark:text-zinc-50"
+              >
+                {withdrawMsg}
+              </a>
+            ) : (
+              withdrawMsg
+            )}
+          </p>
+        ) : null}
+      </div>
+
       {deposits.length > 0 ? (
         <div className="mt-3 border-t border-zinc-100 pt-2 dark:border-zinc-800">
           <p className="mb-1.5 text-[10px] font-medium tracking-wide text-zinc-400 uppercase">
@@ -221,6 +348,45 @@ export function SolDepositPanel({
                 >
                   {row.signature.slice(0, 8)}…
                 </a>
+                <span className="shrink-0 tabular-nums text-zinc-800 dark:text-zinc-200">
+                  {row.lots} SOL
+                </span>
+                <StatusPill status={row.status} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {withdrawals.length > 0 ? (
+        <div className="mt-3 border-t border-zinc-100 pt-2 dark:border-zinc-800">
+          <p className="mb-1.5 text-[10px] font-medium tracking-wide text-zinc-400 uppercase">
+            Recent withdrawals
+          </p>
+          <ul className="space-y-1.5">
+            {withdrawals.slice(0, compact ? 3 : 6).map((row) => (
+              <li
+                key={row.id}
+                className="flex items-center justify-between gap-2 text-[11px]"
+              >
+                {row.explorerUrl ? (
+                  <a
+                    href={row.explorerUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 truncate font-mono text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+                    title={row.signature ?? row.destination}
+                  >
+                    {(row.signature ?? row.destination).slice(0, 8)}…
+                  </a>
+                ) : (
+                  <span
+                    className="min-w-0 truncate font-mono text-zinc-500 dark:text-zinc-400"
+                    title={row.destination}
+                  >
+                    {row.destination.slice(0, 8)}…
+                  </span>
+                )}
                 <span className="shrink-0 tabular-nums text-zinc-800 dark:text-zinc-200">
                   {row.lots} SOL
                 </span>
@@ -266,7 +432,9 @@ function BalanceLine({
 
 function StatusPill({ status }: { status: string }) {
   const tone =
-    status === "CREDITED"
+    status === "CREDITED" ||
+    status === "SENT" ||
+    status === "CONFIRMED"
       ? "text-emerald-700 dark:text-emerald-400"
       : status === "FAILED" || status === "IGNORED"
         ? "text-red-600 dark:text-red-400"

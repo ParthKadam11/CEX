@@ -118,7 +118,8 @@ export function MarketExplorer() {
                   Devnet deposit address
                 </strong>
                 , fund it from the faucet, and wait for pending deposits to
-                credit exchange SOL. Use{" "}
+                credit exchange SOL. Withdraw from Home or Spot back to any
+                Devnet address. Use{" "}
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   Add USD
                 </strong>{" "}

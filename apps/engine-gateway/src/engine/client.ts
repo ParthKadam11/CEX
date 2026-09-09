@@ -2,6 +2,7 @@ import type {
   AssetId,
   CancelResult,
   CreditResult,
+  DebitResult,
   Balance,
   FundingEvent,
   LiquidationEvent,
@@ -98,6 +99,44 @@ export class EngineClient {
     if (!res.ok) {
       throw new Error(
         errorMessage(body.error) ?? `credit failed: ${res.status}`,
+      );
+    }
+    return body;
+  }
+
+  async debit(
+    userId: string,
+    asset: AssetId,
+    amount: number,
+    commandId?: string,
+    signal?: AbortSignal,
+    requestId?: string,
+  ): Promise<DebitResult & { idempotent?: boolean }> {
+    const res = await this.request(
+      `/v1/markets/${this.market}/debit`,
+      {
+        method: "POST",
+        headers: {
+          ...this.headers(requestId),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          userId,
+          asset,
+          amount,
+          ...(commandId ? { commandId } : {}),
+        }),
+      },
+      false,
+      signal,
+    );
+    const body = (await res.json()) as DebitResult & {
+      idempotent?: boolean;
+      error?: string | { code?: string; message?: string };
+    };
+    if (!res.ok) {
+      throw new Error(
+        errorMessage(body.error) ?? `debit failed: ${res.status}`,
       );
     }
     return body;

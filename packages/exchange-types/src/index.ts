@@ -280,6 +280,15 @@ export type EngineCommandBody =
       commandId?: string;
     }
   | {
+      type: "DEBIT";
+      userId: string;
+      asset: AssetId;
+      amount: number;
+      timestamp: number;
+      // Optional idempotency key (gateway commandId). Retries must not double-debit.
+      commandId?: string;
+    }
+  | {
       type: "PLACE";
       order: Order;
       timestamp: number;
@@ -350,6 +359,13 @@ export type ExchangeStreamEventBody =
       asset: AssetId;
       amount: number;
     }
+  | {
+      kind: "DEBIT";
+      market: MarketSymbol;
+      userId: string;
+      asset: AssetId;
+      amount: number;
+    }
   | { kind: "TRADE"; market: MarketSymbol; trade: Trade }
   | { kind: "POSITION"; market: MarketSymbol; position: Position }
   | {
@@ -371,9 +387,11 @@ export type ExchangeStreamEvent = ExchangeStreamEventBody & {
 export function isMarketSymbol(value: unknown): value is MarketSymbol {
   return value === "SOL-USD" || value === "SOL-USD-PERP";
 }
-// HTTP response for POST .../credit/
+// HTTP response for POST .../credit/ and .../debit/
 export type CreditResult = {
   balance: Balance;
   entry: LedgerEntry;
   idempotent?: boolean;
 };
+
+export type DebitResult = CreditResult;

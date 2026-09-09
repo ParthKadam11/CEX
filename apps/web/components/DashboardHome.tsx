@@ -244,6 +244,7 @@ export function DashboardHome() {
             exchangeSolLocked={sol.locked}
             paperUsdAvailable={usd.available}
             paperUsdLocked={usd.locked}
+            onBalancesChanged={() => void refresh()}
           />
 
           <div className="flex items-baseline justify-between gap-3 pt-1">

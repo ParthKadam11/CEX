@@ -4,6 +4,7 @@ import type {
   AppOrderEvent,
   CancelCommand,
   CreditCommand,
+  DebitCommand,
   PlaceCommand,
 } from "@cex/app-contracts";
 import {
@@ -95,7 +96,7 @@ export class CommandHandler {
   }
 
   private marketOf(command: AppCommand): MarketSymbol {
-    if (command.type === "CREDIT") {
+    if (command.type === "CREDIT" || command.type === "DEBIT") {
       return command.market ?? this.primaryMarket;
     }
     return command.market;
@@ -105,6 +106,8 @@ export class CommandHandler {
     switch (command.type) {
       case "CREDIT":
         return this.executeCredit(command);
+      case "DEBIT":
+        return this.executeDebit(command);
       case "PLACE":
         return this.executePlace(command);
       case "CANCEL":
@@ -141,6 +144,44 @@ export class CommandHandler {
           eventId: eventId(command.commandId, "CREDIT_FAILED"),
           commandId: command.commandId,
           type: "CREDIT_FAILED",
+          userId: command.userId,
+          market,
+          reason: err instanceof Error ? err.message : String(err),
+          timestamp: Date.now(),
+        }),
+      ];
+    }
+  }
+
+  private async executeDebit(command: DebitCommand): Promise<AppOrderEvent[]> {
+    const market = command.market ?? this.primaryMarket;
+    try {
+      const engine = this.engines.get(market);
+      await engine.debit(
+        command.userId,
+        command.asset,
+        command.amount,
+        command.commandId,
+        undefined,
+        command.requestId,
+      );
+      return [
+        withRequestId(command, {
+          eventId: eventId(command.commandId, "DEBIT_OK"),
+          commandId: command.commandId,
+          type: "DEBIT_OK",
+          userId: command.userId,
+          market,
+          timestamp: Date.now(),
+        }),
+      ];
+    } catch (err) {
+      this.metrics.increment("commandsFailed");
+      return [
+        withRequestId(command, {
+          eventId: eventId(command.commandId, "DEBIT_FAILED"),
+          commandId: command.commandId,
+          type: "DEBIT_FAILED",
           userId: command.userId,
           market,
           reason: err instanceof Error ? err.message : String(err),
@@ -224,7 +265,8 @@ export class CommandHandler {
       const noisyFailure =
         event.type === "REJECTED" ||
         event.type === "COMMAND_FAILED" ||
-        event.type === "CREDIT_FAILED";
+        event.type === "CREDIT_FAILED" ||
+        event.type === "DEBIT_FAILED";
       log(noisyFailure ? "warn" : "debug", "command event published", {
         type: event.type,
         requestId: event.requestId,
@@ -350,7 +392,7 @@ function correlation(
         ? command.orderId
         : undefined,
     market:
-      command.type === "CREDIT"
+      command.type === "CREDIT" || command.type === "DEBIT"
         ? (command.market ?? primaryMarket)
         : command.market,
     userId: command.userId,

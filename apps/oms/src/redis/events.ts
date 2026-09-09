@@ -147,6 +147,8 @@ function isAppOrderEvent(value: unknown): value is AppOrderEvent {
     "CANCELLED",
     "CREDIT_OK",
     "CREDIT_FAILED",
+    "DEBIT_OK",
+    "DEBIT_FAILED",
     "COMMAND_FAILED",
     "POSITION",
     "LIQUIDATION",

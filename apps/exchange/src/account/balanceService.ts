@@ -22,6 +22,13 @@ export class CreditIdempotencyConflictError extends Error {
   }
 }
 
+export class DebitIdempotencyConflictError extends Error {
+  constructor(commandId: string) {
+    super(`DEBIT_IDEMPOTENCY_CONFLICT:${commandId}`);
+    this.name = "DebitIdempotencyConflictError";
+  }
+}
+
 /*
   BalanceService = BalanceStore mutations + Ledger append in one place.
 
@@ -81,6 +88,39 @@ export class BalanceService {
 
     const before = this.store.get(userId, asset);
     const balance = this.store.credit(userId, asset, amount);
+    const entry = this.write(userId, asset, before, balance, reason, ref);
+    return { balance, entry };
+  }
+
+  // Withdraw from available (idempotent when refType=WITHDRAW).
+  debit(
+    userId: string,
+    asset: AssetId,
+    amount: number,
+    reason: LedgerReason = "WITHDRAW",
+    ref?: BalanceRef,
+  ): { balance: Balance; entry: LedgerEntry; idempotent?: boolean } {
+    if (ref?.refType === "WITHDRAW" && ref.refId) {
+      const prior = this.journal.forRef("WITHDRAW", ref.refId);
+      if (prior.length > 0) {
+        const entry = prior[0]!;
+        if (
+          entry.userId !== userId ||
+          entry.asset !== asset ||
+          entry.availableDelta !== -amount
+        ) {
+          throw new DebitIdempotencyConflictError(ref.refId);
+        }
+        return {
+          balance: this.store.get(userId, asset),
+          entry,
+          idempotent: true,
+        };
+      }
+    }
+
+    const before = this.store.get(userId, asset);
+    const balance = this.store.debitAvailable(userId, asset, amount);
     const entry = this.write(userId, asset, before, balance, reason, ref);
     return { balance, entry };
   }

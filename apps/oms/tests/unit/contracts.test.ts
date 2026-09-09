@@ -69,6 +69,20 @@ describe("application command validation", () => {
     ).toBe(true);
   });
 
+  it("accepts DEBIT with an optional market", () => {
+    expect(
+      isAppCommand({
+        commandId: "d1",
+        type: "DEBIT",
+        userId: "user-1",
+        asset: "SOL",
+        amount: 2,
+        market: "SOL-USD",
+        timestamp: Date.now(),
+      }),
+    ).toBe(true);
+  });
+
   it("threads optional requestId and rejects bad ones", () => {
     expect(isAppCommand({ ...basePlace, requestId: "req-1" })).toBe(true);
     expect(isAppCommand({ ...basePlace, requestId: "bad id" })).toBe(false);

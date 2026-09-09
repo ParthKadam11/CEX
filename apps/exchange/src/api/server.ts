@@ -19,7 +19,8 @@ import type { EventBus } from "./eventBus.js";
 import { MarketRuntime } from "../market/runtime.js";
 import { isPositiveUnit, isUnit, marketSpec } from "../market/units.js";
 import { enrichPositionRisk } from "../risk/liquidation.js";
-import { CreditIdempotencyConflictError } from "../account/balanceService.js";
+import { CreditIdempotencyConflictError, DebitIdempotencyConflictError } from "../account/balanceService.js";
+import { InsufficientBalanceError } from "../account/balanceStore.js";
 import { log } from "../logger.js";
 
 function isMarket(value: string): value is MarketSymbol {
@@ -229,6 +230,66 @@ export function createExchangeApp(
     } catch (error) {
       if (error instanceof CreditIdempotencyConflictError) {
         return errorResponse(c, 409, "CREDIT_IDEMPOTENCY_CONFLICT");
+      }
+      throw error;
+    }
+  });
+
+  app.post("/v1/markets/:market/debit", async (c) => {
+    const resolved = runtimeFor(c.req.param("market"));
+    if (!resolved) {
+      return errorResponse(c, 404, "UNKNOWN_MARKET");
+    }
+    const { runtime } = resolved;
+
+    let body: {
+      userId?: string;
+      asset?: AssetId;
+      amount?: number;
+      commandId?: string;
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return errorResponse(c, 400, "INVALID_JSON");
+    }
+
+    if (
+      !isIdentifier(body.userId) ||
+      !body.asset ||
+      body.amount === undefined
+    ) {
+      return errorResponse(c, 400, "INVALID_BODY");
+    }
+    const amount = parsePositiveUnit(body.amount);
+    if (amount === null || !isBoundedPositiveInteger(amount, MAX_QUOTE_BUDGET)) {
+      return errorResponse(c, 400, "INVALID_UNITS");
+    }
+    if (body.asset !== "SOL" && body.asset !== "USD") {
+      return errorResponse(c, 400, "INVALID_ASSET");
+    }
+    if (body.commandId !== undefined && !isIdentifier(body.commandId)) {
+      return errorResponse(c, 400, "INVALID_COMMAND_ID");
+    }
+
+    try {
+      const result = await runtime.debit(
+        body.userId,
+        body.asset,
+        amount,
+        body.commandId,
+      );
+      return c.json({
+        balance: result.balance,
+        entry: result.entry,
+        idempotent: result.idempotent === true,
+      });
+    } catch (error) {
+      if (error instanceof DebitIdempotencyConflictError) {
+        return errorResponse(c, 409, "DEBIT_IDEMPOTENCY_CONFLICT");
+      }
+      if (error instanceof InsufficientBalanceError) {
+        return errorResponse(c, 400, "INSUFFICIENT_BALANCE", error.message);
       }
       throw error;
     }
@@ -689,6 +750,9 @@ function streamEventAllowed(
     return false;
   }
   if (userId && event.kind === "CREDIT" && event.userId !== userId) {
+    return false;
+  }
+  if (userId && event.kind === "DEBIT" && event.userId !== userId) {
     return false;
   }
   if (
