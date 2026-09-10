@@ -47,86 +47,8 @@ model User {
   name        String?
   password    String?
   profilePic  String?
-  solwallet   SolWallet?
   provider    Provider
   orders      Order[]
-  deposits    Deposit[]
-  withdrawals Withdrawal[]
-}
-
-/// Per-user custodial Devnet deposit address. Secret is AES-GCM encrypted.
-model SolWallet {
-  id                  String    @id @default(uuid())
-  publicKey           String    @unique
-  encryptedPrivateKey String
-  /// Newest processed inbound signature (scan cursor).
-  lastSignature       String?
-  lastScannedAt       DateTime?
-  createdAt           DateTime  @default(now())
-  userId              String    @unique
-  user                User      @relation(fields: [userId], references: [id])
-}
-
-enum DepositStatus {
-  SEEN
-  CREDITING
-  CREDITED
-  FAILED
-  IGNORED
-}
-
-/// On-chain Devnet SOL deposit → engine CREDIT (commandId = deposit:<signature>).
-model Deposit {
-  id            String        @id @default(uuid())
-  signature     String        @unique
-  userId        String
-  publicKey     String
-  lamports      BigInt
-  lots          Int
-  status        DepositStatus @default(SEEN)
-  commandId     String?       @unique
-  slot          BigInt?
-  failureReason String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  creditedAt    DateTime?
-  user          User          @relation(fields: [userId], references: [id])
-
-  @@index([userId, createdAt])
-  @@index([status, createdAt])
-}
-
-enum WithdrawalStatus {
-  PENDING
-  DEBITING
-  DEBITED
-  SENT
-  CONFIRMED
-  FAILED
-}
-
-/// Exchange SOL debit → Devnet transfer from custodial deposit wallet.
-model Withdrawal {
-  id            String           @id @default(uuid())
-  userId        String
-  destination   String
-  lots          Int
-  lamports      BigInt
-  status        WithdrawalStatus @default(PENDING)
-  debitCommandId String?         @unique
-  refundCommandId String?        @unique
-  /// Client retry key — same key returns the prior withdrawal (no double-send).
-  idempotencyKey String?         @unique
-  signature     String?          @unique
-  failureReason String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  sentAt        DateTime?
-  confirmedAt   DateTime?
-  user          User             @relation(fields: [userId], references: [id])
-
-  @@index([userId, createdAt])
-  @@index([status, createdAt])
 }
 
 model Order {

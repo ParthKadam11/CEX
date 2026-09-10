@@ -5,7 +5,6 @@
     { "path": "./apps/engine-gateway" },
     { "path": "./apps/oms" },
     { "path": "./packages/db" },
-    { "path": "./packages/solana" },
     { "path": "./packages/app-contracts" },
     { "path": "./packages/exchange-types" }
   ]

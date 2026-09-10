@@ -220,8 +220,7 @@ export function OrdersPanel() {
           Orders
         </h1>
         <p className="mt-2 max-w-xl text-sm text-zinc-500 dark:text-zinc-400">
-          Full history of your trades: open, filled, and cancelled.
-          Spot uses Devnet-backed Exchange SOL and Paper USD.
+          Full history of your paper trades: open, filled, and cancelled.
         </p>
       </header>
 

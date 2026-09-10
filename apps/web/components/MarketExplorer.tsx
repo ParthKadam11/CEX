@@ -77,8 +77,8 @@ export function MarketExplorer() {
               <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                 practice exchange
               </strong>
-              . Spot SOL is backed by Solana Devnet deposits; USD stays paper
-              so you can trade without a real dollar rail.
+              . You can buy and sell as if it were a real crypto exchange, but
+              the money is fake — paper balances you add yourself.
             </p>
             <p>
               Think of it like a flight simulator for trading: the screens and
@@ -113,18 +113,15 @@ export function MarketExplorer() {
                 balances.
               </li>
               <li>
-                On Home or Spot, copy your{" "}
-                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Devnet deposit address
-                </strong>
-                , fund it from the faucet, and wait for pending deposits to
-                credit exchange SOL. Withdraw from Home or Spot back to any
-                Devnet address. Use{" "}
+                Add paper money with{" "}
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   Add USD
                 </strong>{" "}
-                for paper quote balance. Demo mint for SOL stays off during
-                meetups unless explicitly enabled.
+                or{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Add SOL
+                </strong>
+                . Pick an amount and confirm. Nothing leaves a real bank.
               </li>
               <li>
                 Go to{" "}

@@ -1,7 +1,6 @@
 import { type NextAuthOptions } from "next-auth"
 import GoogleProvider, { type GoogleProfile } from "next-auth/providers/google"
 import { Provider, prisma as db } from "@cex/db"
-import { ensureDepositWallet } from "@/lib/solana/deposit-wallet"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -48,13 +47,6 @@ export const authOptions: NextAuthOptions = {
           })
         }
 
-        // Best-effort: don't block login if wallet crypto/RPC misconfigured.
-        try {
-          await ensureDepositWallet(userDb.id)
-        } catch (error) {
-          console.error("[auth] deposit wallet ensure failed", error)
-        }
-
         return true
       } catch (error) {
         console.error("[auth] signIn failed", error)
@@ -75,16 +67,6 @@ export const authOptions: NextAuthOptions = {
           }
         } catch (error) {
           console.error("[auth] jwt uid lookup failed", error)
-        }
-      }
-
-      // Lazy-provision for accounts created before Solana phase 1.
-      if (typeof token.uid === "string" && !token.depositWalletReady) {
-        try {
-          await ensureDepositWallet(token.uid)
-          token.depositWalletReady = true
-        } catch (error) {
-          console.error("[auth] jwt deposit wallet ensure failed", error)
         }
       }
       return token

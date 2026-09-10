@@ -70,7 +70,7 @@ export async function runNuclearReset(): Promise<NuclearResetReport> {
   // 3) OMS Postgres: orders + outbox (keep User accounts; trading balances live in the engine).
   try {
     const sql = `
-TRUNCATE TABLE "OrderFill", "Order", "CommandOutbox", "OmsProcessedEvent", "Deposit", "Withdrawal" CASCADE;
+TRUNCATE TABLE "OrderFill", "Order", "CommandOutbox", "OmsProcessedEvent" CASCADE;
 `;
     const out = await dockerExec("infra-postgres-1", [
       "psql",

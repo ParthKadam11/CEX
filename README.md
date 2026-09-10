@@ -97,7 +97,6 @@ CEX/
     ├── app-contracts/
     ├── db/
     ├── exchange-types/
-    ├── solana/
     └── typescript-config/
 ```
 
@@ -151,8 +150,6 @@ OMS_INTERNAL_TOKEN=...
 ENGINE_GATEWAY_INTERNAL_TOKEN=...
 GATEWAY_INTERNAL_TOKEN=...
 EXCHANGE_GATEWAY_TOKEN=...
-
-NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 ```
 
 Generate the Prisma client and run migrations:

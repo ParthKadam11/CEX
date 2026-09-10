@@ -463,7 +463,7 @@ export function PerpsPanel() {
         <TickerStat label="Ask" value={fmtNum(book.bbo.bestAsk)} tone="down" />
         <TickerStat label="Mark" value={fmtNum(displayMark)} />
         <TickerStat
-          label="Paper USD"
+          label="USD"
           value={`${usd.available.toLocaleString()}${
             usd.locked > 0 ? ` (${usd.locked.toLocaleString()} locked)` : ""
           }`}
