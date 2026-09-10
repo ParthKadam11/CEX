@@ -34,7 +34,7 @@ const gatewayToken = serviceToken(
   "local-dev-exchange-token",
 );
 const dataDir = resolveDataDir();
-mkdirSync(dataDir, { recursive: true });
+ensureDataDir(dataDir);
 
 const bus = new EventBus();
 const runtimes = new Map<MarketSymbol, MarketRuntime>();
@@ -115,6 +115,23 @@ function resolveDataDir(): string {
     );
   }
   return path.join(packageRoot, "data");
+}
+
+function ensureDataDir(dir: string): void {
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch (error) {
+    const code =
+      typeof error === "object" && error !== null && "code" in error
+        ? String((error as { code: unknown }).code)
+        : "";
+    if (code === "EACCES" || code === "EPERM") {
+      throw new Error(
+        `EXCHANGE_DATA_DIR=${dir} is not writable. On Render: Disks → add a disk with Mount Path exactly "${dir}", then set EXCHANGE_DATA_DIR to that same path.`,
+      );
+    }
+    throw error;
+  }
 }
 
 function resolveWalPath(market: MarketSymbol, marketCount: number): string {

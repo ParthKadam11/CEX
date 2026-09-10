@@ -29,7 +29,7 @@ services:
     healthCheckPath: /health/live
     disk:
       name: cex-exchange-wal
-      mountPath: /var/data/cex-exchange
+      mountPath: /data
       sizeGB: 5
     envVars:
       - key: NODE_ENV
@@ -37,7 +37,7 @@ services:
       - key: PORT
         value: "10000"
       - key: EXCHANGE_DATA_DIR
-        value: /var/data/cex-exchange
+        value: /data
       - key: EXCHANGE_GATEWAY_TOKEN
         generateValue: true
       - key: EXCHANGE_MARKETS

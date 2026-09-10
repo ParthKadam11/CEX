@@ -74,7 +74,7 @@ Services created:
 | Name | Type | Notes |
 | --- | --- | --- |
 | `cex-redis` | Key Value | Streams + pub/sub; `noeviction` |
-| `cex-exchange` | Private service | Disk at `/var/data/cex-exchange` → `EXCHANGE_DATA_DIR` |
+| `cex-exchange` | Private service | Disk at `/data` → `EXCHANGE_DATA_DIR` |
 | `cex-gateway` | Web | Public HTTPS; browser SSE |
 | `cex-oms` | Web | Public HTTPS; `preDeployCommand` runs `pnpm db:migrate:deploy` |
 | `cex-ingester` | Web | Public HTTPS; history API |
@@ -99,7 +99,18 @@ You do **not** expose local ports `4010`–`4040` on Render.
 
 ### WAL disk
 
-`cex-exchange` mounts a persistent disk. Without it, every restart empties balances/orders even though WAL code is correct. Disks force a single instance and brief downtime on deploy — expected for this engine.
+`cex-exchange` **must** have a persistent disk. Without it you get `EACCES` on boot (cannot create the data dir) or empty books after restart.
+
+**Manual service (not Blueprint):** in the exchange service → **Disks** → **Add disk**:
+
+| Field | Value |
+| --- | --- |
+| Mount Path | `/data` |
+| Size | 5 GB (or more) |
+
+Then set env `EXCHANGE_DATA_DIR=/data` (same path as the mount). Redeploy.
+
+Blueprint sets this via `disk.mountPath: /data`. Disks force a single instance and brief downtime on deploy — expected for this engine.
 
 ## 3. Vercel (web)
 
@@ -165,7 +176,7 @@ Then:
 | Render health check fails | App not listening on `PORT` (fixed in code: prefer `PORT`) |
 | Vercel 502 to OMS/gateway | Wrong `*_URL` or token mismatch |
 | SSE never connects | Missing `ENGINE_GATEWAY_PUBLIC_URL`, or gateway blocked; check CORS |
-| Empty book after exchange restart | Disk not mounted / `EXCHANGE_DATA_DIR` wrong |
+| Empty book / `EACCES mkdir` on exchange | Disk not attached, or Mount Path ≠ `EXCHANGE_DATA_DIR` |
 | OMS migrate fails | Bad `DATABASE_URL` or Neon IP allowlist |
 | Google login loop | `NEXTAUTH_URL` / callback URI mismatch |
 
@@ -177,6 +188,6 @@ Then:
 | `http://127.0.0.1:4020` | `https://cex-gateway.onrender.com` |
 | `http://127.0.0.1:4030` | `https://cex-oms.onrender.com` |
 | `http://127.0.0.1:4040` | `https://cex-ingester.onrender.com` |
-| `./apps/exchange/data` | `/var/data/cex-exchange` |
+| `./apps/exchange/data` | `/data` (Render disk mount) |
 
 Never leave `127.0.0.1` in Vercel or Render service-to-service URLs.
