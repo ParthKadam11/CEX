@@ -11,6 +11,7 @@ import {
 import { EngineRegistry } from "./engine/registry.js";
 import { EngineSseClient } from "./engine/sse.js";
 import { createGatewayApp } from "./http/server.js";
+import { loadLocalEnv } from "./loadEnv.js";
 import { log } from "./logger.js";
 import { GatewayMetrics } from "./metrics.js";
 import { publishBboSnapshot, publishTradeTick } from "./redis/market-publisher.js";
@@ -34,6 +35,7 @@ import {
 import { reconcileSseGap } from "./sse/gapReconcile.js";
 
 async function main(): Promise<void> {
+  loadLocalEnv();
   const config = loadConfig();
   const redis = createRedis(config.redisUrl);
   const marketDataRedis = createRedisSubscriber(config.redisUrl);

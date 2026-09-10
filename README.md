@@ -105,108 +105,95 @@ CEX/
 ## Prerequisites
 
 - Node.js `>=20`
-- pnpm `10.14.0`
-- PostgreSQL for the Prisma-backed app database
-- Docker Desktop or another Docker-compatible runtime for local infra
+- pnpm `10.14.0` (enable with `corepack enable`)
+- Docker Desktop (or compatible) for Redis / Postgres / Timescale
 
-Enable Corepack if needed:
-
-```bash
-corepack enable
-```
-
-
-
-## Installation
+## Local quickstart
 
 ```bash
 pnpm install
+pnpm infra:up
+pnpm setup:local          # creates .env files if missing + migrate deploy
 ```
 
+Edit `apps/web/.env` and set:
 
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
+- `NEXTAUTH_SECRET` (any random string locally)
+- `NEXTAUTH_URL=http://localhost:3000`
 
-## Environment
-
-Optional web sim ambience (defaults on for long-running Node):
-
-```env
-# Set false to disable the server-side market-maker heartbeat
-SIM_HEARTBEAT=true
-```
-
-The web app expects its environment in `apps/web/.env`.
-
-```env
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-NEXTAUTH_SECRET=...
-NEXTAUTH_URL=http://localhost:3000
-
-DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5432/postgres
-OMS_URL=http://127.0.0.1:4030
-ENGINE_GATEWAY_URL=http://127.0.0.1:4020
-# Optional shared-service tokens for non-local deployments.
-OMS_INTERNAL_TOKEN=...
-ENGINE_GATEWAY_INTERNAL_TOKEN=...
-GATEWAY_INTERNAL_TOKEN=...
-EXCHANGE_GATEWAY_TOKEN=...
-```
-
-Generate the Prisma client and run migrations:
+Then start the full stack (exchange, gateway, OMS, ingester, web):
 
 ```bash
-pnpm db:generate
-pnpm db:migrate
+pnpm dev:stack
 ```
 
+Open [http://localhost:3000](http://localhost:3000).
 
+| Command | What it starts |
+| --- | --- |
+| `pnpm infra:up` | Redis `:6379`, Postgres `:5432`, Timescale `:5434` |
+| `pnpm setup:local` | Env templates + `prisma migrate deploy` |
+| `pnpm dev:stack` | All app processes (labeled logs) |
+| `pnpm dev:backend` | Same without Next.js |
+| `pnpm dev` | Web only |
 
-## Running the project
+Default local tokens and URLs live in [`.env.example`](.env.example). `setup:local` copies them to root `.env`, `packages/db/.env`, and `apps/web/.env` when those files are missing (never overwrites).
 
+Backend services load env from cwd / repo root / `packages/db/.env`. Next.js only reads `apps/web/.env`.
 
+Sign-in still uses Google (Gmail). Auth is unchanged for this local pass.
 
-### Web app
+### Ports
 
-```bash
-pnpm dev
-```
+| Service | Port |
+| --- | --- |
+| Web | `3000` |
+| Exchange | `4010` |
+| Engine gateway | `4020` |
+| OMS | `4030` |
+| Ingester (history) | `4040` |
+| Redis | `6379` |
+| Postgres | `5432` |
+| Timescale | `5434` |
 
-Runs the Next.js app at `http://localhost:3000`.
-
-### Exchange engine
+### Individual services
 
 ```bash
 pnpm dev:exchange
+pnpm dev:gateway
+pnpm dev:oms
+pnpm dev:ingester
+pnpm dev
 ```
 
-Runs **one** exchange process on `http://localhost:4010` hosting both `SOL-USD` (spot) and `SOL-USD-PERP` (perps). Each market still has its own WAL under `apps/exchange/data/<market>.jsonl`.
-
-Optional single-market / split-process overrides:
+Exchange hosts both `SOL-USD` and `SOL-USD-PERP` on `:4010` by default. WALs live under `apps/exchange/data/<market>.jsonl`.
 
 ```bash
 # Spot only
 cross-env EXCHANGE_MARKET=SOL-USD pnpm dev:exchange
 
-# Legacy separate perp process on :4011 (optional)
+# Legacy separate perp process on :4011
 pnpm dev:exchange:perp
 ```
 
 Supported engine environment variables:
 
-- `EXCHANGE_MARKETS`  
-Comma list, default `SOL-USD,SOL-USD-PERP`.
-- `EXCHANGE_MARKET`  
-Single-market override (skips the default pair).
-- `EXCHANGE_PORT`  
-HTTP/SSE port. Defaults to `4010`.
-- `EXCHANGE_WAL_PATH`  
-Only when hosting a single market. Otherwise WALs are `data/<market>.jsonl`.
-- `EXCHANGE_DATA_DIR`  
-Directory for per-market WAL files. Defaults to `apps/exchange/data`.
+- `EXCHANGE_MARKETS` — comma list, default `SOL-USD,SOL-USD-PERP`
+- `EXCHANGE_MARKET` — single-market override
+- `EXCHANGE_PORT` — HTTP/SSE port (default `4010`)
+- `EXCHANGE_WAL_PATH` — only when hosting a single market
+- `EXCHANGE_DATA_DIR` — WAL directory (default `apps/exchange/data`)
 
+### Database migrations
 
+```bash
+pnpm db:migrate:deploy   # apply existing migrations (CI / local setup)
+pnpm db:migrate          # prisma migrate dev (schema authors)
+pnpm db:generate
+```
 
-### Application-layer infra
+### Infra only
 
 ```bash
 pnpm infra:up
@@ -214,43 +201,13 @@ pnpm infra:down
 pnpm infra:logs
 ```
 
-See `infra/README.md` for service details.
+See [`infra/README.md`](infra/README.md).
 
-### Engine gateway
+### Tokens for non-local deployments
 
-The engine gateway is the only application-layer service that talks to the exchange:
+Set matching tokens across services: `OMS_INTERNAL_TOKEN`, `GATEWAY_INTERNAL_TOKEN` / `ENGINE_GATEWAY_INTERNAL_TOKEN`, `EXCHANGE_GATEWAY_TOKEN`, `INGESTER_INTERNAL_TOKEN` / `MARKET_DATA_INTERNAL_TOKEN`. Point `MARKET_DATA_URL` at the ingester.
 
-```bash
-pnpm dev:gateway
-```
-
-By default this wires both markets to the same exchange URL (`EXCHANGE_URL` / `EXCHANGE_PERP_URL` → `:4010`). It consumes commands from `orders:commands`, routes by `market`, consumes exchange SSE, and publishes order events / live MD. Commands may include `leverage` (perps) and optional `market` on `CREDIT`.
-
-### Order Management Service
-
-OMS owns product-facing order state in Postgres:
-
-```bash
-pnpm dev:oms
-```
-
-It exposes order APIs at `http://localhost:4030`, publishes place/cancel commands to Redis Streams, and consumes gateway events to update the order database. OMS loads `DATABASE_URL` from `packages/db/.env` when the variable is not already set.
-
-### Market-data writer
-
-The ingester persists the durable `md:events` stream into TimescaleDB:
-
-```bash
-pnpm dev:ingester
-```
-
-It serves historical trades, BBO snapshots, and one-minute candles at
-`http://localhost:4040`.
-
-For non-local deployments, set the same value as `OMS_INTERNAL_TOKEN` on OMS and the web app. Set `GATEWAY_INTERNAL_TOKEN` on the engine gateway and the same value as `ENGINE_GATEWAY_INTERNAL_TOKEN` on the web app. Set `INGESTER_INTERNAL_TOKEN` (or legacy `MARKET_DATA_INTERNAL_TOKEN`) on the ingester and web app, and point `MARKET_DATA_URL` at the ingester service.
-
-See [API.md](API.md) for request IDs, error envelopes, order pagination, and
-the public BFF/internal service boundaries.
+See [API.md](API.md) for request IDs, error envelopes, order pagination, and BFF/internal boundaries.
 
 ## Exchange API
 

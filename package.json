@@ -4,10 +4,14 @@
   "scripts": {
     "dev": "pnpm --filter @cex/web dev",
     "dev:turbo": "turbo run dev --filter=@cex/web",
+    "dev:stack": "concurrently -n exchange,gateway,oms,ingester,web -c blue,magenta,green,yellow,cyan \"pnpm dev:exchange\" \"pnpm dev:gateway\" \"pnpm dev:oms\" \"pnpm dev:ingester\" \"pnpm --filter @cex/web dev\"",
+    "dev:backend": "concurrently -n exchange,gateway,oms,ingester -c blue,magenta,green,yellow \"pnpm dev:exchange\" \"pnpm dev:gateway\" \"pnpm dev:oms\" \"pnpm dev:ingester\"",
+    "setup:local": "node scripts/setup-local.mjs",
     "build": "turbo run build",
     "lint": "turbo run lint --filter=@cex/web",
     "db:generate": "turbo run db:generate --filter=@cex/db",
     "db:migrate": "pnpm --filter @cex/db migrate",
+    "db:migrate:deploy": "pnpm --filter @cex/db db:migrate:deploy",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "infra:logs": "docker compose -f infra/docker-compose.yml logs -f",
@@ -25,6 +29,7 @@
     "test:ingester": "pnpm --filter @cex/ingester test"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "turbo": "^2.5.4",
     "typescript": "^5"

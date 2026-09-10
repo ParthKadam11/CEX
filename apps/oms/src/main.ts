@@ -1,7 +1,4 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
 import { serve } from "@hono/node-server";
-import { config as loadDotenv } from "dotenv";
 import { loadConfig } from "./config.js";
 import { log } from "./logger.js";
 import { createRedis } from "./redis/client.js";
@@ -12,9 +9,10 @@ import {
   readEvents,
   recoverPendingEvents,
 } from "./redis/events.js";
+import { loadLocalEnv } from "./loadEnv.js";
 
 async function main(): Promise<void> {
-  loadEnvironment();
+  loadLocalEnv();
   const config = loadConfig();
   if (!config.databaseUrl) {
     throw new Error("DATABASE_URL is required to start OMS");
@@ -166,14 +164,3 @@ main().catch((error) => {
   log.error("fatal startup error", { error });
   process.exit(1);
 });
-
-function loadEnvironment(): void {
-  const paths = [
-    path.resolve(process.cwd(), ".env"),
-    path.resolve(process.cwd(), "../../packages/db/.env"),
-    path.resolve(process.cwd(), "packages/db/.env"),
-  ];
-  for (const envPath of paths) {
-    if (existsSync(envPath)) loadDotenv({ path: envPath });
-  }
-}

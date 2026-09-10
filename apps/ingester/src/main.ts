@@ -1,12 +1,14 @@
 import { serve } from "@hono/node-server";
 import { createPool, runMigrations } from "./db.js";
 import { loadConfig } from "./config.js";
+import { loadLocalEnv } from "./loadEnv.js";
 import { log } from "./logger.js";
 import { createRedis, ensureGroup } from "./redis.js";
 import { runWorker } from "./worker.js";
 import { createHistoryApp } from "./http.js";
 
 async function main(): Promise<void> {
+  loadLocalEnv();
   const config = loadConfig();
   const redis = createRedis(config.redisUrl);
   const pool = createPool(config.timescaleUrl);

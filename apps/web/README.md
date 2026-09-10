@@ -36,13 +36,16 @@
 
 ## Running locally
 
-From the repository root:
+From the repository root (preferred):
 
 ```bash
-pnpm dev
+pnpm infra:up
+pnpm setup:local
+# fill GOOGLE_* + NEXTAUTH_SECRET in apps/web/.env
+pnpm dev:stack
 ```
 
-Or from this package:
+Web-only (backends already running):
 
 ```bash
 pnpm dev
@@ -52,23 +55,26 @@ The app runs at `http://localhost:3000`.
 
 ## Required environment
 
-Create `apps/web/.env`:
+`pnpm setup:local` creates `apps/web/.env` from the root `.env.example` if missing. Compose-aligned defaults:
 
 ```env
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 NEXTAUTH_SECRET=...
 NEXTAUTH_URL=http://localhost:3000
-DATABASE_URL=postgresql://user:pass@localhost:5432/cex
+DATABASE_URL=postgresql://postgres:mysecretpassword@127.0.0.1:5432/postgres
 OMS_URL=http://127.0.0.1:4030
 ENGINE_GATEWAY_URL=http://127.0.0.1:4020
+MARKET_DATA_URL=http://127.0.0.1:4040
+OMS_INTERNAL_TOKEN=local-dev-oms-token
+ENGINE_GATEWAY_INTERNAL_TOKEN=local-dev-gateway-token
+MARKET_DATA_INTERNAL_TOKEN=local-dev-market-data-token
 ```
 
-Then generate the Prisma client and run migrations:
+Migrations:
 
 ```bash
-pnpm db:generate
-pnpm db:migrate
+pnpm db:migrate:deploy
 ```
 
 ## Service authentication

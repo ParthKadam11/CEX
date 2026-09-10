@@ -3,6 +3,7 @@ import { isMarketSymbol, type MarketSymbol } from "@cex/exchange-types";
 import { serve } from "@hono/node-server";
 import { EventBus } from "./api/eventBus.js";
 import { createExchangeApp } from "./api/server.js";
+import { loadLocalEnv } from "./loadEnv.js";
 import { log } from "./logger.js";
 import { MarketRuntime } from "./market/runtime.js";
 
@@ -15,6 +16,8 @@ import { MarketRuntime } from "./market/runtime.js";
   One process hosts one or more markets (default: spot + perps).
   Each market keeps its own WAL / book / balances / positions.
 */
+
+loadLocalEnv();
 
 const markets = resolveMarkets();
 const port = Number(process.env.EXCHANGE_PORT ?? 4010);
