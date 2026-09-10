@@ -22,6 +22,23 @@ export const marketDataUrl = requiredUrl(
   "http://127.0.0.1:4040",
 );
 
+/** Browser-reachable gateway origin for EventSource (defaults to ENGINE_GATEWAY_URL). */
+export const engineGatewayPublicUrl = requiredUrl(
+  "ENGINE_GATEWAY_PUBLIC_URL",
+  process.env.ENGINE_GATEWAY_PUBLIC_URL ??
+    process.env.NEXT_PUBLIC_ENGINE_GATEWAY_URL ??
+    process.env.ENGINE_GATEWAY_URL,
+  "http://127.0.0.1:4020",
+);
+
+export function streamTicketSecret(): string {
+  return requiredToken(
+    "ENGINE_GATEWAY_INTERNAL_TOKEN",
+    process.env.ENGINE_GATEWAY_INTERNAL_TOKEN,
+    "local-dev-gateway-token",
+  );
+}
+
 export function omsHeaders(userId?: string, requestId?: string | null): HeadersInit {
   return {
     "x-internal-token": requiredToken(

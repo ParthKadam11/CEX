@@ -1,4 +1,5 @@
 import path from "node:path";
+import { mkdirSync } from "node:fs";
 import { isMarketSymbol, type MarketSymbol } from "@cex/exchange-types";
 import { serve } from "@hono/node-server";
 import { EventBus } from "./api/eventBus.js";
@@ -25,8 +26,8 @@ const gatewayToken = serviceToken(
   "EXCHANGE_GATEWAY_TOKEN",
   "local-dev-exchange-token",
 );
-const dataDir =
-  process.env.EXCHANGE_DATA_DIR ?? path.join(process.cwd(), "data");
+const dataDir = resolveDataDir();
+mkdirSync(dataDir, { recursive: true });
 
 const bus = new EventBus();
 const runtimes = new Map<MarketSymbol, MarketRuntime>();
@@ -88,6 +89,22 @@ function resolveMarkets(): MarketSymbol[] {
   }
 
   return ["SOL-USD", "SOL-USD-PERP"];
+}
+
+/**
+ * WAL + snapshots live under this directory. Local default is ./data.
+ * In production you must set EXCHANGE_DATA_DIR to a persistent volume —
+ * otherwise a container restart wipes balances/orders even though WAL code runs.
+ */
+function resolveDataDir(): string {
+  const configured = process.env.EXCHANGE_DATA_DIR?.trim();
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "EXCHANGE_DATA_DIR is required in production (mount a persistent disk for the WAL)",
+    );
+  }
+  return path.join(process.cwd(), "data");
 }
 
 function serviceToken(name: string, fallback: string): string {

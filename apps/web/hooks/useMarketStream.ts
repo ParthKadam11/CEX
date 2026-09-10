@@ -48,11 +48,38 @@ export function useMarketStream(options: UseMarketStreamOptions) {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
 
-    function connect() {
+    async function resolveStreamUrl(): Promise<string> {
+      const qs = new URLSearchParams({ market: options.market });
+      try {
+        const response = await fetch(`/api/market/stream-ticket?${qs}`, {
+          cache: "no-store",
+        });
+        if (response.ok) {
+          const body = (await response.json()) as { url?: string };
+          if (typeof body.url === "string" && body.url.length > 0) {
+            return body.url;
+          }
+        }
+      } catch {
+        // fall through to same-origin BFF proxy
+      }
+      return `/api/market/stream?${qs}`;
+    }
+
+    async function connect() {
       if (closed) return;
       source?.close();
-      const qs = new URLSearchParams({ market: options.market });
-      source = new EventSource(`/api/market/stream?${qs}`);
+
+      let url: string;
+      try {
+        url = await resolveStreamUrl();
+      } catch {
+        scheduleRetry();
+        return;
+      }
+      if (closed) return;
+
+      source = new EventSource(url);
 
       source.onopen = () => {
         attempt = 0;
@@ -61,9 +88,7 @@ export function useMarketStream(options: UseMarketStreamOptions) {
       source.onerror = () => {
         setConnected(false);
         source?.close();
-        const delay = Math.min(8_000, 500 * 2 ** attempt);
-        attempt += 1;
-        retryTimer = setTimeout(connect, delay);
+        scheduleRetry();
       };
 
       source.addEventListener("book", (event) => {
@@ -112,7 +137,16 @@ export function useMarketStream(options: UseMarketStreamOptions) {
       });
     }
 
-    connect();
+    function scheduleRetry() {
+      if (closed) return;
+      const delay = Math.min(8_000, 500 * 2 ** attempt);
+      attempt += 1;
+      retryTimer = setTimeout(() => {
+        void connect();
+      }, delay);
+    }
+
+    void connect();
 
     return () => {
       closed = true;
@@ -123,4 +157,3 @@ export function useMarketStream(options: UseMarketStreamOptions) {
 
   return { book, setBook, connected, lastTrade };
 }
-

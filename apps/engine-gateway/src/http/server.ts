@@ -6,6 +6,7 @@ import {
   ORDERS_COMMANDS_STREAM,
   XPG_COMMANDS_GROUP,
 } from "@cex/app-contracts";
+import { verifyStreamTicket } from "@cex/app-contracts/stream-ticket";
 import {
   isIdentifier,
   type MarketSymbol,
@@ -36,10 +37,13 @@ type GatewayAppOptions = {
   liquidations: LiquidationHub;
   fundings: FundingHub;
   internalToken: string | null;
+  /** Comma-separated browser origins allowed for SSE (or `*`). */
+  corsOrigins?: string[];
 };
 
 export function createGatewayApp(options: GatewayAppOptions) {
   const app = new Hono();
+  const corsOrigins = options.corsOrigins ?? parseCorsOrigins();
 
   app.use("*", async (c, next) => {
     const requestId = c.req.header("x-request-id");
@@ -47,6 +51,11 @@ export function createGatewayApp(options: GatewayAppOptions) {
       "x-request-id",
       isIdentifier(requestId) ? requestId : crypto.randomUUID(),
     );
+    applyCors(c, corsOrigins);
+
+    if (c.req.method === "OPTIONS") {
+      return new Response(null, { status: 204 });
+    }
 
     if (
       !options.internalToken ||
@@ -56,6 +65,18 @@ export function createGatewayApp(options: GatewayAppOptions) {
     ) {
       await next();
       return;
+    }
+
+    const streamMarket = marketFromStreamPath(c.req.path);
+    if (streamMarket && options.internalToken) {
+      const ticket = c.req.query("ticket");
+      if (
+        ticket &&
+        verifyStreamTicket(options.internalToken, ticket, streamMarket)
+      ) {
+        await next();
+        return;
+      }
     }
 
     if (c.req.header("x-internal-token") !== options.internalToken) {
@@ -249,6 +270,10 @@ export function createGatewayApp(options: GatewayAppOptions) {
     if (!options.engines.tryGet(market)) {
       return errorResponse(c, 404, "UNKNOWN_MARKET");
     }
+
+    applyCors(c, corsOrigins);
+    c.header("cache-control", "no-cache, no-transform");
+    c.header("x-accel-buffering", "no");
 
     return streamSSE(c, async (stream) => {
       const unsubscribers: Array<() => void> = [];
@@ -479,5 +504,40 @@ async function checkEngine(
     return true;
   } catch {
     return false;
+  }
+}
+
+function marketFromStreamPath(path: string): string | null {
+  const match = /^\/markets\/([^/]+)\/stream$/.exec(path);
+  return match?.[1] ?? null;
+}
+
+function parseCorsOrigins(): string[] {
+  const raw = process.env.CORS_ORIGINS?.trim();
+  // Default `*`: stream access is ticket-gated; EventSource needs CORS.
+  if (!raw) return ["*"];
+  return raw.split(",").map((origin) => origin.trim()).filter(Boolean);
+}
+
+function applyCors(c: Context, origins: string[]): void {
+  if (origins.length === 0) return;
+  const requestOrigin = c.req.header("origin");
+  const allowAll = origins.includes("*");
+  const allowed =
+    allowAll
+      ? "*"
+      : requestOrigin && origins.includes(requestOrigin)
+        ? requestOrigin
+        : null;
+  if (!allowed) return;
+  c.header("access-control-allow-origin", allowed);
+  c.header("access-control-allow-methods", "GET, OPTIONS");
+  c.header(
+    "access-control-allow-headers",
+    "content-type, x-internal-token, x-request-id, last-event-id",
+  );
+  c.header("access-control-max-age", "86400");
+  if (allowed !== "*") {
+    c.header("vary", "Origin");
   }
 }

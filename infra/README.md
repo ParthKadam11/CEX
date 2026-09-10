@@ -31,7 +31,7 @@ Users and OMS order state via Prisma (`@cex/db`).
 DATABASE_URL=postgresql://postgres:mysecretpassword@127.0.0.1:5432/postgres
 ```
 
-`pnpm setup:local` writes this into `packages/db/.env` and `apps/web/.env` when missing. Trading balances live in the exchange WAL, not Postgres.
+`pnpm setup:local` writes this into `packages/db/.env` and `apps/web/.env` when missing. Trading balances live in the exchange **WAL** on disk (not Postgres). Locally that is `apps/exchange/data/`. On a host like Render, mount a persistent disk and set `EXCHANGE_DATA_DIR` to that mount — otherwise a restart looks like a wiped exchange even though WAL is working.
 
 ### TimescaleDB
 
