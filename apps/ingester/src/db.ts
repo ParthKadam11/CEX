@@ -8,24 +8,37 @@ const migrationFile = fileURLToPath(
   new URL("../migrations/001_market_data.sql", import.meta.url),
 );
 
+export type TimescaleSslOption =
+  | boolean
+  | { rejectUnauthorized: boolean }
+  | undefined;
+
 export function createPool(connectionString: string): Pool {
   return new Pool({
     connectionString,
     max: 5,
     idleTimeoutMillis: 30_000,
-    // Managed Timescale/Tiger often presents an intermediate CA Node doesn't trust
-    // when sslmode=require is treated as verify-full (pg v8).
     ssl: sslForConnectionString(connectionString),
   });
 }
 
-function sslForConnectionString(
+/**
+ * SSL for Timescale / TigerCloud / managed Postgres.
+ *
+ * pg v8 treats sslmode=require as verify-full, which fails on provider CA chains
+ * ("self-signed certificate in certificate chain"). Remote URLs default to
+ * encrypt + rejectUnauthorized:false. Override with:
+ *   TIMESCALE_SSL_REJECT_UNAUTHORIZED=true|false
+ * or sslmode=verify-full|no-verify on the URL.
+ */
+export function sslForConnectionString(
   connectionString: string,
-): boolean | { rejectUnauthorized: boolean } | undefined {
-  if (process.env.TIMESCALE_SSL_REJECT_UNAUTHORIZED === "true") {
+  env: NodeJS.ProcessEnv = process.env,
+): TimescaleSslOption {
+  if (env.TIMESCALE_SSL_REJECT_UNAUTHORIZED === "true") {
     return { rejectUnauthorized: true };
   }
-  if (process.env.TIMESCALE_SSL_REJECT_UNAUTHORIZED === "false") {
+  if (env.TIMESCALE_SSL_REJECT_UNAUTHORIZED === "false") {
     return { rejectUnauthorized: false };
   }
 
@@ -33,6 +46,10 @@ function sslForConnectionString(
   try {
     url = new URL(connectionString);
   } catch {
+    // Password-special URLs can fail URL(); assume managed remote in production.
+    if (env.NODE_ENV === "production") {
+      return { rejectUnauthorized: false };
+    }
     return undefined;
   }
 
@@ -41,19 +58,11 @@ function sslForConnectionString(
   if (local) return undefined;
 
   const sslmode = (url.searchParams.get("sslmode") ?? "").toLowerCase();
-  // Remote managed Postgres: encrypt, but don't fail on provider CA chains.
-  if (
-    sslmode === "" ||
-    sslmode === "require" ||
-    sslmode === "prefer" ||
-    sslmode === "verify-ca" ||
-    sslmode === "no-verify"
-  ) {
-    return { rejectUnauthorized: false };
-  }
+  if (sslmode === "disable") return false;
   if (sslmode === "verify-full") {
     return { rejectUnauthorized: true };
   }
+  // require / prefer / verify-ca / no-verify / unset → encrypt, relax CA check
   return { rejectUnauthorized: false };
 }
 

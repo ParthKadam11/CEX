@@ -40,9 +40,21 @@ ingester ──► TigerCloud
 ### TigerCloud / Timescale
 
 1. Create a Timescale-compatible Postgres database.
-2. Copy `TIMESCALE_URL` for **cex-ingester**.
+2. Copy the **public** connection string into Render as `TIMESCALE_URL` (not `127.0.0.1`).
 3. Ingester runs its own schema migrate on boot.
-4. SSL: if logs show `self-signed certificate in certificate chain`, deploy the latest ingester fix, or set `TIMESCALE_SSL_REJECT_UNAUTHORIZED=false` / use `?sslmode=no-verify` on the URL.
+
+**SSL (common on TigerCloud):** Node `pg` may log `self-signed certificate in certificate chain` when `sslmode=require` is treated as `verify-full`. The ingester handles this automatically for remote hosts (`rejectUnauthorized: false` while still using TLS).
+
+| Knob | Effect |
+| --- | --- |
+| *(default, remote URL)* | TLS on, CA verify relaxed |
+| `TIMESCALE_SSL_REJECT_UNAUTHORIZED=false` | Force relaxed verify |
+| `TIMESCALE_SSL_REJECT_UNAUTHORIZED=true` | Strict verify |
+| `?sslmode=verify-full` on URL | Strict verify |
+| `?sslmode=no-verify` on URL | Relaxed verify |
+| Local `127.0.0.1` / `localhost` | No SSL object (Compose) |
+
+Also allow inbound connections from Render (TigerCloud IP allowlist / “allow all” for bring-up).
 
 ### Redis
 
@@ -190,6 +202,8 @@ Then:
 | SSE never connects | Missing `ENGINE_GATEWAY_PUBLIC_URL`, or gateway blocked; check CORS |
 | Empty book / `EACCES mkdir` on exchange | `EXCHANGE_DATA_DIR` points at a path with no disk (e.g. `/data`). Use `/opt/render/project/src/apps/exchange/data` |
 | OMS migrate fails | Bad `DATABASE_URL` or Neon IP allowlist |
+| Ingester `ECONNREFUSED` | `TIMESCALE_URL` missing / still `127.0.0.1` |
+| Ingester `self-signed certificate in certificate chain` | Redeploy SSL fix, or set `TIMESCALE_SSL_REJECT_UNAUTHORIZED=false` |
 | Google login loop | `NEXTAUTH_URL` / callback URI mismatch |
 
 ## 6. Local vs production URLs

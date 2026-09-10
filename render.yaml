@@ -134,6 +134,9 @@ services:
           envVarKey: INGESTER_INTERNAL_TOKEN
       - key: TIMESCALE_URL
         sync: false
+      # TigerCloud CA chains: encrypt but don't fail verify-full (see apps/ingester/src/db.ts).
+      - key: TIMESCALE_SSL_REJECT_UNAUTHORIZED
+        value: "false"
       - key: REDIS_URL
         fromService:
           name: cex-redis
