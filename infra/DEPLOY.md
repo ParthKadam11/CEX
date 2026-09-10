@@ -42,6 +42,7 @@ ingester ──► TigerCloud
 1. Create a Timescale-compatible Postgres database.
 2. Copy `TIMESCALE_URL` for **cex-ingester**.
 3. Ingester runs its own schema migrate on boot.
+4. SSL: if logs show `self-signed certificate in certificate chain`, deploy the latest ingester fix, or set `TIMESCALE_SSL_REJECT_UNAUTHORIZED=false` / use `?sslmode=no-verify` on the URL.
 
 ### Redis
 

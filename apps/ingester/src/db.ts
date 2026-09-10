@@ -13,7 +13,48 @@ export function createPool(connectionString: string): Pool {
     connectionString,
     max: 5,
     idleTimeoutMillis: 30_000,
+    // Managed Timescale/Tiger often presents an intermediate CA Node doesn't trust
+    // when sslmode=require is treated as verify-full (pg v8).
+    ssl: sslForConnectionString(connectionString),
   });
+}
+
+function sslForConnectionString(
+  connectionString: string,
+): boolean | { rejectUnauthorized: boolean } | undefined {
+  if (process.env.TIMESCALE_SSL_REJECT_UNAUTHORIZED === "true") {
+    return { rejectUnauthorized: true };
+  }
+  if (process.env.TIMESCALE_SSL_REJECT_UNAUTHORIZED === "false") {
+    return { rejectUnauthorized: false };
+  }
+
+  let url: URL;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    return undefined;
+  }
+
+  const host = url.hostname;
+  const local = host === "127.0.0.1" || host === "localhost";
+  if (local) return undefined;
+
+  const sslmode = (url.searchParams.get("sslmode") ?? "").toLowerCase();
+  // Remote managed Postgres: encrypt, but don't fail on provider CA chains.
+  if (
+    sslmode === "" ||
+    sslmode === "require" ||
+    sslmode === "prefer" ||
+    sslmode === "verify-ca" ||
+    sslmode === "no-verify"
+  ) {
+    return { rejectUnauthorized: false };
+  }
+  if (sslmode === "verify-full") {
+    return { rejectUnauthorized: true };
+  }
+  return { rejectUnauthorized: false };
 }
 
 export async function runMigrations(pool: Pool): Promise<void> {
