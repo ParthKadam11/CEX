@@ -201,7 +201,8 @@ pnpm infra:down
 pnpm infra:logs
 ```
 
-See [`infra/README.md`](infra/README.md).
+See [`infra/README.md`](infra/README.md) for local Compose.  
+See [`infra/DEPLOY.md`](infra/DEPLOY.md) for Render + Vercel + Neon + TigerCloud production deploy (`render.yaml`).
 
 ### Tokens for non-local deployments
 

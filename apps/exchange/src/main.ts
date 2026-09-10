@@ -1,5 +1,6 @@
 import path from "node:path";
 import { mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { isMarketSymbol, type MarketSymbol } from "@cex/exchange-types";
 import { serve } from "@hono/node-server";
 import { EventBus } from "./api/eventBus.js";
@@ -20,8 +21,14 @@ import { MarketRuntime } from "./market/runtime.js";
 
 loadLocalEnv();
 
+/** Always `apps/exchange`, even if the process was started from the monorepo root. */
+const packageRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
+
 const markets = resolveMarkets();
-const port = Number(process.env.EXCHANGE_PORT ?? 4010);
+const port = Number(process.env.PORT ?? process.env.EXCHANGE_PORT ?? 4010);
 const gatewayToken = serviceToken(
   "EXCHANGE_GATEWAY_TOKEN",
   "local-dev-exchange-token",
@@ -32,14 +39,11 @@ mkdirSync(dataDir, { recursive: true });
 const bus = new EventBus();
 const runtimes = new Map<MarketSymbol, MarketRuntime>();
 for (const market of markets) {
-  const walPath =
-    markets.length === 1 && process.env.EXCHANGE_WAL_PATH
-      ? process.env.EXCHANGE_WAL_PATH
-      : path.join(dataDir, `${market}.jsonl`);
+  const walPath = resolveWalPath(market, markets.length);
   runtimes.set(market, MarketRuntime.open(market, walPath, bus));
 }
 
-const app = createExchangeApp(runtimes, bus, { gatewayToken });
+const app = createExchangeApp(runtimes, bus, { gatewayToken, dataDir });
 
 const shutdown = () => {
   log.info("shutting down");
@@ -92,19 +96,32 @@ function resolveMarkets(): MarketSymbol[] {
 }
 
 /**
- * WAL + snapshots live under this directory. Local default is ./data.
- * In production you must set EXCHANGE_DATA_DIR to a persistent volume —
- * otherwise a container restart wipes balances/orders even though WAL code runs.
+ * WAL + snapshots live under this directory.
+ *
+ * Local default: `<package>/data` (apps/exchange/data) — not process.cwd(),
+ * so starting from the monorepo root still hits the same durable files.
+ *
+ * Production: EXCHANGE_DATA_DIR must point at a persistent volume mount.
+ * Without that, container restarts wipe balances/orders even though WAL works.
  */
 function resolveDataDir(): string {
   const configured = process.env.EXCHANGE_DATA_DIR?.trim();
-  if (configured) return configured;
+  if (configured) {
+    return path.resolve(configured);
+  }
   if (process.env.NODE_ENV === "production") {
     throw new Error(
       "EXCHANGE_DATA_DIR is required in production (mount a persistent disk for the WAL)",
     );
   }
-  return path.join(process.cwd(), "data");
+  return path.join(packageRoot, "data");
+}
+
+function resolveWalPath(market: MarketSymbol, marketCount: number): string {
+  const single =
+    marketCount === 1 ? process.env.EXCHANGE_WAL_PATH?.trim() : undefined;
+  if (single) return path.resolve(single);
+  return path.join(dataDir, `${market}.jsonl`);
 }
 
 function serviceToken(name: string, fallback: string): string {

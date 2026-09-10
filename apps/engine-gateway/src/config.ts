@@ -22,7 +22,7 @@ export type GatewayConfig = {
 };
 
 export function loadConfig(): GatewayConfig {
-  const port = Number(process.env.GATEWAY_PORT ?? 4020);
+  const port = Number(process.env.PORT ?? process.env.GATEWAY_PORT ?? 4020);
   const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
   const consumerName =
     process.env.GATEWAY_CONSUMER_NAME ?? `engine-gw-${process.pid}`;

@@ -69,7 +69,7 @@ function parseNonNegativeUnit(value: unknown): number | null {
 export function createExchangeApp(
   runtimeOrRuntimes: MarketRuntime | ReadonlyMap<MarketSymbol, MarketRuntime>,
   bus: EventBus,
-  options: { gatewayToken?: string } = {},
+  options: { gatewayToken?: string; dataDir?: string } = {},
 ) {
   const runtimes = resolveRuntimes(runtimeOrRuntimes);
   const app = new Hono();
@@ -137,6 +137,7 @@ export function createExchangeApp(
         service: "exchange",
         markets,
         market: markets[0] ?? null,
+        ...(options.dataDir ? { dataDir: options.dataDir } : {}),
         dependencies: {
           markets: {
             ok,

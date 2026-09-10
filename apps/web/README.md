@@ -77,6 +77,8 @@ Migrations:
 pnpm db:migrate:deploy
 ```
 
-## Service authentication
+## Production
+
+See [`infra/DEPLOY.md`](../../infra/DEPLOY.md) (Vercel web + Render backends).
 
 The web app acts as the authenticated BFF. It derives the user id from NextAuth and sends it to OMS only through a trusted internal header. Configure the same `OMS_INTERNAL_TOKEN` on the web app and OMS, and the same `ENGINE_GATEWAY_INTERNAL_TOKEN` on the web app and `GATEWAY_INTERNAL_TOKEN` on the gateway for non-local deployments.

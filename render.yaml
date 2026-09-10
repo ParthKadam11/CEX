@@ -1,0 +1,140 @@
+# Render Blueprint — CEX backends
+# https://render.com/docs/blueprint-spec
+#
+# Deploys: exchange (private + WAL disk), gateway, OMS, ingester, Redis.
+# Web stays on Vercel. Neon + TigerCloud are external (set URLs in the dashboard).
+#
+# After first sync: copy public HTTPS URLs + tokens into Vercel (see infra/DEPLOY.md).
+
+previews:
+  generation: manual
+
+services:
+  # ── Redis (streams + pub/sub). Keep internal-only. ──
+  - type: keyvalue
+    name: cex-redis
+    plan: starter
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+
+  # ── Matching engine (private). WAL on persistent disk. ──
+  - type: pserv
+    name: cex-exchange
+    runtime: node
+    plan: starter
+    region: oregon
+    # Avoid corepack enable (EROFS) and pnpm -g (no global bin on Render).
+    buildCommand: npx pnpm@10.14.0 install --frozen-lockfile
+    startCommand: npx pnpm@10.14.0 --filter @cex/exchange start
+    healthCheckPath: /health/live
+    disk:
+      name: cex-exchange-wal
+      mountPath: /var/data/cex-exchange
+      sizeGB: 5
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: EXCHANGE_DATA_DIR
+        value: /var/data/cex-exchange
+      - key: EXCHANGE_GATEWAY_TOKEN
+        generateValue: true
+      - key: EXCHANGE_MARKETS
+        value: SOL-USD,SOL-USD-PERP
+
+  # ── Engine gateway (public HTTPS — browser SSE + Vercel BFF). ──
+  - type: web
+    name: cex-gateway
+    runtime: node
+    plan: starter
+    region: oregon
+    # Avoid `corepack enable` on Render (EROFS on /usr/bin/pnpm).
+    buildCommand: npx pnpm@10.14.0 install --frozen-lockfile
+    startCommand: npx pnpm@10.14.0 --filter @cex/engine-gateway start
+    healthCheckPath: /health/live
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GATEWAY_CONSUMER_NAME
+        value: engine-gw-1
+      - key: EXCHANGE_URL
+        value: http://cex-exchange:10000
+      - key: EXCHANGE_PERP_URL
+        value: http://cex-exchange:10000
+      - key: EXCHANGE_GATEWAY_TOKEN
+        fromService:
+          name: cex-exchange
+          type: pserv
+          envVarKey: EXCHANGE_GATEWAY_TOKEN
+      - key: GATEWAY_INTERNAL_TOKEN
+        generateValue: true
+      # Same value as GATEWAY_INTERNAL_TOKEN (SSE tickets + BFF headers).
+      - key: ENGINE_GATEWAY_INTERNAL_TOKEN
+        fromService:
+          name: cex-gateway
+          type: web
+          envVarKey: GATEWAY_INTERNAL_TOKEN
+      - key: REDIS_URL
+        fromService:
+          name: cex-redis
+          type: keyvalue
+          property: connectionString
+      - key: CORS_ORIGINS
+        sync: false
+
+  # ── OMS (public HTTPS — Vercel place/cancel/credit). ──
+  - type: web
+    name: cex-oms
+    runtime: node
+    plan: starter
+    region: oregon
+    # Avoid `corepack enable` on Render (EROFS on /usr/bin/pnpm).
+    buildCommand: npx pnpm@10.14.0 install --frozen-lockfile
+    startCommand: npx pnpm@10.14.0 --filter @cex/oms start
+    preDeployCommand: npx pnpm@10.14.0 db:migrate:deploy
+    healthCheckPath: /health/live
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OMS_CONSUMER_NAME
+        value: oms-1
+      - key: OMS_INTERNAL_TOKEN
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          name: cex-redis
+          type: keyvalue
+          property: connectionString
+
+  # ── Market-data ingester / history API. ──
+  - type: web
+    name: cex-ingester
+    runtime: node
+    plan: starter
+    region: oregon
+    # Avoid `corepack enable` on Render (EROFS on /usr/bin/pnpm).
+    buildCommand: npx pnpm@10.14.0 install --frozen-lockfile
+    startCommand: npx pnpm@10.14.0 --filter @cex/ingester start
+    healthCheckPath: /health/live
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: INGESTER_CONSUMER_NAME
+        value: ingester-1
+      - key: INGESTER_INTERNAL_TOKEN
+        generateValue: true
+      - key: MARKET_DATA_INTERNAL_TOKEN
+        fromService:
+          name: cex-ingester
+          type: web
+          envVarKey: INGESTER_INTERNAL_TOKEN
+      - key: TIMESCALE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          name: cex-redis
+          type: keyvalue
+          property: connectionString

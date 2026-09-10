@@ -10,7 +10,12 @@ export type IngesterConfig = {
 
 export function loadConfig(): IngesterConfig {
   return {
-    port: boundedNumber(process.env.INGESTER_PORT ?? process.env.MARKET_DATA_PORT, 4040, 1_024, 65_535),
+    port: boundedNumber(
+      process.env.PORT ?? process.env.INGESTER_PORT ?? process.env.MARKET_DATA_PORT,
+      4040,
+      1_024,
+      65_535,
+    ),
     redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
     timescaleUrl:
       process.env.TIMESCALE_URL ??

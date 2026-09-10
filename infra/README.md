@@ -71,3 +71,7 @@ pnpm infra:logs
 - Engine gateway, OMS, or ingester
 
 Use `pnpm dev:stack` (or `pnpm dev:backend`) for those.
+
+## Production
+
+Deploy backends with the root [`render.yaml`](../render.yaml) blueprint. Full steps (Neon, TigerCloud, Vercel env, WAL disk, ports): [`DEPLOY.md`](./DEPLOY.md).
