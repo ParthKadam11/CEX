@@ -74,7 +74,7 @@ Services created:
 | Name | Type | Notes |
 | --- | --- | --- |
 | `cex-redis` | Key Value | Streams + pub/sub; `noeviction` |
-| `cex-exchange` | Private service | Disk at `/data` → `EXCHANGE_DATA_DIR` |
+| `cex-exchange` | Private service | Disk at `/opt/render/project/src/apps/exchange/data` |
 | `cex-gateway` | Web | Public HTTPS; browser SSE |
 | `cex-oms` | Web | Public HTTPS; `preDeployCommand` runs `pnpm db:migrate:deploy` |
 | `cex-ingester` | Web | Public HTTPS; history API |
@@ -99,18 +99,29 @@ You do **not** expose local ports `4010`–`4040` on Render.
 
 ### WAL disk
 
-`cex-exchange` **must** have a persistent disk. Without it you get `EACCES` on boot (cannot create the data dir) or empty books after restart.
+`cex-exchange` should use a **persistent disk** (paid Render plan). Without it, WAL files live on the ephemeral filesystem and are wiped on redeploy.
 
-**Manual service (not Blueprint):** in the exchange service → **Disks** → **Add disk**:
+**Recommended Mount Path** (allowed Node subdir of the source tree):
 
-| Field | Value |
-| --- | --- |
-| Mount Path | `/data` |
-| Size | 5 GB (or more) |
+```text
+/opt/render/project/src/apps/exchange/data
+```
 
-Then set env `EXCHANGE_DATA_DIR=/data` (same path as the mount). Redeploy.
+Set `EXCHANGE_DATA_DIR` to that **exact** same path.
 
-Blueprint sets this via `disk.mountPath: /data`. Disks force a single instance and brief downtime on deploy — expected for this engine.
+**Manual service:** Disks → Add disk → Mount Path as above → Manual Deploy.
+
+**Boot without a disk (bring-up only):**
+
+```env
+EXCHANGE_DATA_DIR=/opt/render/project/src/apps/exchange/data
+```
+
+That path is writable on Render without attaching a disk, but data is lost on redeploy until a disk is mounted there.
+
+Do **not** use `/data` or `/var/data/...` unless you have actually attached a disk at that path — otherwise you get `EACCES`.
+
+Disks force a single instance and brief downtime on deploy — expected for this engine.
 
 ## 3. Vercel (web)
 
@@ -176,7 +187,7 @@ Then:
 | Render health check fails | App not listening on `PORT` (fixed in code: prefer `PORT`) |
 | Vercel 502 to OMS/gateway | Wrong `*_URL` or token mismatch |
 | SSE never connects | Missing `ENGINE_GATEWAY_PUBLIC_URL`, or gateway blocked; check CORS |
-| Empty book / `EACCES mkdir` on exchange | Disk not attached, or Mount Path ≠ `EXCHANGE_DATA_DIR` |
+| Empty book / `EACCES mkdir` on exchange | `EXCHANGE_DATA_DIR` points at a path with no disk (e.g. `/data`). Use `/opt/render/project/src/apps/exchange/data` |
 | OMS migrate fails | Bad `DATABASE_URL` or Neon IP allowlist |
 | Google login loop | `NEXTAUTH_URL` / callback URI mismatch |
 
@@ -188,6 +199,6 @@ Then:
 | `http://127.0.0.1:4020` | `https://cex-gateway.onrender.com` |
 | `http://127.0.0.1:4030` | `https://cex-oms.onrender.com` |
 | `http://127.0.0.1:4040` | `https://cex-ingester.onrender.com` |
-| `./apps/exchange/data` | `/data` (Render disk mount) |
+| `./apps/exchange/data` | `/opt/render/project/src/apps/exchange/data` |
 
 Never leave `127.0.0.1` in Vercel or Render service-to-service URLs.

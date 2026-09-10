@@ -1,5 +1,5 @@
 import path from "node:path";
-import { mkdirSync } from "node:fs";
+import { accessSync, constants, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { isMarketSymbol, type MarketSymbol } from "@cex/exchange-types";
 import { serve } from "@hono/node-server";
@@ -26,6 +26,7 @@ const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+const packageDataDir = path.join(packageRoot, "data");
 
 const markets = resolveMarkets();
 const port = Number(process.env.PORT ?? process.env.EXCHANGE_PORT ?? 4010);
@@ -98,39 +99,50 @@ function resolveMarkets(): MarketSymbol[] {
 /**
  * WAL + snapshots live under this directory.
  *
- * Local default: `<package>/data` (apps/exchange/data) — not process.cwd(),
- * so starting from the monorepo root still hits the same durable files.
- *
- * Production: EXCHANGE_DATA_DIR must point at a persistent volume mount.
- * Without that, container restarts wipe balances/orders even though WAL works.
+ * Local / Render default: `<package>/data` (apps/exchange/data).
+ * On Render mount a disk at that absolute path for durability:
+ *   /opt/render/project/src/apps/exchange/data
  */
 function resolveDataDir(): string {
   const configured = process.env.EXCHANGE_DATA_DIR?.trim();
-  if (configured) {
-    return path.resolve(configured);
-  }
+  if (configured) return path.resolve(configured);
+
   if (process.env.NODE_ENV === "production") {
+    // Prefer the package data dir so a Render disk can mount over it.
+    // Require an explicit opt-in so silent ephemeral prod data is obvious.
+    if (process.env.EXCHANGE_ALLOW_EPHEMERAL_DATA === "true") {
+      log.warn(
+        "EXCHANGE_DATA_DIR unset; using package data dir (ephemeral unless a disk is mounted there)",
+        { dataDir: packageDataDir },
+      );
+      return packageDataDir;
+    }
     throw new Error(
-      "EXCHANGE_DATA_DIR is required in production (mount a persistent disk for the WAL)",
+      "EXCHANGE_DATA_DIR is required in production. " +
+        "On Render set it to /opt/render/project/src/apps/exchange/data and mount a disk at that path, " +
+        "or set EXCHANGE_ALLOW_EPHEMERAL_DATA=true to boot without a disk (data lost on redeploy).",
     );
   }
-  return path.join(packageRoot, "data");
+
+  return packageDataDir;
 }
 
 function ensureDataDir(dir: string): void {
   try {
     mkdirSync(dir, { recursive: true });
+    accessSync(dir, constants.W_OK);
   } catch (error) {
     const code =
       typeof error === "object" && error !== null && "code" in error
         ? String((error as { code: unknown }).code)
         : "";
-    if (code === "EACCES" || code === "EPERM") {
-      throw new Error(
-        `EXCHANGE_DATA_DIR=${dir} is not writable. On Render: Disks → add a disk with Mount Path exactly "${dir}", then set EXCHANGE_DATA_DIR to that same path.`,
-      );
-    }
-    throw error;
+    throw new Error(
+      `EXCHANGE_DATA_DIR=${dir} is not writable (${code || "error"}). ` +
+        `On Render: Disks → Add disk, Mount Path must be exactly this path (paid plan required). ` +
+        `Quick boot without a disk: set EXCHANGE_DATA_DIR=/opt/render/project/src/apps/exchange/data ` +
+        `(writable, but wiped on redeploy until you mount a disk there).`,
+      { cause: error },
+    );
   }
 }
 

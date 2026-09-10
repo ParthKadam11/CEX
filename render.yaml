@@ -29,7 +29,8 @@ services:
     healthCheckPath: /health/live
     disk:
       name: cex-exchange-wal
-      mountPath: /data
+      # Subdir of the Node source tree (allowed). Overlays apps/exchange/data.
+      mountPath: /opt/render/project/src/apps/exchange/data
       sizeGB: 5
     envVars:
       - key: NODE_ENV
@@ -37,7 +38,7 @@ services:
       - key: PORT
         value: "10000"
       - key: EXCHANGE_DATA_DIR
-        value: /data
+        value: /opt/render/project/src/apps/exchange/data
       - key: EXCHANGE_GATEWAY_TOKEN
         generateValue: true
       - key: EXCHANGE_MARKETS
