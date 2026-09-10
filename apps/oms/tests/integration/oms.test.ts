@@ -12,10 +12,6 @@ loadTestEnvironment();
 
 const omsUrl = process.env.OMS_URL ?? "http://127.0.0.1:4030";
 const omsToken = process.env.OMS_INTERNAL_TOKEN ?? "local-dev-oms-token";
-const gatewayUrl =
-  process.env.ENGINE_GATEWAY_URL ?? "http://127.0.0.1:4020";
-const gatewayToken =
-  process.env.ENGINE_GATEWAY_INTERNAL_TOKEN ?? "local-dev-gateway-token";
 const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
 const prefix = `oms-integration-${Date.now()}-${process.pid}`;
 const redis = new Redis(redisUrl, {
@@ -131,22 +127,21 @@ async function createTestUser(
 
 async function sendCredit(userId: string): Promise<void> {
   const commandId = `${prefix}-credit`;
-  const response = await fetch(`${gatewayUrl}/dev/inject-command`, {
+  const response = await fetch(`${omsUrl}/credits`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-internal-token": gatewayToken,
+      "x-internal-token": omsToken,
+      "x-authenticated-user-id": userId,
+      "x-request-id": commandId,
     },
     body: JSON.stringify({
       commandId,
-      type: "CREDIT",
-      userId,
       asset: "USD",
       amount: 100_000,
-      timestamp: Date.now(),
     }),
   });
-  if (!response.ok) {
+  if (!response.ok && response.status !== 202) {
     throw new Error(`Credit injection failed with status ${response.status}`);
   }
 

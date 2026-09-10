@@ -1,5 +1,6 @@
 import type {
   CancelCommand,
+  CreditCommand,
   PlaceCommand,
 } from "@cex/app-contracts";
 import { OmsOrderStatus } from "@cex/db/enums";
@@ -7,6 +8,7 @@ import { isMarketSymbol, type MarketSymbol } from "@cex/exchange-types";
 import type Redis from "ioredis";
 import {
   publishCancelCommand,
+  publishCreditCommand,
   publishPlaceCommand,
 } from "../redis/commands.js";
 import { OrderRepository } from "./repository.js";
@@ -56,6 +58,11 @@ export class OrderService {
     private readonly repository: OrderRepository,
     private readonly redis: Redis,
   ) {}
+
+  async credit(command: CreditCommand) {
+    await publishCreditCommand(this.redis, command);
+    return { command };
+  }
 
   async place(input: PlaceOrderInput) {
     const engineOrderId = input.orderId ?? crypto.randomUUID();

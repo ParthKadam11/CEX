@@ -3,6 +3,7 @@ import {
   isAppCommand,
   OMS_EVENTS_GROUP,
   ORDERS_EVENTS_STREAM,
+  type CreditCommand,
   type PlaceCommand,
 } from "@cex/app-contracts";
 import {
@@ -116,6 +117,48 @@ export function createOmsApp(
       },
       ok ? 200 : 503,
     );
+  });
+
+  app.post("/credits", async (c) => {
+    const userId = authenticatedUserId(c);
+    if (!userId) return errorResponse(c, 401, "UNAUTHORIZED");
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return errorResponse(c, 400, "INVALID_JSON");
+    }
+
+    const command = parseCreditCommand(
+      body,
+      userId,
+      c.req.header("x-request-id"),
+    );
+    if (!command) return errorResponse(c, 400, "INVALID_CREDIT");
+
+    try {
+      const result = await orderService.credit(command);
+      log.info("credit accepted", {
+        requestId: c.req.header("x-request-id"),
+        commandId: result.command.commandId,
+        userId,
+        asset: result.command.asset,
+        amount: result.command.amount,
+        market: result.command.market,
+      });
+      return c.json(
+        {
+          commandId: result.command.commandId,
+          asset: result.command.asset,
+          amount: result.command.amount,
+          market: result.command.market,
+        },
+        202,
+      );
+    } catch (error) {
+      return errorResponse(c, error);
+    }
   });
 
   app.post("/orders", async (c) => {
@@ -251,6 +294,29 @@ export function createOmsApp(
   });
 
   return app;
+}
+
+function parseCreditCommand(
+  value: unknown,
+  userId: string,
+  requestId?: string | null,
+): CreditCommand | null {
+  if (!isRecord(value)) return null;
+
+  const candidate: Record<string, unknown> = {
+    ...value,
+    userId,
+    commandId:
+      typeof value.commandId === "string"
+        ? value.commandId
+        : crypto.randomUUID(),
+    type: "CREDIT",
+    timestamp: Date.now(),
+    ...(requestId ? { requestId } : {}),
+  };
+
+  if (!isAppCommand(candidate) || candidate.type !== "CREDIT") return null;
+  return candidate;
 }
 
 function parsePlaceCommand(

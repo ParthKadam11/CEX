@@ -51,6 +51,48 @@ describe("OMS HTTP authentication", () => {
     );
   });
 
+  it("accepts paper credits for the authenticated user", async () => {
+    const service = {
+      credit: vi.fn().mockResolvedValue({
+        command: {
+          commandId: "credit-1",
+          type: "CREDIT",
+          userId: "owner",
+          asset: "USD",
+          amount: 1000,
+          market: "SOL-USD",
+          timestamp: Date.now(),
+        },
+      }),
+    } as unknown as OrderService;
+    const app = createOmsApp(service, { internalToken: "secret" });
+
+    const response = await app.request("/credits", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-token": "secret",
+        "x-authenticated-user-id": "owner",
+      },
+      body: JSON.stringify({
+        userId: "attacker",
+        asset: "USD",
+        amount: 1000,
+        market: "SOL-USD",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(service.credit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "owner",
+        asset: "USD",
+        amount: 1000,
+        market: "SOL-USD",
+      }),
+    );
+  });
+
   it("uses the authenticated identity for order queries and cancellation", async () => {
     const service = {
       listForUser: vi.fn().mockResolvedValue([]),

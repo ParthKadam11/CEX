@@ -373,11 +373,10 @@ export function createGatewayApp(options: GatewayAppOptions) {
     }),
   );
 
+  // Token-gated command inject for the market-maker / local tooling.
+  // Sim accounts are ledger-only (no OMS User rows), so place/cancel stay here.
+  // Paper credits for real users go through OMS POST /credits instead.
   app.post("/dev/inject-command", async (c) => {
-    if (process.env.NODE_ENV === "production") {
-      return errorResponse(c, 404, "DISABLED_IN_PRODUCTION");
-    }
-
     let body: unknown;
     try {
       body = await c.req.json();

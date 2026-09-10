@@ -7,6 +7,8 @@ import type { OrderBookSnapshot } from "@cex/exchange-types";
 import {
   engineGatewayHeaders,
   engineGatewayUrl,
+  omsHeaders,
+  omsUrl,
 } from "@/lib/backend";
 import {
   getSimMarket,
@@ -196,15 +198,25 @@ async function injectCredit(
   asset: "USD" | "SOL",
   amount: number,
 ): Promise<boolean> {
-  return inject({
-    commandId: `sim-credit-${crypto.randomUUID()}`,
-    type: "CREDIT",
-    userId,
-    asset,
-    amount,
-    market: getSimMarket(),
-    timestamp: Date.now(),
-  });
+  try {
+    const requestId = crypto.randomUUID();
+    const response = await fetch(`${omsUrl}/credits`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...omsHeaders(userId, requestId),
+      },
+      body: JSON.stringify({
+        commandId: `sim-credit-${crypto.randomUUID()}`,
+        asset,
+        amount,
+        market: getSimMarket(),
+      }),
+    });
+    return response.ok || response.status === 202;
+  } catch {
+    return false;
+  }
 }
 
 async function injectPlace(options: {

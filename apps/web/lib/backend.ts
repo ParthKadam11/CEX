@@ -2,22 +2,33 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 
-export const omsUrl = (
-  process.env.OMS_URL ?? "http://127.0.0.1:4030"
-).replace(/\/$/, "");
+const isProduction = process.env.NODE_ENV === "production";
 
-export const engineGatewayUrl = (
-  process.env.ENGINE_GATEWAY_URL ?? "http://127.0.0.1:4020"
-).replace(/\/$/, "");
+export const omsUrl = requiredUrl(
+  "OMS_URL",
+  process.env.OMS_URL,
+  "http://127.0.0.1:4030",
+);
 
-export const marketDataUrl = (
-  process.env.MARKET_DATA_URL ?? "http://127.0.0.1:4040"
-).replace(/\/$/, "");
+export const engineGatewayUrl = requiredUrl(
+  "ENGINE_GATEWAY_URL",
+  process.env.ENGINE_GATEWAY_URL,
+  "http://127.0.0.1:4020",
+);
+
+export const marketDataUrl = requiredUrl(
+  "MARKET_DATA_URL",
+  process.env.MARKET_DATA_URL,
+  "http://127.0.0.1:4040",
+);
 
 export function omsHeaders(userId?: string, requestId?: string | null): HeadersInit {
   return {
-    "x-internal-token":
-      process.env.OMS_INTERNAL_TOKEN ?? "local-dev-oms-token",
+    "x-internal-token": requiredToken(
+      "OMS_INTERNAL_TOKEN",
+      process.env.OMS_INTERNAL_TOKEN,
+      "local-dev-oms-token",
+    ),
     ...(userId ? { "x-authenticated-user-id": userId } : {}),
     "x-request-id": requestId ?? crypto.randomUUID(),
   };
@@ -28,9 +39,11 @@ export function engineGatewayHeaders(
   requestId?: string | null,
 ): HeadersInit {
   return {
-    "x-internal-token":
-      process.env.ENGINE_GATEWAY_INTERNAL_TOKEN ??
+    "x-internal-token": requiredToken(
+      "ENGINE_GATEWAY_INTERNAL_TOKEN",
+      process.env.ENGINE_GATEWAY_INTERNAL_TOKEN,
       "local-dev-gateway-token",
+    ),
     ...(userId ? { "x-authenticated-user-id": userId } : {}),
     "x-request-id": requestId ?? crypto.randomUUID(),
   };
@@ -38,9 +51,11 @@ export function engineGatewayHeaders(
 
 export function marketDataHeaders(requestId?: string | null): HeadersInit {
   return {
-    "x-internal-token":
-      process.env.MARKET_DATA_INTERNAL_TOKEN ??
+    "x-internal-token": requiredToken(
+      "MARKET_DATA_INTERNAL_TOKEN",
+      process.env.MARKET_DATA_INTERNAL_TOKEN,
       "local-dev-market-data-token",
+    ),
     "x-request-id": requestId ?? crypto.randomUUID(),
   };
 }
@@ -75,4 +90,22 @@ export function bffError(
     { error: { code, message, requestId } },
     { status, headers: { "x-request-id": requestId } },
   );
+}
+
+function requiredUrl(name: string, value: string | undefined, fallback: string) {
+  if (isProduction && !value) {
+    throw new Error(`${name} is required in production`);
+  }
+  return (value ?? fallback).replace(/\/$/, "");
+}
+
+function requiredToken(
+  name: string,
+  value: string | undefined,
+  fallback: string,
+): string {
+  if (isProduction && !value) {
+    throw new Error(`${name} is required in production`);
+  }
+  return value ?? fallback;
 }

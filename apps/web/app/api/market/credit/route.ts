@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   bffError,
-  engineGatewayHeaders,
-  engineGatewayUrl,
   getAuthenticatedUserId,
+  omsHeaders,
+  omsUrl,
 } from "@/lib/backend";
 import { parseMarketParam } from "@/lib/markets";
 
 const MAX_PAPER_CREDIT = 1_000_000;
 
 /**
- * Paper-fund the authenticated user's engine ledger via gateway CREDIT inject.
+ * Paper-fund the authenticated user's engine ledger via OMS CREDIT.
  * Pass `market` to credit the spot or perp engine (separate ledgers).
  */
 export async function POST(request: NextRequest) {
@@ -45,24 +45,19 @@ export async function POST(request: NextRequest) {
     return bffError(request, 400, "INVALID_AMOUNT");
   }
 
-  const command = {
-    commandId: `web-credit-${crypto.randomUUID()}`,
-    type: "CREDIT" as const,
-    userId,
-    asset,
-    amount,
-    market,
-    timestamp: Date.now(),
-  };
-
   try {
-    const response = await fetch(`${engineGatewayUrl}/dev/inject-command`, {
+    const response = await fetch(`${omsUrl}/credits`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        ...engineGatewayHeaders(userId, request.headers.get("x-request-id")),
+        ...omsHeaders(userId, request.headers.get("x-request-id")),
       },
-      body: JSON.stringify(command),
+      body: JSON.stringify({
+        commandId: `web-credit-${crypto.randomUUID()}`,
+        asset,
+        amount,
+        market,
+      }),
     });
 
     const payload = await response.json().catch(() => ({}));
@@ -71,11 +66,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { commandId: command.commandId, asset, amount, market, ...payload },
+      { asset, amount, market, ...payload },
       { status: 202 },
     );
   } catch {
-    return bffError(request, 502, "ENGINE_GATEWAY_UNAVAILABLE");
+    return bffError(request, 502, "OMS_UNAVAILABLE");
   }
 }
 
