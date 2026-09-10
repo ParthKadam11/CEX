@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { sslForConnectionString } from "../src/db.js";
+import {
+  createPool,
+  sslForConnectionString,
+  stripSslQueryParams,
+} from "../src/db.js";
 
 describe("sslForConnectionString", () => {
   it("leaves local Docker Timescale without forced SSL", () => {
@@ -60,5 +64,25 @@ describe("sslForConnectionString", () => {
         {},
       ),
     ).toBe(false);
+  });
+});
+
+describe("stripSslQueryParams", () => {
+  it("removes sslmode so Pool ssl is not overridden", () => {
+    expect(
+      stripSslQueryParams(
+        "postgresql://u:p@host:5432/db?sslmode=require&application_name=cex",
+      ),
+    ).toBe("postgresql://u:p@host:5432/db?application_name=cex");
+  });
+});
+
+describe("createPool", () => {
+  it("builds a pool with relaxed ssl for remote require URLs", () => {
+    const pool = createPool(
+      "postgresql://u:p@abc.xx.tsdb.cloud:5432/tsdb?sslmode=require",
+    );
+    expect(pool).toBeTruthy();
+    void pool.end();
   });
 });

@@ -43,15 +43,14 @@ ingester ──► TigerCloud
 2. Copy the **public** connection string into Render as `TIMESCALE_URL` (not `127.0.0.1`).
 3. Ingester runs its own schema migrate on boot.
 
-**SSL (common on TigerCloud):** Node `pg` may log `self-signed certificate in certificate chain` when `sslmode=require` is treated as `verify-full`. The ingester handles this automatically for remote hosts (`rejectUnauthorized: false` while still using TLS).
+**SSL (common on TigerCloud):** Node `pg` treats URL `sslmode=require` as **verify-full**, which overrides a Pool `ssl` option and fails with `self-signed certificate in certificate chain`. The ingester **strips** `sslmode` from the URL and sets `ssl: { rejectUnauthorized: false }` for remote hosts (TLS still on).
 
 | Knob | Effect |
 | --- | --- |
 | *(default, remote URL)* | TLS on, CA verify relaxed |
 | `TIMESCALE_SSL_REJECT_UNAUTHORIZED=false` | Force relaxed verify |
 | `TIMESCALE_SSL_REJECT_UNAUTHORIZED=true` | Strict verify |
-| `?sslmode=verify-full` on URL | Strict verify |
-| `?sslmode=no-verify` on URL | Relaxed verify |
+| `?sslmode=verify-full` on URL | Strict verify (read before strip) |
 | Local `127.0.0.1` / `localhost` | No SSL object (Compose) |
 
 Also allow inbound connections from Render (TigerCloud IP allowlist / “allow all” for bring-up).

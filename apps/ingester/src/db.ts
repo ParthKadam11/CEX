@@ -14,12 +14,33 @@ export type TimescaleSslOption =
   | undefined;
 
 export function createPool(connectionString: string): Pool {
+  const ssl = sslForConnectionString(connectionString);
+  // pg parses sslmode=require as verify-full and OVERRIDES Pool `ssl`.
+  // Strip SSL query params so our explicit `ssl` option wins.
+  const url = stripSslQueryParams(connectionString);
   return new Pool({
-    connectionString,
+    connectionString: url,
     max: 5,
     idleTimeoutMillis: 30_000,
-    ssl: sslForConnectionString(connectionString),
+    ...(ssl !== undefined ? { ssl } : {}),
   });
+}
+
+/** Remove sslmode / uselibpqcompat so Pool `ssl` is not overridden by pg-connection-string. */
+export function stripSslQueryParams(connectionString: string): string {
+  try {
+    const url = new URL(connectionString);
+    url.searchParams.delete("sslmode");
+    url.searchParams.delete("ssl");
+    url.searchParams.delete("uselibpqcompat");
+    return url.toString();
+  } catch {
+    return connectionString
+      .replace(/([?&])sslmode=[^&]*/gi, "$1")
+      .replace(/([?&])uselibpqcompat=[^&]*/gi, "$1")
+      .replace(/\?&/, "?")
+      .replace(/[?&]$/, "");
+  }
 }
 
 /**
