@@ -59,6 +59,10 @@ Grant Render access to the GitHub repo if the clone log warns about permissions.
 npx pnpm@10.14.0 install --frozen-lockfile
 ```
 
+Pin Node via root `engines.node` / `.node-version` (`20.x`). Avoid relying on the newest Node Render picks from `>=20`.
+
+`pnpm install` runs `@cex/db` `postinstall` → `prisma generate`. That must **not** require `DATABASE_URL` (exchange/gateway have none). `packages/db/prisma.config.ts` uses `process.env.DATABASE_URL` for that reason.
+
 Start (repo root, empty Root Directory):
 
 ```bash
