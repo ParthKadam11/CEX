@@ -1,12 +1,17 @@
 /**
- * Next.js Node bootstrap — start low-load MM heartbeat so the book
- * looks alive without a browser tab driving ticks.
+ * Next.js Node bootstrap — optional low-load MM heartbeat.
  *
- * Disable with SIM_HEARTBEAT=false.
+ * Off by default on Vercel (serverless): set SIM_HEARTBEAT=true to enable.
+ * Locally defaults on unless SIM_HEARTBEAT=false.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "edge") return;
-  if (process.env.SIM_HEARTBEAT === "false") return;
+
+  const onVercel = process.env.VERCEL === "1";
+  const flag = process.env.SIM_HEARTBEAT;
+  const enabled =
+    flag === "true" ? true : flag === "false" ? false : !onVercel;
+  if (!enabled) return;
 
   const { startSimHeartbeat } = await import("@/lib/sim/market-maker");
   const { started } = startSimHeartbeat();

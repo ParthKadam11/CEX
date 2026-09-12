@@ -2,26 +2,36 @@ import { type NextAuthOptions } from "next-auth"
 import GoogleProvider, { type GoogleProfile } from "next-auth/providers/google"
 import { Provider, prisma as db } from "@cex/db"
 
+/**
+ * Prefer bracket access so Next/Turbo cannot bake `undefined` into the
+ * server bundle when a var was missing at `next build` time.
+ */
+function env(name: string): string | undefined {
+  const value = process.env[name]
+  return value && value.length > 0 ? value : undefined
+}
+
 const isProduction = process.env.NODE_ENV === "production"
 /** `next build` sets this; secrets may be absent until runtime on Vercel. */
 const isNextBuild = process.env.NEXT_PHASE === "phase-production-build"
 
 // Vercel preview / production: derive callback URL when NEXTAUTH_URL is unset.
-if (!process.env.NEXTAUTH_URL && process.env.VERCEL_URL) {
-  process.env.NEXTAUTH_URL = `https://${process.env.VERCEL_URL}`
+if (!env("NEXTAUTH_URL") && env("VERCEL_URL")) {
+  process.env.NEXTAUTH_URL = `https://${env("VERCEL_URL")}`
 }
 
-if (isProduction && !isNextBuild) {
+function assertAuthEnv(): void {
+  if (!isProduction || isNextBuild) return
   for (const name of [
     "NEXTAUTH_SECRET",
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
   ] as const) {
-    if (!process.env[name]) {
+    if (!env(name)) {
       throw new Error(`${name} is required in production`)
     }
   }
-  if (!process.env.NEXTAUTH_URL) {
+  if (!env("NEXTAUTH_URL") && !env("VERCEL_URL")) {
     throw new Error(
       "NEXTAUTH_URL is required in production (or deploy on Vercel so VERCEL_URL is set)",
     )
@@ -37,11 +47,11 @@ function emailAllowed(email: string): boolean {
 }
 
 export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: env("NEXTAUTH_SECRET"),
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      clientId: env("GOOGLE_CLIENT_ID") ?? "",
+      clientSecret: env("GOOGLE_CLIENT_SECRET") ?? "",
       authorization: {
         params: {
           prompt: "consent",
@@ -54,6 +64,7 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   callbacks: {
     async signIn({ user, account, profile }) {
+      assertAuthEnv()
       if (account?.provider !== "google") {
         return false
       }

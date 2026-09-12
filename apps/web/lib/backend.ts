@@ -7,37 +7,46 @@ const isProduction = process.env.NODE_ENV === "production";
 const isNextBuild = process.env.NEXT_PHASE === "phase-production-build";
 const requireProdConfig = isProduction && !isNextBuild;
 
+/**
+ * Bracket access so Next cannot replace missing build-time secrets with
+ * a baked-in `undefined` (Turbo strict mode often strips them during build).
+ */
+function env(name: string): string | undefined {
+  const value = process.env[name];
+  return value && value.length > 0 ? value : undefined;
+}
+
 export const omsUrl = requiredUrl(
   "OMS_URL",
-  process.env.OMS_URL,
+  env("OMS_URL"),
   "http://127.0.0.1:4030",
 );
 
 export const engineGatewayUrl = requiredUrl(
   "ENGINE_GATEWAY_URL",
-  process.env.ENGINE_GATEWAY_URL,
+  env("ENGINE_GATEWAY_URL"),
   "http://127.0.0.1:4020",
 );
 
 export const marketDataUrl = requiredUrl(
   "MARKET_DATA_URL",
-  process.env.MARKET_DATA_URL,
+  env("MARKET_DATA_URL"),
   "http://127.0.0.1:4040",
 );
 
 /** Browser-reachable gateway origin for EventSource (defaults to ENGINE_GATEWAY_URL). */
 export const engineGatewayPublicUrl = requiredUrl(
   "ENGINE_GATEWAY_PUBLIC_URL",
-  process.env.ENGINE_GATEWAY_PUBLIC_URL ??
-    process.env.NEXT_PUBLIC_ENGINE_GATEWAY_URL ??
-    process.env.ENGINE_GATEWAY_URL,
+  env("ENGINE_GATEWAY_PUBLIC_URL") ??
+    env("NEXT_PUBLIC_ENGINE_GATEWAY_URL") ??
+    env("ENGINE_GATEWAY_URL"),
   "http://127.0.0.1:4020",
 );
 
 export function streamTicketSecret(): string {
   return requiredToken(
     "ENGINE_GATEWAY_INTERNAL_TOKEN",
-    process.env.ENGINE_GATEWAY_INTERNAL_TOKEN,
+    env("ENGINE_GATEWAY_INTERNAL_TOKEN"),
     "local-dev-gateway-token",
   );
 }
@@ -46,7 +55,7 @@ export function omsHeaders(userId?: string, requestId?: string | null): HeadersI
   return {
     "x-internal-token": requiredToken(
       "OMS_INTERNAL_TOKEN",
-      process.env.OMS_INTERNAL_TOKEN,
+      env("OMS_INTERNAL_TOKEN"),
       "local-dev-oms-token",
     ),
     ...(userId ? { "x-authenticated-user-id": userId } : {}),
@@ -61,7 +70,7 @@ export function engineGatewayHeaders(
   return {
     "x-internal-token": requiredToken(
       "ENGINE_GATEWAY_INTERNAL_TOKEN",
-      process.env.ENGINE_GATEWAY_INTERNAL_TOKEN,
+      env("ENGINE_GATEWAY_INTERNAL_TOKEN"),
       "local-dev-gateway-token",
     ),
     ...(userId ? { "x-authenticated-user-id": userId } : {}),
@@ -73,7 +82,7 @@ export function marketDataHeaders(requestId?: string | null): HeadersInit {
   return {
     "x-internal-token": requiredToken(
       "MARKET_DATA_INTERNAL_TOKEN",
-      process.env.MARKET_DATA_INTERNAL_TOKEN,
+      env("MARKET_DATA_INTERNAL_TOKEN"),
       "local-dev-market-data-token",
     ),
     "x-request-id": requestId ?? crypto.randomUUID(),
