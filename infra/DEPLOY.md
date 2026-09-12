@@ -41,6 +41,8 @@ ingester ──► TigerCloud
 
 1. Create a Timescale-compatible Postgres database.
 2. Copy the **public** connection string into Render as `TIMESCALE_URL` (not `127.0.0.1`).
+   - Paste the string **exactly** from the dashboard (no wrapping quotes in the value).
+   - If the password has `@`, `#`, `%`, etc., it must already be **URL-encoded** in that string.
 3. Ingester runs its own schema migrate on boot.
 
 **SSL (common on TigerCloud):** Node `pg` treats URL `sslmode=require` as **verify-full**, which overrides a Pool `ssl` option and fails with `self-signed certificate in certificate chain`. The ingester **strips** `sslmode` from the URL and sets `ssl: { rejectUnauthorized: false }` for remote hosts (TLS still on).
@@ -202,7 +204,8 @@ Then:
 | Empty book / `EACCES mkdir` on exchange | `EXCHANGE_DATA_DIR` points at a path with no disk (e.g. `/data`). Use `/opt/render/project/src/apps/exchange/data` |
 | OMS migrate fails | Bad `DATABASE_URL` or Neon IP allowlist |
 | Ingester `ECONNREFUSED` | `TIMESCALE_URL` missing / still `127.0.0.1` |
-| Ingester `self-signed certificate in certificate chain` | Redeploy SSL fix, or set `TIMESCALE_SSL_REJECT_UNAUTHORIZED=false` |
+| Ingester `self-signed certificate in certificate chain` | Redeploy SSL strip fix, or set `TIMESCALE_SSL_REJECT_UNAUTHORIZED=false` |
+| Ingester `SCRAM` / `password must be a string` | Bad `TIMESCALE_URL` (empty, truncated, or password mangled). Re-paste full URL; encode special chars in the password |
 | Google login loop | `NEXTAUTH_URL` / callback URI mismatch |
 
 ## 6. Local vs production URLs

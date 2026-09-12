@@ -14,10 +14,19 @@ export type TimescaleSslOption =
   | undefined;
 
 export function createPool(connectionString: string): Pool {
-  const ssl = sslForConnectionString(connectionString);
+  const trimmed = connectionString.trim();
+  if (!trimmed) {
+    throw new Error(
+      "TIMESCALE_URL is empty. Set the full TigerCloud/Timescale connection string on cex-ingester.",
+    );
+  }
+
+  const ssl = sslForConnectionString(trimmed);
   // pg parses sslmode=require as verify-full and OVERRIDES Pool `ssl`.
   // Strip SSL query params so our explicit `ssl` option wins.
-  const url = stripSslQueryParams(connectionString);
+  // Do NOT rebuild via `new URL().toString()` — that mangles passwords with
+  // special characters and yields SCRAM "password must be a string".
+  const url = stripSslQueryParams(trimmed);
   return new Pool({
     connectionString: url,
     max: 5,
@@ -26,21 +35,25 @@ export function createPool(connectionString: string): Pool {
   });
 }
 
-/** Remove sslmode / uselibpqcompat so Pool `ssl` is not overridden by pg-connection-string. */
+/**
+ * Remove sslmode / uselibpqcompat / ssl query params without touching userinfo.
+ * Regex-only so passwords with `@`, `#`, `%`, etc. stay intact.
+ */
 export function stripSslQueryParams(connectionString: string): string {
-  try {
-    const url = new URL(connectionString);
-    url.searchParams.delete("sslmode");
-    url.searchParams.delete("ssl");
-    url.searchParams.delete("uselibpqcompat");
-    return url.toString();
-  } catch {
-    return connectionString
-      .replace(/([?&])sslmode=[^&]*/gi, "$1")
-      .replace(/([?&])uselibpqcompat=[^&]*/gi, "$1")
-      .replace(/\?&/, "?")
-      .replace(/[?&]$/, "");
-  }
+  const q = connectionString.indexOf("?");
+  if (q === -1) return connectionString;
+
+  const base = connectionString.slice(0, q);
+  const kept = connectionString
+    .slice(q + 1)
+    .split("&")
+    .filter((part) => {
+      if (!part) return false;
+      const key = part.split("=", 1)[0]?.toLowerCase();
+      return key !== "sslmode" && key !== "ssl" && key !== "uselibpqcompat";
+    });
+
+  return kept.length > 0 ? `${base}?${kept.join("&")}` : base;
 }
 
 /**

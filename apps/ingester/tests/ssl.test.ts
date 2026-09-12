@@ -75,6 +75,22 @@ describe("stripSslQueryParams", () => {
       ),
     ).toBe("postgresql://u:p@host:5432/db?application_name=cex");
   });
+
+  it("preserves passwords with reserved characters (no URL rebuild)", () => {
+    const raw =
+      "postgresql://tsdbadmin:p%40ss%23word@xyz.tsdb.cloud:5432/tsdb?sslmode=require";
+    expect(stripSslQueryParams(raw)).toBe(
+      "postgresql://tsdbadmin:p%40ss%23word@xyz.tsdb.cloud:5432/tsdb",
+    );
+  });
+
+  it("drops a lone sslmode query string entirely", () => {
+    expect(
+      stripSslQueryParams(
+        "postgresql://u:p@host:5432/db?sslmode=require",
+      ),
+    ).toBe("postgresql://u:p@host:5432/db");
+  });
 });
 
 describe("createPool", () => {
