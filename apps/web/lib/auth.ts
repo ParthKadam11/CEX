@@ -27,6 +27,12 @@ function assertAuthEnv(): void {
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
   ] as const) {
+    if (name === "NEXTAUTH_SECRET") {
+      if (!env("NEXTAUTH_SECRET") && !env("AUTH_SECRET")) {
+        throw new Error("NEXTAUTH_SECRET is required in production")
+      }
+      continue
+    }
     if (!env(name)) {
       throw new Error(`${name} is required in production`)
     }
@@ -47,7 +53,8 @@ function emailAllowed(email: string): boolean {
 }
 
 export const authOptions: NextAuthOptions = {
-  secret: env("NEXTAUTH_SECRET"),
+  // next-auth also accepts AUTH_SECRET; prefer NEXTAUTH_SECRET.
+  secret: env("NEXTAUTH_SECRET") ?? env("AUTH_SECRET"),
   providers: [
     GoogleProvider({
       clientId: env("GOOGLE_CLIENT_ID") ?? "",

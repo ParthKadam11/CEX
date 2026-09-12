@@ -1,6 +1,5 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 
 const isProduction = process.env.NODE_ENV === "production";
 /** Skip hard fails while `next build` collects page data (Turbo/Vercel). */
@@ -90,6 +89,7 @@ export function marketDataHeaders(requestId?: string | null): HeadersInit {
 }
 
 export async function getAuthenticatedUserId(): Promise<string | null> {
+  const { authOptions } = await import("@/lib/auth");
   const session = await getServerSession(authOptions);
   return session?.user?.uid ?? null;
 }
