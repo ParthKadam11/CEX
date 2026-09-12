@@ -3,13 +3,15 @@ import GoogleProvider, { type GoogleProfile } from "next-auth/providers/google"
 import { Provider, prisma as db } from "@cex/db"
 
 const isProduction = process.env.NODE_ENV === "production"
+/** `next build` sets this; secrets may be absent until runtime on Vercel. */
+const isNextBuild = process.env.NEXT_PHASE === "phase-production-build"
 
 // Vercel preview / production: derive callback URL when NEXTAUTH_URL is unset.
 if (!process.env.NEXTAUTH_URL && process.env.VERCEL_URL) {
   process.env.NEXTAUTH_URL = `https://${process.env.VERCEL_URL}`
 }
 
-if (isProduction) {
+if (isProduction && !isNextBuild) {
   for (const name of [
     "NEXTAUTH_SECRET",
     "GOOGLE_CLIENT_ID",

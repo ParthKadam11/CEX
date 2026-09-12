@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 
 const isProduction = process.env.NODE_ENV === "production";
+/** Skip hard fails while `next build` collects page data (Turbo/Vercel). */
+const isNextBuild = process.env.NEXT_PHASE === "phase-production-build";
+const requireProdConfig = isProduction && !isNextBuild;
 
 export const omsUrl = requiredUrl(
   "OMS_URL",
@@ -110,7 +113,7 @@ export function bffError(
 }
 
 function requiredUrl(name: string, value: string | undefined, fallback: string) {
-  if (isProduction && !value) {
+  if (requireProdConfig && !value) {
     throw new Error(`${name} is required in production`);
   }
   return (value ?? fallback).replace(/\/$/, "");
@@ -121,7 +124,7 @@ function requiredToken(
   value: string | undefined,
   fallback: string,
 ): string {
-  if (isProduction && !value) {
+  if (requireProdConfig && !value) {
     throw new Error(`${name} is required in production`);
   }
   return value ?? fallback;
