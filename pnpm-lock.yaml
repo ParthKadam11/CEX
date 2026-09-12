@@ -121,6 +121,9 @@ importers:
       pg:
         specifier: ^8.22.0
         version: 8.22.0
+      pg-connection-string:
+        specifier: ^2.14.0
+        version: 2.14.0
     devDependencies:
       '@cex/typescript-config':
         specifier: workspace:*
@@ -131,6 +134,9 @@ importers:
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.4
+      '@types/pg-connection-string':
+        specifier: ^2.0.0
+        version: 2.0.0
       tsx:
         specifier: ^4.20.0
         version: 4.23.11
@@ -1439,6 +1445,10 @@ packages:
 
   '@types/node@20.19.43':
     resolution: {integrity: sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==}
+
+  '@types/pg-connection-string@2.0.0':
+    resolution: {integrity: sha512-J1ZxH9dN0zSwnJpAlbvRlEtwYD/SYmyLMVF4DF0qfTHv0sH0HEg9WK/B24doWGjgcT8InomL0znJwcYHy3lNUw==}
+    deprecated: This is a stub types definition for pg-connection-string (https://github.com/iceddev/pg-connection-string). pg-connection-string provides its own type definitions, so you don't need @types/pg-connection-string installed!
 
   '@types/pg@8.20.4':
     resolution: {integrity: sha512-Jz7UDOlIiFJuacC0TlBoLyNtmwlA/wpIyPDd3tvUqlRM+HzkWy2xUgpFpaXtbfTAFF6sIGq5lsCDBdJnhky1Xg==}
@@ -5398,6 +5408,10 @@ snapshots:
   '@types/node@20.19.43':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/pg-connection-string@2.0.0':
+    dependencies:
+      pg-connection-string: 2.14.0
 
   '@types/pg@8.20.4':
     dependencies:

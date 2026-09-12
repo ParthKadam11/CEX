@@ -101,4 +101,18 @@ describe("createPool", () => {
     expect(pool).toBeTruthy();
     void pool.end();
   });
+
+  it("rejects remote URLs without a password before SCRAM", () => {
+    expect(() =>
+      createPool("postgresql://tsdbadmin@abc.xx.tsdb.cloud:5432/tsdb"),
+    ).toThrow(/no password/i);
+  });
+
+  it("strips wrapping quotes from pasted env values", () => {
+    const pool = createPool(
+      '"postgresql://u:p@abc.xx.tsdb.cloud:5432/tsdb?sslmode=require"',
+    );
+    expect(pool).toBeTruthy();
+    void pool.end();
+  });
 });

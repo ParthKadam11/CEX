@@ -17,9 +17,7 @@ export function loadConfig(): IngesterConfig {
       65_535,
     ),
     redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
-    timescaleUrl:
-      process.env.TIMESCALE_URL ??
-      "postgresql://cex:cex@127.0.0.1:5434/cex_md",
+    timescaleUrl: resolveTimescaleUrl(),
     internalToken:
       process.env.INGESTER_INTERNAL_TOKEN ??
       process.env.MARKET_DATA_INTERNAL_TOKEN ??
@@ -47,6 +45,17 @@ export function loadConfig(): IngesterConfig {
       30_000,
     ),
   };
+}
+
+function resolveTimescaleUrl(): string {
+  const raw = process.env.TIMESCALE_URL?.trim().replace(/^["']|["']$/g, "") ?? "";
+  if (raw) return raw;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "TIMESCALE_URL is required in production (full postgresql://USER:PASSWORD@HOST/DB string)",
+    );
+  }
+  return "postgresql://cex:cex@127.0.0.1:5434/cex_md";
 }
 
 function boundedNumber(

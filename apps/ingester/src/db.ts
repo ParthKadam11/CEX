@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse as parsePgUrl } from "pg-connection-string";
 import { Pool, type PoolClient } from "pg";
 import type { MarketDataEvent } from "@cex/app-contracts";
 
@@ -13,22 +14,47 @@ export type TimescaleSslOption =
   | { rejectUnauthorized: boolean }
   | undefined;
 
+/** Trim + strip wrapping quotes people paste into Render env values. */
+export function normalizeTimescaleUrl(raw: string): string {
+  return raw.trim().replace(/^["']|["']$/g, "");
+}
+
 export function createPool(connectionString: string): Pool {
-  const trimmed = connectionString.trim();
+  const trimmed = normalizeTimescaleUrl(connectionString);
   if (!trimmed) {
     throw new Error(
-      "TIMESCALE_URL is empty. Set the full TigerCloud/Timescale connection string on cex-ingester.",
+      "TIMESCALE_URL is empty. Set the full TigerCloud connection string on cex-ingester (user:password@host).",
     );
   }
 
   const ssl = sslForConnectionString(trimmed);
-  // pg parses sslmode=require as verify-full and OVERRIDES Pool `ssl`.
-  // Strip SSL query params so our explicit `ssl` option wins.
-  // Do NOT rebuild via `new URL().toString()` — that mangles passwords with
-  // special characters and yields SCRAM "password must be a string".
-  const url = stripSslQueryParams(trimmed);
+  const stripped = stripSslQueryParams(trimmed);
+  const parsed = parsePgUrl(stripped);
+
+  // pg SCRAM throws "client password must be a string" when password is undefined.
+  // Missing userinfo in the URL usually parses as "" — treat that the same for remotes.
+  const password =
+    parsed.password === undefined || parsed.password === null
+      ? ""
+      : String(parsed.password);
+  const host = parsed.host ?? "";
+  const local = host === "127.0.0.1" || host === "localhost" || host === "";
+  if (!local && password.length === 0) {
+    throw new Error(
+      "TIMESCALE_URL has no password (got user/host only). " +
+        "In Render → cex-ingester → Environment, paste the full URL from TigerCloud, " +
+        "shaped like postgresql://USER:PASSWORD@HOST:5432/DB?sslmode=require " +
+        "(URL-encode special characters in PASSWORD). Do not wrap the value in quotes.",
+    );
+  }
+
   return new Pool({
-    connectionString: url,
+    host: parsed.host ?? undefined,
+    port: parsed.port ? Number(parsed.port) : undefined,
+    user: parsed.user ?? undefined,
+    // Always a string so SCRAM never sees undefined (empty only allowed for local).
+    password,
+    database: parsed.database ?? undefined,
     max: 5,
     idleTimeoutMillis: 30_000,
     ...(ssl !== undefined ? { ssl } : {}),
