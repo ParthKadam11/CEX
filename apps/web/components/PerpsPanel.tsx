@@ -171,7 +171,7 @@ export function PerpsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once on mount
   }, []);
 
-  // Keep MM heartbeat aware that a viewer is on Trade (does not change intensity).
+  // Keep MM presence ping while watching (does not start sim or change options).
   useEffect(() => {
     let stopped = false;
 
@@ -183,7 +183,7 @@ export function PerpsPanel() {
           body: JSON.stringify({ action: "presence", market }),
         });
       } catch {
-        // ignore — heartbeat may start on next ping
+        // ignore
       }
     }
 

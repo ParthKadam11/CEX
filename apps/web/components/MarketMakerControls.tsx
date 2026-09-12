@@ -74,7 +74,7 @@ export function MarketMakerControls({
   );
   const [intensity, setIntensity] =
     useState<(typeof INTENSITY_OPTIONS)[number]>("medium");
-  const [placeQuotes, setPlaceQuotes] = useState(true);
+  const [placeQuotes, setPlaceQuotes] = useState(false);
   const [placeTrades, setPlaceTrades] = useState(false);
   const [spread, setSpread] = useState(2);
 

@@ -105,7 +105,7 @@ function heartbeat(): HeartbeatState {
       enabled: false,
       boost: "medium",
       intervalMs: null,
-      placeQuotes: true,
+      placeQuotes: false,
       placeTrades: false,
       spread: 1,
       lastPresenceAt: 0,
@@ -116,16 +116,9 @@ function heartbeat(): HeartbeatState {
       lastTickAt: null,
       defaultsEpoch: DEFAULTS_EPOCH,
     };
-  } else if (globalSim.__cexMmHeartbeat.defaultsEpoch !== DEFAULTS_EPOCH) {
-    // Quote-first: MM sits on the book; trades are opt-in.
-    globalSim.__cexMmHeartbeat.placeTrades = false;
-    globalSim.__cexMmHeartbeat.placeQuotes = true;
-    globalSim.__cexMmHeartbeat.spread = Math.min(
-      globalSim.__cexMmHeartbeat.spread || 1,
-      2,
-    );
-    globalSim.__cexMmHeartbeat.defaultsEpoch = DEFAULTS_EPOCH;
   }
+  // Do not rewrite placeQuotes / placeTrades / spread on epoch bumps —
+  // only the user (MM menu) may change sim options.
   return globalSim.__cexMmHeartbeat;
 }
 
@@ -792,7 +785,7 @@ export function stopSimHeartbeat(): { stopped: boolean } {
 
 /**
  * Called from the trade UI while a signed-in user is watching.
- * Raises effective intensity until presence TTL expires.
+ * Updates presence TTL only — does not start the sim or change options.
  */
 export function touchSimPresence(options?: {
   boost?: "low" | "medium" | "high";
@@ -802,6 +795,7 @@ export function touchSimPresence(options?: {
 } {
   const hb = heartbeat();
   hb.lastPresenceAt = Date.now();
+  // Boost only when the caller explicitly passes it (MM menu), never from page load.
   if (
     options?.boost === "high" ||
     options?.boost === "medium" ||
@@ -809,7 +803,6 @@ export function touchSimPresence(options?: {
   ) {
     hb.boost = options.boost;
   }
-  // Nudge sooner when someone arrives.
   if (hb.enabled && !hb.inFlight) {
     if (hb.timer) clearTimeout(hb.timer);
     hb.timer = setTimeout(() => void loopOnce(), 200);
@@ -839,10 +832,6 @@ export function configureSimOptions(options: {
   }
   if (typeof options.intervalMs === "number" && options.intervalMs > 0) {
     hb.intervalMs = options.intervalMs;
-  }
-  // High should feel fast even if Speed was left on Normal/Slow.
-  if (hb.boost === "high" && (hb.intervalMs == null || hb.intervalMs > 180)) {
-    hb.intervalMs = 160;
   }
   if (typeof options.placeQuotes === "boolean") {
     hb.placeQuotes = options.placeQuotes;

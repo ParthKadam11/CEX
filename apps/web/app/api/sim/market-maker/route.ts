@@ -23,9 +23,7 @@ export async function GET(request: NextRequest) {
   if (!userId) return bffError(request, 401, "UNAUTHORIZED");
   const market = parseSimMarket(request.nextUrl.searchParams.get("market"));
   setSimMarket(market);
-  if (process.env.SIM_HEARTBEAT !== "false") {
-    startSimHeartbeat();
-  }
+  // Status only — never auto-start; user must press Start in MM controls.
   return NextResponse.json({ ok: true, market, ...getMarketMakerStatus() });
 }
 
@@ -56,14 +54,8 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "presence") {
-    const boost =
-      record.boost === "high" ||
-      record.boost === "medium" ||
-      record.boost === "low"
-        ? record.boost
-        : undefined;
-    const result = touchSimPresence(boost ? { boost } : undefined);
-    startSimHeartbeat();
+    // Presence only — do not start heartbeat or change intensity/toggles.
+    const result = touchSimPresence();
     return NextResponse.json({
       ok: true,
       market,

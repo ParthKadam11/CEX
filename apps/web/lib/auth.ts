@@ -64,12 +64,11 @@ function assertAuthEnv(): void {
   }
 }
 
-/** Default @gmail.com; set AUTH_EMAIL_SUFFIX=@yourdomain.com (or empty to allow any). */
+/** Set AUTH_EMAIL_SUFFIX=@gmail.com to restrict; unset/empty = allow any email. */
 function emailAllowed(email: string): boolean {
   const suffix = process.env.AUTH_EMAIL_SUFFIX
-  if (suffix === "") return true
-  const required = suffix ?? "@gmail.com"
-  return email.endsWith(required)
+  if (suffix === undefined || suffix === "") return true
+  return email.toLowerCase().endsWith(suffix.toLowerCase())
 }
 
 export const authOptions: NextAuthOptions = {
@@ -88,27 +87,46 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+  pages: {
+    error: "/api/auth/signin",
+  },
   session: { strategy: "jwt" },
   callbacks: {
     async signIn({ user, account, profile }) {
-      assertAuthEnv()
+      try {
+        assertAuthEnv()
+      } catch (error) {
+        console.error("[auth] env check failed", error)
+        return "/api/auth/signin?error=Configuration"
+      }
+
       if (account?.provider !== "google") {
         return false
       }
 
       const googleProfile = profile as GoogleProfile | undefined
-      const email = user?.email as string
-      if (!email || !emailAllowed(email)) {
-        return false
+      const email = (user?.email ?? "").trim().toLowerCase()
+      if (!email) {
+        console.error("[auth] Google account has no email")
+        return "/api/auth/signin?error=EmailRequired"
+      }
+      if (!emailAllowed(email)) {
+        console.error("[auth] email rejected by AUTH_EMAIL_SUFFIX", email)
+        return "/api/auth/signin?error=AccessDenied"
+      }
+
+      if (!env("DATABASE_URL")) {
+        console.error("[auth] DATABASE_URL missing on Vercel")
+        return "/api/auth/signin?error=Configuration"
       }
 
       try {
-        let userDb = await db.user.findFirst({
-          where: { username: email },
+        const existing = await db.user.findFirst({
+          where: { OR: [{ email }, { username: email }] },
           select: { id: true },
         })
-        if (!userDb) {
-          userDb = await db.user.create({
+        if (!existing) {
+          await db.user.create({
             data: {
               username: email,
               email,
@@ -122,17 +140,18 @@ export const authOptions: NextAuthOptions = {
 
         return true
       } catch (error) {
-        console.error("[auth] signIn failed", error)
-        return false
+        console.error("[auth] signIn DB failed", error)
+        return "/api/auth/signin?error=Configuration"
       }
     },
 
     async jwt({ token, user }) {
-      const email = user?.email ?? token.email
+      const raw = user?.email ?? token.email
+      const email = typeof raw === "string" ? raw.trim().toLowerCase() : undefined
       if (email && !token.uid) {
         try {
-          const dbUser = await db.user.findUnique({
-            where: { email },
+          const dbUser = await db.user.findFirst({
+            where: { OR: [{ email }, { username: email }] },
             select: { id: true },
           })
           if (dbUser) {

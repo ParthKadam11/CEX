@@ -14,7 +14,6 @@ import {
 import {
   refundAllSimMarkets,
   resetSimRuntimeState,
-  startSimHeartbeat,
   stopSimHeartbeat,
 } from "@/lib/sim/market-maker";
 
@@ -241,14 +240,10 @@ TRUNCATE TABLE "OrderFill", "Order", "CommandOutbox", "OmsProcessedEvent" CASCAD
     };
   }
 
-  // Restart ambient MM so the market can reseed empty → ladder.
+  // Leave sim stopped — user starts it again from MM controls.
   try {
-    if (process.env.SIM_HEARTBEAT !== "false") {
-      startSimHeartbeat();
-      steps.simRestart = { ok: true, detail: "heartbeat restarted" };
-    } else {
-      steps.simRestart = { ok: true, detail: "SIM_HEARTBEAT=false — left stopped" };
-    }
+    stopSimHeartbeat();
+    steps.simRestart = { ok: true, detail: "left stopped (start from MM menu)" };
   } catch (error) {
     steps.simRestart = {
       ok: false,
