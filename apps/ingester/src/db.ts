@@ -19,6 +19,25 @@ export function normalizeTimescaleUrl(raw: string): string {
   return raw.trim().replace(/^["']|["']$/g, "");
 }
 
+/** Safe shape summary for errors (never includes credentials). */
+export function describeUrlShape(raw: string): string {
+  const s = normalizeTimescaleUrl(raw);
+  const scheme = s.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:/)?.[0] ?? "(no-scheme)";
+  const at = s.includes("@");
+  // userinfo present if something looks like scheme://...@host
+  const userinfo = (() => {
+    const m = s.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/([^/?#]*)/);
+    if (!m) return "missing";
+    const auth = m[1] ?? "";
+    if (!auth.includes("@")) return "none";
+    const beforeAt = auth.slice(0, auth.lastIndexOf("@"));
+    if (!beforeAt.includes(":")) return "user-only";
+    const pass = beforeAt.slice(beforeAt.indexOf(":") + 1);
+    return pass.length > 0 ? "user+password" : "user+empty-password";
+  })();
+  return `len=${s.length} scheme=${scheme} @=${at} userinfo=${userinfo}`;
+}
+
 export function createPool(connectionString: string): Pool {
   const trimmed = normalizeTimescaleUrl(connectionString);
   if (!trimmed) {
@@ -40,11 +59,14 @@ export function createPool(connectionString: string): Pool {
   const host = parsed.host ?? "";
   const local = host === "127.0.0.1" || host === "localhost" || host === "";
   if (!local && password.length === 0) {
+    const user = parsed.user || "(none)";
+    const db = parsed.database || "(none)";
+    const shape = describeUrlShape(trimmed);
     throw new Error(
-      "TIMESCALE_URL has no password (got user/host only). " +
-        "In Render → cex-ingester → Environment, paste the full URL from TigerCloud, " +
-        "shaped like postgresql://USER:PASSWORD@HOST:5432/DB?sslmode=require " +
-        "(URL-encode special characters in PASSWORD). Do not wrap the value in quotes.",
+      `TIMESCALE_URL has no password (parsed user=${user} host=${host || "(none)"} db=${db}; ${shape}). ` +
+        "In Render → cex-ingester → Environment, paste the full TigerCloud URI " +
+        "postgresql://USER:PASSWORD@HOST:5432/DB?sslmode=require " +
+        "(must include :PASSWORD before @; URL-encode special chars; no wrapping quotes).",
     );
   }
 

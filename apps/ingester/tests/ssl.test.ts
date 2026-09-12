@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createPool,
+  describeUrlShape,
   sslForConnectionString,
   stripSslQueryParams,
 } from "../src/db.js";
@@ -106,6 +107,9 @@ describe("createPool", () => {
     expect(() =>
       createPool("postgresql://tsdbadmin@abc.xx.tsdb.cloud:5432/tsdb"),
     ).toThrow(/no password/i);
+    expect(() =>
+      createPool("postgresql://tsdbadmin@abc.xx.tsdb.cloud:5432/tsdb"),
+    ).toThrow(/userinfo=user-only/);
   });
 
   it("strips wrapping quotes from pasted env values", () => {
@@ -114,5 +118,19 @@ describe("createPool", () => {
     );
     expect(pool).toBeTruthy();
     void pool.end();
+  });
+});
+
+describe("describeUrlShape", () => {
+  it("classifies user-only vs user+password without leaking secrets", () => {
+    expect(
+      describeUrlShape("postgresql://tsdbadmin@host:5432/tsdb"),
+    ).toMatch(/userinfo=user-only/);
+    expect(
+      describeUrlShape("postgresql://tsdbadmin:s3cret@host:5432/tsdb"),
+    ).toMatch(/userinfo=user\+password/);
+    expect(
+      describeUrlShape("postgresql://tsdbadmin:s3cret@host:5432/tsdb"),
+    ).not.toMatch(/s3cret/);
   });
 });
