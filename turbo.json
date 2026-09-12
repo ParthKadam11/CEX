@@ -1,9 +1,33 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": ["VERCEL", "VERCEL_ENV", "VERCEL_URL", "NEXT_PHASE"],
   "tasks": {
     "build": {
       "dependsOn": ["^build", "^db:generate"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**",
+        "generated/**"
+      ],
+      "env": [
+        "NEXTAUTH_SECRET",
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "NEXTAUTH_URL",
+        "DATABASE_URL",
+        "OMS_URL",
+        "ENGINE_GATEWAY_URL",
+        "ENGINE_GATEWAY_PUBLIC_URL",
+        "NEXT_PUBLIC_ENGINE_GATEWAY_URL",
+        "MARKET_DATA_URL",
+        "OMS_INTERNAL_TOKEN",
+        "ENGINE_GATEWAY_INTERNAL_TOKEN",
+        "MARKET_DATA_INTERNAL_TOKEN",
+        "AUTH_EMAIL_SUFFIX",
+        "SIM_HEARTBEAT",
+        "NEXT_PUBLIC_*"
+      ]
     },
     "dev": {
       "cache": false,

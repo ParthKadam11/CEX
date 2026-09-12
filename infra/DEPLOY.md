@@ -139,15 +139,16 @@ Disks force a single instance and brief downtime on deploy — expected for this
 
 ## 3. Vercel (web)
 
-1. Import `apps/web` (or the monorepo with Root Directory / filter for `@cex/web`).
-2. Set environment variables:
+1. Import the monorepo (Root Directory blank).
+2. **Settings → General → Node.js Version** → **20.x** (matches `engines` / `.node-version`).
+3. **Settings → Environment Variables** — enable for **Production** (and Preview if needed).  
+   These must also appear in `turbo.json` `tasks.build.env` so Turborepo does not strip them on Vercel (that was the platform env warning).
 
 | Variable | Value |
 | --- | --- |
-| `NODE_ENV` | `production` |
 | `DATABASE_URL` | Neon URL (same as OMS) |
-| `NEXTAUTH_SECRET` | long random string |
-| `NEXTAUTH_URL` | `https://<your-vercel-domain>` (preview can rely on `VERCEL_URL`) |
+| `NEXTAUTH_SECRET` | long random string (`openssl rand -base64 32`) |
+| `NEXTAUTH_URL` | `https://<your-vercel-domain>` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth |
 | `OMS_URL` | `https://cex-oms.onrender.com` (exact Render URL) |
 | `ENGINE_GATEWAY_URL` | `https://cex-gateway.onrender.com` |
@@ -157,7 +158,9 @@ Disks force a single instance and brief downtime on deploy — expected for this
 | `ENGINE_GATEWAY_INTERNAL_TOKEN` | copy from Render `cex-gateway` (`GATEWAY_INTERNAL_TOKEN`) |
 | `MARKET_DATA_INTERNAL_TOKEN` | copy from Render `cex-ingester` (`INGESTER_INTERNAL_TOKEN`) |
 
-3. Google Cloud Console → OAuth redirect URI:
+Do **not** set `NODE_ENV` yourself on Vercel.
+
+4. Google Cloud Console → OAuth redirect URI:
 
 ```text
 https://<your-vercel-domain>/api/auth/callback/google
