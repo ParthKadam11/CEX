@@ -19,7 +19,8 @@ const instrumentSerif = Instrument_Serif({
 
 export const metadata: Metadata = {
   title: "CEX",
-  description: "A clean spot exchange for SOL-USD.",
+  description:
+    "Paper trading for SOL USD spot and perps. Clear markets, ledger balances, no real funds.",
 };
 
 const themeInitScript = `

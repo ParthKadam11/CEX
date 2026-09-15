@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/ThemeProvider";
 import { cn } from "@/lib/utils";
-import { Menu, Moon, Sun, X } from "lucide-react";
-import { signIn, signOut, useSession } from "next-auth/react";
+import { Menu, X } from "lucide-react";
+import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -40,17 +39,20 @@ export function Appbar({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const isLanding = pathname === "/";
   const isAppRoute =
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/spot") ||
     pathname.startsWith("/perps") ||
     pathname.startsWith("/trade");
 
+  // Landing owns its own chrome — never show the app sidebar there.
   // While session hydrates, keep the app chrome on app routes so the guest
   // top bar does not flash on refresh.
   const showAppNav =
-    Boolean(session.data?.user) ||
-    (session.status === "loading" && isAppRoute);
+    !isLanding &&
+    (Boolean(session.data?.user) ||
+      (session.status === "loading" && isAppRoute));
 
   useEffect(() => {
     setMenuOpen(false);
@@ -69,38 +71,8 @@ export function Appbar({ children }: { children: React.ReactNode }) {
     };
   }, [menuOpen]);
 
-  if (!showAppNav) {
-    // Avoid mounting the marketing header during session load on any route.
-    if (session.status === "loading") {
-      return <div className="min-h-full bg-background">{children}</div>;
-    }
-
-    return (
-      <>
-        <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur-sm supports-backdrop-filter:bg-background/80">
-          <div className="mx-auto flex h-14 max-w-[1600px] items-center justify-between gap-4 px-3 sm:px-4">
-            <Link href="/" className="font-display text-xl text-foreground">
-              CEX
-            </Link>
-            <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-              <a href="#product" className="hover:text-foreground">
-                Product
-              </a>
-            </nav>
-            <div className="flex items-center gap-2">
-              <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
-              <Button
-                onClick={() => signIn()}
-                className="h-8 rounded-md px-3 text-sm"
-              >
-                Sign in
-              </Button>
-            </div>
-          </div>
-        </header>
-        {children}
-      </>
-    );
+  if (isLanding || !showAppNav) {
+    return <div className="min-h-full bg-background">{children}</div>;
   }
 
   return (
@@ -248,31 +220,5 @@ function NavGroup({
         })}
       </ul>
     </div>
-  );
-}
-
-function ThemeToggle({
-  theme,
-  toggleTheme,
-}: {
-  theme: string;
-  toggleTheme: () => void;
-}) {
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      onClick={toggleTheme}
-      aria-label={
-        theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
-      }
-      className="size-8 rounded-md p-0"
-    >
-      {theme === "dark" ? (
-        <Sun className="size-3.5" />
-      ) : (
-        <Moon className="size-3.5" />
-      )}
-    </Button>
   );
 }

@@ -95,6 +95,40 @@
   animation-delay: 200ms;
 }
 
+@keyframes hero-zoom {
+  from {
+    transform: scale(1.06);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@utility animate-hero-zoom {
+  animation: hero-zoom 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes tape-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@utility animate-tape-scroll {
+  animation: tape-scroll 32s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-hero-zoom,
+  .animate-tape-scroll {
+    animation: none !important;
+  }
+}
+
 /* Order book — thin aesthetic vertical scroll rails */
 .ob-scroll {
   scrollbar-width: thin;
