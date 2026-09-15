@@ -104,7 +104,7 @@ export function Hero() {
   const openDashboard = () => router.push("/dashboard");
 
   return (
-    <main className="min-h-full">
+    <main className="min-h-full bg-[#eef4f0] dark:bg-background">
       <section className="relative isolate flex min-h-dvh flex-col overflow-hidden bg-black">
         <Image
           src="/financeBg.jpg"
@@ -267,66 +267,79 @@ export function Hero() {
 
       <section
         id="markets"
-        className="border-t border-border bg-background"
+        className="relative isolate overflow-hidden border-t border-emerald-900/10 bg-[#e8f0ea] dark:border-border dark:bg-background"
       >
-        <div className="mx-auto max-w-5xl px-4 py-16 sm:px-8 sm:py-24">
-          <p className="font-mono text-xs tracking-[0.18em] text-muted-foreground uppercase">
+        <SectionWash />
+        <div className="relative z-10 mx-auto max-w-5xl px-4 py-16 sm:px-8 sm:py-24">
+          <p className="font-mono text-xs tracking-[0.18em] text-emerald-800/70 uppercase dark:text-muted-foreground">
             Markets
           </p>
-          <h2 className="mt-3 max-w-xl text-balance font-display text-4xl leading-none text-foreground sm:text-5xl">
+          <h2 className="mt-3 max-w-xl text-balance font-display text-4xl leading-none text-zinc-950 sm:text-5xl dark:text-foreground">
             Two ways to trade the same pair.
           </h2>
 
-          <div className="mt-12 grid gap-0 border border-border sm:mt-16 sm:grid-cols-2">
-            <article className="border-b border-border p-6 sm:border-r sm:border-b-0 sm:p-8">
+          <div className="mt-12 grid gap-4 sm:mt-16 sm:grid-cols-2 sm:gap-5">
+            <article className="border border-emerald-900/10 bg-[#f7fbf8] p-6 shadow-[0_18px_50px_rgba(15,40,28,0.06)] sm:p-8 dark:border-border dark:bg-transparent dark:shadow-none">
               <p className="font-mono text-[10px] tracking-[0.2em] text-emerald-700 uppercase dark:text-emerald-400">
                 01 · Spot
               </p>
-              <h3 className="mt-4 font-display text-3xl text-foreground">
+              <h3 className="mt-4 font-display text-3xl text-zinc-950 dark:text-foreground">
                 SOL-USD
               </h3>
-              <p className="mt-3 max-w-sm text-pretty text-base leading-relaxed text-muted-foreground">
+              <p className="mt-3 max-w-sm text-pretty text-base leading-relaxed text-zinc-600 dark:text-muted-foreground">
                 Buy and sell against your ledger balances. Limit and market
                 orders settle against a live book.
               </p>
-              <dl className="mt-8 space-y-3 font-mono text-sm tabular-nums">
-                <div className="flex justify-between border-t border-border pt-3">
-                  <dt className="text-muted-foreground">Settlement</dt>
+              <dl className="mt-8 space-y-3 font-mono text-sm tabular-nums text-zinc-950 dark:text-foreground">
+                <div className="flex justify-between border-t border-emerald-900/10 pt-3 dark:border-border">
+                  <dt className="text-zinc-500 dark:text-muted-foreground">
+                    Settlement
+                  </dt>
                   <dd>Immediate</dd>
                 </div>
-                <div className="flex justify-between border-t border-border pt-3">
-                  <dt className="text-muted-foreground">Orders</dt>
+                <div className="flex justify-between border-t border-emerald-900/10 pt-3 dark:border-border">
+                  <dt className="text-zinc-500 dark:text-muted-foreground">
+                    Orders
+                  </dt>
                   <dd>Limit · Market</dd>
                 </div>
-                <div className="flex justify-between border-t border-border pt-3">
-                  <dt className="text-muted-foreground">Collateral</dt>
+                <div className="flex justify-between border-t border-emerald-900/10 pt-3 dark:border-border">
+                  <dt className="text-zinc-500 dark:text-muted-foreground">
+                    Collateral
+                  </dt>
                   <dd>SOL · USD</dd>
                 </div>
               </dl>
             </article>
 
-            <article className="p-6 sm:p-8">
+            <article className="border border-rose-900/10 bg-[#fff8f8] p-6 shadow-[0_18px_50px_rgba(40,15,20,0.05)] sm:p-8 dark:border-border dark:bg-transparent dark:shadow-none">
               <p className="font-mono text-[10px] tracking-[0.2em] text-rose-700 uppercase dark:text-rose-400">
                 02 · Perps
               </p>
-              <h3 className="mt-4 font-display text-3xl text-foreground">
+              <h3 className="mt-4 font-display text-3xl text-zinc-950 dark:text-foreground">
                 SOL-USD-PERP
               </h3>
-              <p className="mt-3 max-w-sm text-pretty text-base leading-relaxed text-muted-foreground">
+              <p className="mt-3 max-w-sm text-pretty text-base leading-relaxed text-zinc-600 dark:text-muted-foreground">
                 Leveraged perpetual exposure with marked prices, margin, and
                 the same tape discipline as spot.
               </p>
-              <dl className="mt-8 space-y-3 font-mono text-sm tabular-nums">
-                <div className="flex justify-between border-t border-border pt-3">
-                  <dt className="text-muted-foreground">Exposure</dt>
+              <dl className="mt-8 space-y-3 font-mono text-sm tabular-nums text-zinc-950 dark:text-foreground">
+                <div className="flex justify-between border-t border-rose-900/10 pt-3 dark:border-border">
+                  <dt className="text-zinc-500 dark:text-muted-foreground">
+                    Exposure
+                  </dt>
                   <dd>Long · Short</dd>
                 </div>
-                <div className="flex justify-between border-t border-border pt-3">
-                  <dt className="text-muted-foreground">Margin</dt>
+                <div className="flex justify-between border-t border-rose-900/10 pt-3 dark:border-border">
+                  <dt className="text-zinc-500 dark:text-muted-foreground">
+                    Margin
+                  </dt>
                   <dd>Isolated book</dd>
                 </div>
-                <div className="flex justify-between border-t border-border pt-3">
-                  <dt className="text-muted-foreground">Underlying</dt>
+                <div className="flex justify-between border-t border-rose-900/10 pt-3 dark:border-border">
+                  <dt className="text-zinc-500 dark:text-muted-foreground">
+                    Underlying
+                  </dt>
                   <dd>SOL USD</dd>
                 </div>
               </dl>
@@ -402,16 +415,20 @@ export function Hero() {
         </div>
       </section>
 
-      <section id="product" className="border-t border-border bg-background">
-        <div className="mx-auto max-w-5xl px-4 py-16 sm:px-8 sm:py-24">
-          <p className="font-mono text-xs tracking-[0.18em] text-muted-foreground uppercase">
+      <section
+        id="product"
+        className="relative isolate overflow-hidden border-t border-emerald-900/10 bg-[#f7fbf8] dark:border-border dark:bg-background"
+      >
+        <SectionWash opacity={0.05} />
+        <div className="relative z-10 mx-auto max-w-5xl px-4 py-16 sm:px-8 sm:py-24">
+          <p className="font-mono text-xs tracking-[0.18em] text-emerald-800/70 uppercase dark:text-muted-foreground">
             Flow
           </p>
-          <h2 className="mt-3 max-w-xl text-balance font-display text-4xl leading-none text-foreground sm:text-5xl">
+          <h2 className="mt-3 max-w-xl text-balance font-display text-4xl leading-none text-zinc-950 sm:text-5xl dark:text-foreground">
             From sign in to fill in three moves.
           </h2>
 
-          <ol className="mt-12 grid gap-8 sm:mt-16 sm:grid-cols-3 sm:gap-0">
+          <ol className="mt-12 grid gap-4 sm:mt-16 sm:grid-cols-3 sm:gap-5">
             {[
               {
                 step: "01",
@@ -428,25 +445,25 @@ export function Hero() {
                 title: "Send the order",
                 body: "Hit spot or perps, watch the book update, and keep a durable fill history.",
               },
-            ].map((item, index) => (
+            ].map((item) => (
               <li
                 key={item.step}
-                className={`sm:px-6 ${index > 0 ? "sm:border-l sm:border-border" : ""} ${index === 0 ? "sm:pl-0" : ""} ${index === 2 ? "sm:pr-0" : ""}`}
+                className="border border-emerald-900/10 bg-white p-6 shadow-[0_14px_40px_rgba(15,40,28,0.05)] dark:border-border dark:bg-transparent dark:shadow-none"
               >
-                <p className="font-mono text-xs tracking-[0.18em] text-muted-foreground">
+                <p className="font-mono text-xs tracking-[0.18em] text-emerald-700 dark:text-muted-foreground">
                   {item.step}
                 </p>
-                <h3 className="mt-3 text-lg font-semibold text-foreground">
+                <h3 className="mt-3 text-lg font-semibold text-zinc-950 dark:text-foreground">
                   {item.title}
                 </h3>
-                <p className="mt-2 text-pretty text-sm leading-relaxed text-muted-foreground">
+                <p className="mt-2 text-pretty text-sm leading-relaxed text-zinc-600 dark:text-muted-foreground">
                   {item.body}
                 </p>
               </li>
             ))}
           </ol>
 
-          <ul className="mt-16 space-y-0 border-t border-border">
+          <ul className="mt-16 space-y-0 border-t border-emerald-900/10 dark:border-border">
             {[
               {
                 title: "Balances you can trust",
@@ -463,12 +480,12 @@ export function Hero() {
             ].map((item) => (
               <li
                 key={item.title}
-                className="grid gap-2 border-b border-border py-8 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] sm:gap-8"
+                className="grid gap-2 border-b border-emerald-900/10 py-8 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] sm:gap-8 dark:border-border"
               >
-                <h3 className="text-lg font-semibold text-foreground">
+                <h3 className="text-lg font-semibold text-zinc-950 dark:text-foreground">
                   {item.title}
                 </h3>
-                <p className="text-pretty text-base leading-relaxed text-muted-foreground">
+                <p className="text-pretty text-base leading-relaxed text-zinc-600 dark:text-muted-foreground">
                   {item.body}
                 </p>
               </li>
@@ -532,31 +549,31 @@ export function Hero() {
         </div>
       </section>
 
-      <footer className="border-t border-border bg-background">
+      <footer className="border-t border-emerald-950/20 bg-[#0d1612] text-zinc-50 dark:border-border dark:bg-background dark:text-foreground">
         <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="font-display text-xl text-foreground">CEX</p>
-            <div className="flex flex-wrap gap-5 text-sm text-muted-foreground">
-              <a href="#markets" className="hover:text-foreground">
+            <p className="font-display text-xl">CEX</p>
+            <div className="flex flex-wrap gap-5 text-sm text-zinc-400 dark:text-muted-foreground">
+              <a href="#markets" className="hover:text-white dark:hover:text-foreground">
                 Markets
               </a>
-              <a href="#app" className="hover:text-foreground">
+              <a href="#app" className="hover:text-white dark:hover:text-foreground">
                 App
               </a>
-              <a href="#desk" className="hover:text-foreground">
+              <a href="#desk" className="hover:text-white dark:hover:text-foreground">
                 Desk
               </a>
-              <a href="#product" className="hover:text-foreground">
+              <a href="#product" className="hover:text-white dark:hover:text-foreground">
                 Product
               </a>
             </div>
           </div>
-          <p className="mt-8 max-w-2xl text-pretty text-sm leading-relaxed text-muted-foreground">
+          <p className="mt-8 max-w-2xl text-pretty text-sm leading-relaxed text-zinc-400 dark:text-muted-foreground">
             Paper trading environment for SOL USD spot and perps. Balances,
             fills, and PnL are simulated for education and product demos. Not
             financial advice. No real funds are held or settled.
           </p>
-          <p className="mt-4 font-mono text-xs text-muted-foreground">
+          <p className="mt-4 font-mono text-xs text-zinc-500 dark:text-muted-foreground">
             Paper markets · SOL USD · Demo only
           </p>
         </div>
@@ -565,28 +582,51 @@ export function Hero() {
   );
 }
 
+function SectionWash({ opacity = 0.08 }: { opacity?: number }) {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 dark:hidden"
+      style={{ opacity }}
+    >
+      <Image
+        src="/money.jpg"
+        alt=""
+        fill
+        sizes="100vw"
+        className="object-cover object-center"
+      />
+      <div className="absolute inset-0 bg-[#eef4f0]/70" />
+    </div>
+  );
+}
+
 function ProductShot() {
   const [missing, setMissing] = useState(false);
 
   return (
-    <section id="app" className="border-t border-border bg-muted/30">
-      <div className="mx-auto max-w-5xl px-4 py-16 sm:px-8 sm:py-24">
-        <p className="font-mono text-xs tracking-[0.18em] text-muted-foreground uppercase">
+    <section
+      id="app"
+      className="relative isolate overflow-hidden border-t border-emerald-900/10 bg-[#f7fbf8] dark:border-border dark:bg-muted/30"
+    >
+      <SectionWash opacity={0.06} />
+      <div className="relative z-10 mx-auto max-w-5xl px-4 py-16 sm:px-8 sm:py-24">
+        <p className="font-mono text-xs tracking-[0.18em] text-emerald-800/70 uppercase dark:text-muted-foreground">
           The app
         </p>
-        <h2 className="mt-3 max-w-xl text-balance font-display text-4xl leading-none text-foreground sm:text-5xl">
+        <h2 className="mt-3 max-w-xl text-balance font-display text-4xl leading-none text-zinc-950 sm:text-5xl dark:text-foreground">
           The desk you open after sign in.
         </h2>
-        <p className="mt-4 max-w-lg text-pretty text-base leading-relaxed text-muted-foreground">
+        <p className="mt-4 max-w-lg text-pretty text-base leading-relaxed text-zinc-600 dark:text-muted-foreground">
           Spot, perps, balances, and the live book in one frame. Drop your
           screenshot in as{" "}
-          <code className="font-mono text-sm text-foreground">
+          <code className="font-mono text-sm text-zinc-950 dark:text-foreground">
             public/product-shot.png
           </code>
           .
         </p>
 
-        <div className="relative mt-10 overflow-hidden border border-border bg-zinc-950 shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
+        <div className="relative mt-10 overflow-hidden border border-emerald-950/15 bg-zinc-950 shadow-[0_28px_80px_rgba(12,30,22,0.22)] dark:border-border dark:shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
           <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
             <span className="size-2.5 rounded-full bg-zinc-700" />
             <span className="size-2.5 rounded-full bg-zinc-700" />
@@ -789,11 +829,15 @@ function TaglineReveal() {
   }, [reduceMotion]);
 
   return (
-    <section className="border-t border-border bg-background">
-      <div className="mx-auto max-w-5xl px-4 py-20 sm:px-8 sm:py-28">
+    <section className="relative isolate overflow-hidden border-t border-emerald-900/10 bg-[#eef4f0] dark:border-border dark:bg-background">
+      <SectionWash opacity={0.1} />
+      <div className="relative z-10 mx-auto max-w-5xl px-4 py-20 sm:px-8 sm:py-28">
+        <p className="mb-6 font-mono text-xs tracking-[0.18em] text-emerald-800/70 uppercase dark:text-muted-foreground">
+          Why CEX
+        </p>
         <p
           ref={ref}
-          className="max-w-[680px] text-balance font-display text-4xl leading-tight text-foreground sm:text-5xl md:text-6xl"
+          className="max-w-[680px] text-balance font-display text-4xl leading-tight text-zinc-950 sm:text-5xl md:text-6xl dark:text-foreground"
         >
           {TAGLINE_WORDS.map((word, index) => (
             <span
@@ -802,8 +846,8 @@ function TaglineReveal() {
               style={{
                 color:
                   index < visibleCount
-                    ? "var(--foreground)"
-                    : "color-mix(in oklab, var(--foreground) 28%, transparent)",
+                    ? undefined
+                    : "color-mix(in oklab, currentColor 28%, transparent)",
               }}
             >
               {word}
