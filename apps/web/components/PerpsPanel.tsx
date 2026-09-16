@@ -51,8 +51,8 @@ export function PerpsPanel() {
   const [leverage, setLeverage] = useState("5");
   const [fundingRateBps, setFundingRateBps] = useState<number | null>(null);
 
-  const { book, setBook, connected: streamConnected } = useMarketStream({
-    market,
+  const { book, setBook, connected: streamConnected, streamError } =
+    useMarketStream(market, {
     onPosition: (next) => {
       setPosition(next.size === 0 ? null : next);
     },
@@ -485,14 +485,25 @@ export function PerpsPanel() {
         />
 
         <div className="ml-auto flex items-center gap-3">
-          <span className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+          <span
+            className="flex items-center gap-1.5 text-[11px] text-zinc-400"
+            title={streamError ?? undefined}
+          >
             <span
               className={`size-1.5 rounded-full ${
-                streamConnected ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-600"
+                streamConnected
+                  ? "bg-emerald-500"
+                  : streamError
+                    ? "bg-amber-500"
+                    : "bg-zinc-300 dark:bg-zinc-600"
               }`}
               aria-hidden
             />
-            {streamConnected ? "Live" : "Offline"}
+            {streamConnected
+              ? "Live"
+              : streamError
+                ? "SSE error"
+                : "Offline"}
           </span>
           <MarketMakerControls
             market={market}

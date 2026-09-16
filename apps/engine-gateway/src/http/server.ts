@@ -514,8 +514,15 @@ function marketFromStreamPath(path: string): string | null {
 
 function parseCorsOrigins(): string[] {
   const raw = process.env.CORS_ORIGINS?.trim();
-  // Default `*`: stream access is ticket-gated; EventSource needs CORS.
-  if (!raw) return ["*"];
+  if (!raw) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "CORS_ORIGINS is required in production (e.g. https://your-app.vercel.app)",
+      );
+    }
+    // Default `*`: stream access is ticket-gated; EventSource needs CORS.
+    return ["*"];
+  }
   return raw.split(",").map((origin) => origin.trim()).filter(Boolean);
 }
 

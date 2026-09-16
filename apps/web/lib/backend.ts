@@ -109,7 +109,7 @@ export function relayResponse(response: Response): Response {
 
 export function bffError(
   request: Request,
-  status: 400 | 401 | 403 | 404 | 502,
+  status: 400 | 401 | 403 | 404 | 502 | 503,
   code: string,
   message = code,
 ) {

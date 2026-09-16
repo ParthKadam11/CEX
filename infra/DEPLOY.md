@@ -152,11 +152,28 @@ Disks force a single instance and brief downtime on deploy — expected for this
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth |
 | `OMS_URL` | `https://cex-oms.onrender.com` (exact Render URL) |
 | `ENGINE_GATEWAY_URL` | `https://cex-gateway.onrender.com` |
-| `ENGINE_GATEWAY_PUBLIC_URL` | **same** as `ENGINE_GATEWAY_URL` (browser EventSource) |
+| `ENGINE_GATEWAY_PUBLIC_URL` | **same** as `ENGINE_GATEWAY_URL` (browser EventSource — **required**) |
 | `MARKET_DATA_URL` | `https://cex-ingester.onrender.com` |
 | `OMS_INTERNAL_TOKEN` | copy from Render `cex-oms` |
 | `ENGINE_GATEWAY_INTERNAL_TOKEN` | copy from Render `cex-gateway` (`GATEWAY_INTERNAL_TOKEN`) |
 | `MARKET_DATA_INTERNAL_TOKEN` | copy from Render `cex-ingester` (`INGESTER_INTERNAL_TOKEN`) |
+
+On **cex-gateway** (Render), set:
+
+| Variable | Value |
+| --- | --- |
+| `CORS_ORIGINS` | `https://<your-vercel-domain>` (comma-separate previews if needed) |
+
+### Direct SSE (required in production)
+
+Browsers connect with EventSource **straight to the gateway** after `/api/market/stream-ticket` issues a short-lived URL. Do **not** rely on `/api/market/stream` through Vercel (disabled in production).
+
+1. Vercel: `ENGINE_GATEWAY_PUBLIC_URL=https://cex-gateway.onrender.com`
+2. Render gateway: `CORS_ORIGINS=https://your-app.vercel.app`
+3. Tokens must match: Vercel `ENGINE_GATEWAY_INTERNAL_TOKEN` = Render `GATEWAY_INTERNAL_TOKEN`
+4. Spot/Perps status shows **SSE error** (not silent BFF fallback) if the ticket or gateway stream fails
+
+Local/dev may still fall back to `/api/market/stream`. Opt into the strict path with `NEXT_PUBLIC_REQUIRE_DIRECT_SSE=true`.
 
 Do **not** set `NODE_ENV` yourself on Vercel.
 
@@ -203,7 +220,8 @@ Then:
 | --- | --- |
 | Render health check fails | App not listening on `PORT` (fixed in code: prefer `PORT`) |
 | Vercel 502 to OMS/gateway | Wrong `*_URL` or token mismatch |
-| SSE never connects | Missing `ENGINE_GATEWAY_PUBLIC_URL`, or gateway blocked; check CORS |
+| SSE never connects / **SSE error** | Missing `ENGINE_GATEWAY_PUBLIC_URL`, wrong `CORS_ORIGINS`, or token mismatch. BFF `/api/market/stream` is disabled in production |
+| Intermittent `/api/market/balances` 502 | Gateway↔exchange timeout/cold start; gateway now uses 8s timeout and does not trip the circuit on read polls |
 | Empty book / `EACCES mkdir` on exchange | `EXCHANGE_DATA_DIR` points at a path with no disk (e.g. `/data`). Use `/opt/render/project/src/apps/exchange/data` |
 | OMS migrate fails | Bad `DATABASE_URL` or Neon IP allowlist |
 | Ingester `ECONNREFUSED` | `TIMESCALE_URL` missing / still `127.0.0.1` |

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Instrument_Serif, Sora } from "next/font/google";
+import { connection } from "next/server";
 import { getServerSession } from "next-auth";
 import "./globals.css";
 import { Appbar } from "@/components/Appbar";
@@ -23,6 +24,9 @@ export const metadata: Metadata = {
     "Paper trading for SOL USD spot and perps. Clear markets, ledger balances, no real funds.",
 };
 
+/** Session uses cookies/headers — never statically prerender the shell. */
+export const dynamic = "force-dynamic";
+
 const themeInitScript = `
 (() => {
   try {
@@ -45,12 +49,9 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  let session = null;
-  try {
-    session = await getServerSession(authOptions);
-  } catch (error) {
-    console.error("[layout] getServerSession failed", error);
-  }
+  // Opt into a request-time render before touching auth cookies.
+  await connection();
+  const session = await getServerSession(authOptions);
 
   return (
     <html

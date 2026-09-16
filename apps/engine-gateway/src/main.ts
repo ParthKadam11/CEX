@@ -41,10 +41,12 @@ async function main(): Promise<void> {
   const marketDataRedis = createRedisSubscriber(config.redisUrl);
   const markets = config.engines.map((e) => e.market);
   const marketData = new MarketDataHub(marketDataRedis, markets);
-  const engines = new EngineRegistry(
-    config.engines,
-    config.exchangeToken,
-  );
+  const engines = new EngineRegistry(config.engines, config.exchangeToken, {
+    timeoutMs: config.engineTimeoutMs,
+    maxRetries: config.engineMaxRetries,
+    failureThreshold: config.engineFailureThreshold,
+    cooldownMs: config.engineCooldownMs,
+  });
   const liveBook = new LiveBookHub(engines, marketData);
   const positions = new PositionHub();
   const liquidations = new LiquidationHub();

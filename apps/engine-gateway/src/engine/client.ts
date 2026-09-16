@@ -49,10 +49,10 @@ export class EngineClient {
     private readonly gatewayToken = "local-dev-exchange-token",
     options: EngineClientOptions = {},
   ) {
-    this.timeoutMs = options.timeoutMs ?? 3_000;
+    this.timeoutMs = options.timeoutMs ?? 8_000;
     this.maxRetries = options.maxRetries ?? 2;
-    this.failureThreshold = options.failureThreshold ?? 3;
-    this.cooldownMs = options.cooldownMs ?? 5_000;
+    this.failureThreshold = options.failureThreshold ?? 5;
+    this.cooldownMs = options.cooldownMs ?? 3_000;
   }
 
   async health(signal?: AbortSignal): Promise<{ ok: boolean; market: string }> {
@@ -61,6 +61,7 @@ export class EngineClient {
       { headers: this.headers() },
       true,
       signal,
+      false,
     );
     if (!res.ok) throw new Error(`engine health failed: ${res.status}`);
     return (await res.json()) as { ok: boolean; market: string };
@@ -217,6 +218,7 @@ export class EngineClient {
       { headers: this.headers() },
       true,
       signal,
+      false,
     );
     if (!res.ok) throw new Error(`orders failed: ${res.status}`);
     const body = (await res.json()) as { orders: Order[] };
@@ -230,6 +232,7 @@ export class EngineClient {
       { headers: this.headers() },
       true,
       signal,
+      false,
     );
     if (!res.ok) throw new Error(`book failed: ${res.status}`);
     return (await res.json()) as OrderBookSnapshot;
@@ -251,6 +254,7 @@ export class EngineClient {
       { headers: this.headers() },
       true,
       signal,
+      false,
     );
     if (!res.ok) throw new Error(`mark failed: ${res.status}`);
     return (await res.json()) as {
@@ -275,6 +279,7 @@ export class EngineClient {
       { headers: this.headers() },
       true,
       signal,
+      false,
     );
     if (!res.ok) throw new Error(`funding failed: ${res.status}`);
     return (await res.json()) as {
@@ -339,6 +344,7 @@ export class EngineClient {
       { headers: this.headers() },
       true,
       signal,
+      false,
     );
     if (!res.ok) throw new Error(`balances failed: ${res.status}`);
     const body = (await res.json()) as { balances: Balance[] };
@@ -354,6 +360,7 @@ export class EngineClient {
       { headers: this.headers() },
       true,
       signal,
+      false,
     );
     if (!res.ok) throw new Error(`position failed: ${res.status}`);
     const body = (await res.json()) as {
@@ -375,6 +382,7 @@ export class EngineClient {
       { headers: this.headers() },
       true,
       signal,
+      false,
     );
     if (!res.ok) throw new Error(`positions failed: ${res.status}`);
     const body = (await res.json()) as {
@@ -408,6 +416,7 @@ export class EngineClient {
       { headers: this.headers() },
       true,
       signal,
+      false,
     );
     if (!res.ok) throw new Error(`reconcile failed: ${res.status}`);
     return (await res.json()) as {
@@ -444,21 +453,21 @@ export class EngineClient {
     init: RequestInit,
     retryable: boolean,
     signal?: AbortSignal,
+    /** Writes trip/respect the circuit; reads probe through and don't open it. */
+    tripCircuit = true,
   ): Promise<Response> {
     const openedAt = this.circuitOpenedAt;
-    if (
-      openedAt > 0 &&
-      Date.now() - openedAt < this.cooldownMs
-    ) {
-      throw new EngineCircuitOpenError();
+    if (openedAt > 0 && Date.now() - openedAt < this.cooldownMs) {
+      if (tripCircuit) throw new EngineCircuitOpenError();
+    } else if (openedAt > 0) {
+      this.circuitOpenedAt = 0;
     }
-    if (openedAt > 0) this.circuitOpenedAt = 0;
 
     for (let attempt = 0; ; attempt += 1) {
       try {
         const response = await this.fetchWithTimeout(path, init, signal);
         if (response.status >= 500) {
-          this.recordFailure();
+          if (tripCircuit) this.recordFailure();
           if (retryable && attempt < this.maxRetries) {
             await delay(100 * 2 ** attempt);
             continue;
@@ -469,7 +478,7 @@ export class EngineClient {
         return response;
       } catch (error) {
         if (signal?.aborted) throw error;
-        this.recordFailure();
+        if (tripCircuit) this.recordFailure();
         if (!retryable || attempt >= this.maxRetries) throw error;
         await delay(100 * 2 ** attempt);
       }

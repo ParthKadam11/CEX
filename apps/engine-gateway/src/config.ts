@@ -19,6 +19,11 @@ export type GatewayConfig = {
   consumerName: string;
   internalToken: string | null;
   exchangeToken: string;
+  /** HTTP timeout for exchange calls (cold starts need headroom). */
+  engineTimeoutMs: number;
+  engineMaxRetries: number;
+  engineFailureThreshold: number;
+  engineCooldownMs: number;
 };
 
 export function loadConfig(): GatewayConfig {
@@ -54,7 +59,23 @@ export function loadConfig(): GatewayConfig {
       "EXCHANGE_GATEWAY_TOKEN",
       "local-dev-exchange-token",
     ),
+    engineTimeoutMs: positiveInt(
+      process.env.ENGINE_REQUEST_TIMEOUT_MS,
+      8_000,
+    ),
+    engineMaxRetries: positiveInt(process.env.ENGINE_REQUEST_MAX_RETRIES, 2),
+    engineFailureThreshold: positiveInt(
+      process.env.ENGINE_CIRCUIT_FAILURE_THRESHOLD,
+      5,
+    ),
+    engineCooldownMs: positiveInt(process.env.ENGINE_CIRCUIT_COOLDOWN_MS, 3_000),
   };
+}
+
+function positiveInt(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
 /**

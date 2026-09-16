@@ -10,7 +10,23 @@ import { parseMarketParam } from "@/lib/markets";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+/**
+ * Dev-only BFF SSE proxy. Production browsers must use /api/market/stream-ticket
+ * → ENGINE_GATEWAY_PUBLIC_URL (EventSource cannot go through Vercel reliably).
+ */
 export async function GET(request: NextRequest) {
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.ALLOW_BFF_MARKET_STREAM !== "true"
+  ) {
+    return bffError(
+      request,
+      503,
+      "USE_DIRECT_SSE",
+      "BFF market stream proxy is disabled in production; use /api/market/stream-ticket",
+    );
+  }
+
   const userId = await getAuthenticatedUserId();
   if (!userId) {
     return bffError(request, 401, "UNAUTHORIZED");

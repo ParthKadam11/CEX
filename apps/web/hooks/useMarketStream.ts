@@ -20,8 +20,8 @@ function emptyBook(market: MarketSymbol): OrderBookSnapshot {
   };
 }
 
-type UseMarketStreamOptions = {
-  market: MarketSymbol;
+/** Client-only stream callbacks (kept off the hook args object for RSC lint). */
+export type MarketStreamHandlers = {
   onTrade?: (trade: TradeTickMessage) => void;
   onBook?: (book: OrderBookSnapshot) => void;
   onPosition?: (position: Position) => void;
@@ -29,41 +29,59 @@ type UseMarketStreamOptions = {
   onFunding?: (funding: FundingEvent) => void;
 };
 
-export function useMarketStream(options: UseMarketStreamOptions) {
-  const [book, setBook] = useState<OrderBookSnapshot>(() =>
-    emptyBook(options.market),
+/** Production (and opt-in) must EventSource the gateway directly — never Vercel BFF SSE. */
+function requireDirectSse(): boolean {
+  return (
+    process.env.NODE_ENV === "production" ||
+    process.env.NEXT_PUBLIC_REQUIRE_DIRECT_SSE === "true"
   );
+}
+
+export function useMarketStream(
+  market: MarketSymbol,
+  handlers: MarketStreamHandlers = {},
+) {
+  const [book, setBook] = useState<OrderBookSnapshot>(() => emptyBook(market));
   const [connected, setConnected] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
   const [lastTrade, setLastTrade] = useState<TradeTickMessage | null>(null);
-  const optionsRef = useRef(options);
-  optionsRef.current = options;
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
 
   useEffect(() => {
-    setBook(emptyBook(options.market));
+    setBook(emptyBook(market));
     setLastTrade(null);
     setConnected(false);
+    setStreamError(null);
 
     let source: EventSource | null = null;
     let closed = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
+    const directOnly = requireDirectSse();
 
     async function resolveStreamUrl(): Promise<string> {
-      const qs = new URLSearchParams({ market: options.market });
+      const qs = new URLSearchParams({ market });
       try {
         const response = await fetch(`/api/market/stream-ticket?${qs}`, {
           cache: "no-store",
         });
-        if (response.ok) {
-          const body = (await response.json()) as { url?: string };
-          if (typeof body.url === "string" && body.url.length > 0) {
-            return body.url;
-          }
+        if (!response.ok) {
+          throw new Error(`STREAM_TICKET_FAILED:${response.status}`);
         }
-      } catch {
-        // fall through to same-origin BFF proxy
+        const body = (await response.json()) as { url?: string };
+        if (typeof body.url !== "string" || body.url.length === 0) {
+          throw new Error("STREAM_TICKET_MISSING_URL");
+        }
+        if (directOnly && !/^https?:\/\//i.test(body.url)) {
+          throw new Error("STREAM_REQUIRES_DIRECT_GATEWAY");
+        }
+        return body.url;
+      } catch (error) {
+        if (directOnly) throw error;
+        // Local/dev only: fall back to same-origin BFF proxy.
+        return `/api/market/stream?${qs}`;
       }
-      return `/api/market/stream?${qs}`;
     }
 
     async function connect() {
@@ -73,7 +91,13 @@ export function useMarketStream(options: UseMarketStreamOptions) {
       let url: string;
       try {
         url = await resolveStreamUrl();
-      } catch {
+        setStreamError(null);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "STREAM_UNAVAILABLE";
+        console.error("[useMarketStream] direct SSE unavailable", error);
+        setConnected(false);
+        setStreamError(message);
         scheduleRetry();
         return;
       }
@@ -84,56 +108,53 @@ export function useMarketStream(options: UseMarketStreamOptions) {
       source.onopen = () => {
         attempt = 0;
         setConnected(true);
+        setStreamError(null);
       };
       source.onerror = () => {
         setConnected(false);
+        if (directOnly) {
+          setStreamError("STREAM_GATEWAY_DISCONNECTED");
+        }
         source?.close();
         scheduleRetry();
       };
 
       source.addEventListener("book", (event) => {
         const next = parseEvent<OrderBookSnapshot>(event);
-        if (!next || next.market !== optionsRef.current.market) return;
+        if (!next || next.market !== market) return;
         setBook(next);
-        optionsRef.current.onBook?.(next);
+        handlersRef.current.onBook?.(next);
       });
 
       source.addEventListener("bbo", (event) => {
         const bbo = parseEvent<BboMessage>(event);
-        if (!bbo || bbo.market !== optionsRef.current.market) return;
+        if (!bbo || bbo.market !== market) return;
         setBook((current) => ({ ...current, bbo }));
       });
 
       source.addEventListener("trade", (event) => {
         const trade = parseEvent<TradeTickMessage>(event);
-        if (!trade || trade.market !== optionsRef.current.market) return;
+        if (!trade || trade.market !== market) return;
         setLastTrade(trade);
-        optionsRef.current.onTrade?.(trade);
+        handlersRef.current.onTrade?.(trade);
       });
 
       source.addEventListener("position", (event) => {
         const position = parseEvent<Position>(event);
-        if (!position || position.market !== optionsRef.current.market) return;
-        optionsRef.current.onPosition?.(position);
+        if (!position || position.market !== market) return;
+        handlersRef.current.onPosition?.(position);
       });
 
       source.addEventListener("liquidation", (event) => {
         const liquidation = parseEvent<LiquidationEvent>(event);
-        if (
-          !liquidation ||
-          liquidation.market !== optionsRef.current.market
-        ) {
-          return;
-        }
-        optionsRef.current.onLiquidation?.(liquidation);
+        if (!liquidation || liquidation.market !== market) return;
+        handlersRef.current.onLiquidation?.(liquidation);
       });
 
       source.addEventListener("funding", (event) => {
         const funding = parseEvent<FundingEvent>(event);
-        if (!funding || funding.market !== optionsRef.current.market) {
-          return;
-        }
-        optionsRef.current.onFunding?.(funding);
+        if (!funding || funding.market !== market) return;
+        handlersRef.current.onFunding?.(funding);
       });
     }
 
@@ -153,7 +174,7 @@ export function useMarketStream(options: UseMarketStreamOptions) {
       if (retryTimer) clearTimeout(retryTimer);
       source?.close();
     };
-  }, [options.market]);
+  }, [market]);
 
-  return { book, setBook, connected, lastTrade };
+  return { book, setBook, connected, lastTrade, streamError };
 }
