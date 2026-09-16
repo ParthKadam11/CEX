@@ -94,21 +94,27 @@ export function PerpsPanel() {
   });
 
   const liveCandles = useMemo(
-    () => buildLiveCandles(tape, 60_000, 90),
+    () => buildLiveCandles(tape, 15_000, 120),
     [tape],
   );
   const chartCandles = useMemo(() => {
     if (liveCandles.length === 0) return historyCandles;
     if (historyCandles.length === 0) return liveCandles;
-    const byBucket = new Map(
-      historyCandles.map((c) => [c.bucket, normalizeCandle(c)] as const),
+    // Live is 15s; history is 1m — keep older 1m bars before the live window.
+    const oldestLive = liveCandles.reduce(
+      (min, c) => (c.bucket < min ? c.bucket : min),
+      liveCandles[0]!.bucket,
     );
+    const byBucket = new Map<string, Candle>();
+    for (const c of historyCandles) {
+      if (c.bucket < oldestLive) byBucket.set(c.bucket, normalizeCandle(c));
+    }
     for (const c of liveCandles) byBucket.set(c.bucket, normalizeCandle(c));
     return [...byBucket.values()]
       .sort((a, b) => b.bucket.localeCompare(a.bucket))
-      .slice(0, 90);
+      .slice(0, 120);
   }, [historyCandles, liveCandles]);
-  const chartInterval = liveCandles.length > 0 ? "1m live" : "1m history";
+  const chartInterval = liveCandles.length > 0 ? "15s live" : "1m history";
 
   const lastPrice =
     tape[0]?.price ??

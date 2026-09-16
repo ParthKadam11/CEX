@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CandlestickSeries,
   ColorType,
@@ -28,11 +28,20 @@ type OhlcHover = {
   volume: number;
 };
 
+type ChartRow = {
+  time: UTCTimestamp;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
 function toUnix(bucket: string): UTCTimestamp {
   return Math.floor(new Date(bucket).getTime() / 1000) as UTCTimestamp;
 }
 
-function candleRows(candles: Candle[]) {
+function candleRows(candles: Candle[]): ChartRow[] {
   return [...candles]
     .map((candle) => {
       const open = Number(candle.open);
@@ -89,6 +98,27 @@ function themeColors(dark: boolean) {
       };
 }
 
+function toCandlePoint(row: ChartRow) {
+  return {
+    time: row.time,
+    open: row.open,
+    high: row.high,
+    low: row.low,
+    close: row.close,
+  };
+}
+
+function toVolumePoint(
+  row: ChartRow,
+  colors: ReturnType<typeof themeColors>,
+) {
+  return {
+    time: row.time,
+    value: row.volume,
+    color: row.close >= row.open ? colors.volumeUp : colors.volumeDown,
+  };
+}
+
 export function CandleChart({
   candles,
   intervalLabel = "1m",
@@ -100,7 +130,12 @@ export function CandleChart({
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const prevTimesRef = useRef<number[]>([]);
+  const fittedRef = useRef(false);
   const [hover, setHover] = useState<OhlcHover | null>(null);
+
+  const rows = useMemo(() => candleRows(candles), [candles]);
+  const lastRow = rows.at(-1) ?? null;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -139,7 +174,7 @@ export function CandleChart({
       timeScale: {
         borderColor: colors.border,
         timeVisible: true,
-        secondsVisible: intervalLabel.includes("5s"),
+        secondsVisible: true,
       },
       handleScroll: { vertTouchDrag: false },
     });
@@ -169,6 +204,8 @@ export function CandleChart({
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
+    prevTimesRef.current = [];
+    fittedRef.current = false;
 
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.seriesData) {
@@ -199,8 +236,17 @@ export function CandleChart({
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
+      prevTimesRef.current = [];
+      fittedRef.current = false;
     };
-  }, [dark, intervalLabel]);
+  }, [dark]);
+
+  useEffect(() => {
+    chartRef.current?.timeScale().applyOptions({
+      secondsVisible:
+        intervalLabel.includes("5s") || intervalLabel.includes("15s"),
+    });
+  }, [intervalLabel]);
 
   useEffect(() => {
     const candleSeries = candleSeriesRef.current;
@@ -208,45 +254,62 @@ export function CandleChart({
     const chart = chartRef.current;
     if (!candleSeries || !volumeSeries || !chart) return;
 
-    const rows = candleRows(candles);
+    const colors = themeColors(dark);
+
     if (rows.length === 0) {
       candleSeries.setData([]);
       volumeSeries.setData([]);
-      setHover(null);
+      prevTimesRef.current = [];
+      fittedRef.current = false;
       return;
     }
 
-    candleSeries.setData(
-      rows.map(({ time, open, high, low, close }) => ({
-        time,
-        open,
-        high,
-        low,
-        close,
-      })),
-    );
-    volumeSeries.setData(
-      rows.map((row) => ({
-        time: row.time,
-        value: row.volume,
-        color: row.close >= row.open
-          ? themeColors(dark).volumeUp
-          : themeColors(dark).volumeDown,
-      })),
-    );
-
+    const prevTimes = prevTimesRef.current;
+    const samePrefix =
+      prevTimes.length > 0 &&
+      prevTimes.length <= rows.length &&
+      prevTimes.every((time, index) => rows[index]!.time === time);
     const last = rows.at(-1)!;
-    setHover({
-      open: last.open,
-      high: last.high,
-      low: last.low,
-      close: last.close,
-      volume: last.volume,
-    });
-    chart.timeScale().fitContent();
-  }, [candles, dark]);
+    const nearLiveEdge = (() => {
+      const visible = chart.timeScale().getVisibleLogicalRange();
+      if (!visible) return true;
+      return visible.to >= prevTimes.length - 2;
+    })();
 
-  const display = hover;
+    if (samePrefix && rows.length === prevTimes.length) {
+      // Same bars — only the live candle mutated.
+      candleSeries.update(toCandlePoint(last));
+      volumeSeries.update(toVolumePoint(last, colors));
+    } else if (samePrefix && rows.length === prevTimes.length + 1) {
+      // New bar rolled — append without rebuilding the series.
+      candleSeries.update(toCandlePoint(last));
+      volumeSeries.update(toVolumePoint(last, colors));
+      if (nearLiveEdge) chart.timeScale().scrollToRealTime();
+    } else {
+      candleSeries.setData(rows.map(toCandlePoint));
+      volumeSeries.setData(rows.map((row) => toVolumePoint(row, colors)));
+      if (!fittedRef.current) {
+        chart.timeScale().fitContent();
+        fittedRef.current = true;
+      } else if (nearLiveEdge) {
+        chart.timeScale().scrollToRealTime();
+      }
+    }
+
+    prevTimesRef.current = rows.map((row) => row.time);
+  }, [rows, dark]);
+
+  const display =
+    hover ??
+    (lastRow
+      ? {
+          open: lastRow.open,
+          high: lastRow.high,
+          low: lastRow.low,
+          close: lastRow.close,
+          volume: lastRow.volume,
+        }
+      : null);
   const up = display != null && display.close >= display.open;
 
   return (

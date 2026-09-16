@@ -168,14 +168,14 @@ export function applyTradeToCandles(
 }
 
 /**
- * Build live candles from the trade tape so the chart moves during sim.
- * Default 1m buckets so high/low wicks have room to form (5s was often flat).
- * Timescale candles_1m only refreshes on a 1m policy with end_offset=1m.
+ * Build live candles from the trade tape so the chart moves with each trade.
+ * Default 15s buckets (history REST stays 1m); shorter than 1m so the live
+ * bar updates visibly without waiting for a full minute to roll.
  */
 export function buildLiveCandles(
   trades: LiveTapeTrade[],
-  bucketMs = 60_000,
-  maxBuckets = 60,
+  bucketMs = 15_000,
+  maxBuckets = 120,
 ): Candle[] {
   if (trades.length === 0) return [];
 
