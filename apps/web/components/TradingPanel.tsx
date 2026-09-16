@@ -55,8 +55,6 @@ export function TradingPanel() {
           ...current.filter((row) => row.id !== trade.tradeId),
         ].slice(0, 120),
       );
-      void loadBalances();
-      void loadOrders();
     },
   });
 
@@ -118,17 +116,26 @@ export function TradingPanel() {
       ]);
     }
     void bootstrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once on mount
+  }, []);
 
-    const refreshTimer = window.setInterval(() => {
+  // When SSE is live, book/trades come from the stream — only reconcile
+  // orders/balances on a slower timer (and after place/cancel).
+  useEffect(() => {
+    const pollMs = streamConnected ? 4_000 : 2_000;
+
+    function refresh() {
       void loadOrders();
       void loadBalances();
-    }, 1_000);
+    }
 
+    refresh();
+    const refreshTimer = window.setInterval(refresh, pollMs);
     return () => {
       window.clearInterval(refreshTimer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once on mount
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- poll cadence follows stream connection
+  }, [streamConnected]);
 
   // Keep MM presence ping while watching (does not start sim or change options).
   useEffect(() => {

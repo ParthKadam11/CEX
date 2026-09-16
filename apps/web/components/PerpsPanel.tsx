@@ -68,6 +68,8 @@ export function PerpsPanel() {
       void loadPositions();
     },
     onFunding: (funding) => {
+      setMarkPrice(funding.mark);
+      setFundingRateBps(funding.fundingRateBps);
       setMessage(
         `Funding ${funding.payment >= 0 ? "+" : ""}${funding.payment} USD @ ${
           funding.fundingRateBps
@@ -88,10 +90,6 @@ export function PerpsPanel() {
           ...current.filter((row) => row.id !== trade.tradeId),
         ].slice(0, 120),
       );
-      void loadBalances();
-      void loadOrders();
-      void loadPositions();
-      void loadMark();
     },
   });
 
@@ -156,20 +154,31 @@ export function PerpsPanel() {
       ]);
     }
     void bootstrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once on mount
+  }, []);
 
-    const refreshTimer = window.setInterval(() => {
+  // Live SSE owns book/trades/positions. While connected, only reconcile
+  // orders/balances slowly; mark/funding come from stream events + last trade.
+  useEffect(() => {
+    const pollMs = streamConnected ? 4_000 : 2_000;
+
+    function refresh() {
       void loadOrders();
       void loadBalances();
-      void loadPositions();
-      void loadMark();
-      void loadFunding();
-    }, 1_000);
+      if (!streamConnected) {
+        void loadPositions();
+        void loadMark();
+        void loadFunding();
+      }
+    }
 
+    refresh();
+    const refreshTimer = window.setInterval(refresh, pollMs);
     return () => {
       window.clearInterval(refreshTimer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once on mount
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- poll cadence follows stream connection
+  }, [streamConnected]);
 
   // Keep MM presence ping while watching (does not start sim or change options).
   useEffect(() => {
