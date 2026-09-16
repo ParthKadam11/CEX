@@ -25,6 +25,11 @@ type TradeDeskLayoutProps = {
   bottom: ReactNode;
   /** Optional mid strip above bottom (e.g. perp position). */
   secondary?: ReactNode;
+  /**
+   * `docked` keeps the bottom strip inside the fixed desk (nested scroll).
+   * `flow` places it under the desk so the page scrolls to reveal it.
+   */
+  bottomPlacement?: "docked" | "flow";
   className?: string;
 };
 
@@ -89,6 +94,58 @@ function usePersistedLayout(id: string) {
   });
 }
 
+function WorkspaceColumns({
+  id,
+  chart,
+  book,
+  ticket,
+  columns,
+}: {
+  id: string;
+  chart: ReactNode;
+  book: ReactNode;
+  ticket: ReactNode;
+  columns: ReturnType<typeof usePersistedLayout>;
+}) {
+  return (
+    <Group
+      id={`${id}-cols`}
+      orientation="horizontal"
+      className="h-full min-h-0"
+      defaultLayout={columns.defaultLayout}
+      onLayoutChanged={columns.onLayoutChanged}
+      resizeTargetMinimumSize={{ coarse: 24, fine: 10 }}
+    >
+      <Panel
+        id="chart"
+        defaultSize="52%"
+        minSize="22%"
+        className="min-h-0 min-w-0"
+      >
+        <PanelFrame>{chart}</PanelFrame>
+      </Panel>
+      <DeskSeparator />
+      <Panel
+        id="book"
+        defaultSize="24%"
+        minSize="14%"
+        className="min-h-0 min-w-0"
+      >
+        <PanelFrame>{book}</PanelFrame>
+      </Panel>
+      <DeskSeparator />
+      <Panel
+        id="ticket"
+        defaultSize="24%"
+        minSize="16%"
+        className="min-h-0 min-w-0"
+      >
+        <PanelFrame className="overflow-y-auto">{ticket}</PanelFrame>
+      </Panel>
+    </Group>
+  );
+}
+
 /** Mobile: scrollable stack. Desktop (lg+): resizable panels. */
 export function TradeDeskLayout({
   id,
@@ -97,6 +154,7 @@ export function TradeDeskLayout({
   ticket,
   bottom,
   secondary,
+  bottomPlacement = "docked",
   className,
 }: TradeDeskLayoutProps) {
   const mode = useViewportMode();
@@ -107,7 +165,10 @@ export function TradeDeskLayout({
   if (mode === "unknown") {
     return (
       <div
-        className={cn("min-h-[280px] w-full bg-zinc-100 dark:bg-zinc-900", className)}
+        className={cn(
+          "min-h-[280px] w-full bg-zinc-100 dark:bg-zinc-900",
+          className,
+        )}
         aria-hidden
       />
     );
@@ -131,9 +192,27 @@ export function TradeDeskLayout({
         {secondary ? (
           <section className="bg-white dark:bg-zinc-950">{secondary}</section>
         ) : null}
-        <section className="min-h-[180px] bg-white pb-6 dark:bg-zinc-950">
-          {bottom}
-        </section>
+        <section className="bg-white pb-6 dark:bg-zinc-950">{bottom}</section>
+      </div>
+    );
+  }
+
+  if (bottomPlacement === "flow") {
+    return (
+      <div className={cn("flex w-full flex-col gap-px bg-zinc-200 dark:bg-zinc-800", className)}>
+        <div className="h-[min(720px,calc(100dvh-11rem))] min-h-[420px] w-full">
+          <WorkspaceColumns
+            id={id}
+            chart={chart}
+            book={book}
+            ticket={ticket}
+            columns={columns}
+          />
+        </div>
+        {secondary ? (
+          <section className="bg-white dark:bg-zinc-950">{secondary}</section>
+        ) : null}
+        <section className="bg-white pb-8 dark:bg-zinc-950">{bottom}</section>
       </div>
     );
   }
@@ -148,41 +227,13 @@ export function TradeDeskLayout({
       resizeTargetMinimumSize={{ coarse: 24, fine: 10 }}
     >
       <Panel id="workspace" defaultSize="72%" minSize="35%" className="min-h-0">
-        <Group
-          id={`${id}-cols`}
-          orientation="horizontal"
-          className="h-full min-h-0"
-          defaultLayout={columns.defaultLayout}
-          onLayoutChanged={columns.onLayoutChanged}
-          resizeTargetMinimumSize={{ coarse: 24, fine: 10 }}
-        >
-          <Panel
-            id="chart"
-            defaultSize="52%"
-            minSize="22%"
-            className="min-h-0 min-w-0"
-          >
-            <PanelFrame>{chart}</PanelFrame>
-          </Panel>
-          <DeskSeparator />
-          <Panel
-            id="book"
-            defaultSize="24%"
-            minSize="14%"
-            className="min-h-0 min-w-0"
-          >
-            <PanelFrame>{book}</PanelFrame>
-          </Panel>
-          <DeskSeparator />
-          <Panel
-            id="ticket"
-            defaultSize="24%"
-            minSize="16%"
-            className="min-h-0 min-w-0"
-          >
-            <PanelFrame className="overflow-y-auto">{ticket}</PanelFrame>
-          </Panel>
-        </Group>
+        <WorkspaceColumns
+          id={id}
+          chart={chart}
+          book={book}
+          ticket={ticket}
+          columns={columns}
+        />
       </Panel>
       <DeskSeparator />
       <Panel id="footer" defaultSize="28%" minSize="14%" className="min-h-0">

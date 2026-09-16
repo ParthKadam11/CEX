@@ -1,26 +1,32 @@
 "use client";
 
 import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const SECTIONS = [
   { id: "what", label: "What is this?" },
   { id: "start", label: "How to start" },
+  { id: "desk", label: "Reading the desk" },
   { id: "spot", label: "Spot trading" },
   { id: "perps", label: "Perps trading" },
+  { id: "orders", label: "Orders and status" },
   { id: "words", label: "Simple glossary" },
 ] as const;
 
 export function MarketExplorer() {
   return (
-    <div className="animate-fade-up mx-auto w-full max-w-5xl py-6 sm:py-10">
+    <div className="animate-fade-up mx-auto w-full max-w-5xl py-4 sm:py-6">
       <header className="mb-8 max-w-2xl border-b border-zinc-200 pb-6 sm:mb-10 sm:pb-8 dark:border-zinc-800">
-        <p className="text-sm text-zinc-400">Guide</p>
-        <h1 className="mt-2 font-display text-3xl tracking-tight text-zinc-950 sm:text-4xl dark:text-zinc-50">
+        <p className="font-mono text-[10px] tracking-[0.18em] text-emerald-700 uppercase dark:text-emerald-400">
+          Guide
+        </p>
+        <h1 className="mt-1 font-display text-3xl tracking-tight text-zinc-950 sm:text-4xl dark:text-zinc-50">
           Getting around
         </h1>
         <p className="mt-4 text-pretty text-base leading-relaxed text-zinc-500 dark:text-zinc-400">
-          New here? This page explains the project in plain language — what you
-          can do, and what the buttons mean. No engineering background needed.
+          Plain language walkthrough of paper Spot and Perps: how to fund,
+          place, cancel, and read what the screens mean.
         </p>
       </header>
 
@@ -28,7 +34,7 @@ export function MarketExplorer() {
         aria-label="On this page"
         className="mb-10 border-b border-zinc-200 pb-6 lg:hidden dark:border-zinc-800"
       >
-        <p className="mb-3 text-[10px] font-medium tracking-[0.14em] text-zinc-400 uppercase">
+        <p className="mb-3 font-mono text-[10px] font-medium tracking-[0.14em] text-zinc-400 uppercase">
           On this page
         </p>
         <ol className="space-y-2.5">
@@ -38,7 +44,7 @@ export function MarketExplorer() {
                 href={`#${section.id}`}
                 className="flex items-baseline gap-3 text-sm text-zinc-600 transition-colors hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
               >
-                <span className="w-4 shrink-0 tabular-nums text-xs text-zinc-400">
+                <span className="w-4 shrink-0 font-mono text-xs tabular-nums text-zinc-400">
                   {index + 1}
                 </span>
                 <span>{section.label}</span>
@@ -53,7 +59,7 @@ export function MarketExplorer() {
           aria-label="On this page"
           className="hidden lg:sticky lg:top-6 lg:block lg:self-start"
         >
-          <p className="mb-3 text-xs font-medium tracking-wide text-zinc-400 uppercase">
+          <p className="mb-3 font-mono text-[10px] font-medium tracking-[0.14em] text-zinc-400 uppercase">
             On this page
           </p>
           <ul className="space-y-2 text-sm">
@@ -75,27 +81,21 @@ export function MarketExplorer() {
             <p>
               CEX is a{" "}
               <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                practice exchange
+                paper practice exchange
               </strong>
-              . You can buy and sell as if it were a real crypto exchange, but
-              the money is fake — paper balances you add yourself.
+              . Screens and buttons feel like a real desk, but balances are fake
+              credits you add yourself. No real funds settle here.
             </p>
             <p>
-              Think of it like a flight simulator for trading: the screens and
-              buttons feel real, so you can learn how markets work without risking
-              cash.
-            </p>
-            <p>
-              There are two places to trade:{" "}
+              Two markets, one pair:{" "}
               <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                 Spot
               </strong>{" "}
-              (simple buy/sell) and{" "}
+              (SOL-USD buy/sell) and{" "}
               <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                 Perps
               </strong>{" "}
-              (borrowed-size bets that can go up or down). Both use SOL priced in
-              USD.
+              (SOL-USD-PERP long/short with leverage).
             </p>
           </WikiSection>
 
@@ -109,22 +109,31 @@ export function MarketExplorer() {
                 >
                   Home
                 </Link>
-                . That is your account overview — who you are, open orders, and
-                balances.
+                . That is your paper ledger: balances, open orders, and recent
+                activity.
               </li>
               <li>
-                Add paper money with{" "}
+                Under Balances, click{" "}
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Add USD
+                  Add
                 </strong>{" "}
-                or{" "}
-                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Add SOL
-                </strong>
-                . Pick an amount and confirm. Nothing leaves a real bank.
+                on USD or SOL, type a whole number, and confirm. That credits the
+                engine ledger.
               </li>
               <li>
-                Go to{" "}
+                Check{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  available
+                </strong>{" "}
+                vs{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  locked
+                </strong>
+                . Available is free to spend. Locked is reserved for open orders
+                or perp margin.
+              </li>
+              <li>
+                Open{" "}
                 <Link
                   href="/spot"
                   className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
@@ -138,30 +147,50 @@ export function MarketExplorer() {
                 >
                   Perps
                 </Link>
-                , choose buy or sell (or long/short), enter a size, and place the
-                order.
+                , set side/size (and price for limits), then submit.
               </li>
               <li>
-                Watch the chart, the order book (other people’s resting prices),
-                and your orders list update as trades happen.
+                Watch fills on the desk orders list, or open{" "}
+                <Link
+                  href="/dashboard/orders"
+                  className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+                >
+                  Orders
+                </Link>{" "}
+                for full history and detail.
               </li>
             </ol>
+          </WikiSection>
+
+          <WikiSection id="desk" title="Reading the desk">
+            <p>
+              Spot and Perps share the same layout. Learn it once and both pages
+              make sense.
+            </p>
+            <dl className="mt-4 space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+              <DeskPart name="Chart" body="Price history for the market." />
+              <DeskPart
+                name="Order book"
+                body="Resting bids (buy) and asks (sell). Click a price to fill the ticket."
+              />
+              <DeskPart
+                name="Ticket"
+                body="Where you choose side, limit or market, size, and submit."
+              />
+              <DeskPart
+                name="Bottom strip"
+                body="Spot shows open/recent orders. Perps adds Position and Orders tabs."
+              />
+            </dl>
             <p className="mt-4">
-              Prefer the full order history? Use the{" "}
-              <Link
-                href="/dashboard/orders"
-                className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
-              >
-                Orders
-              </Link>{" "}
-              tab in the sidebar.
+              The top ticker shows last price and connection. If the stream
+              drops, reconnect and the book refreshes.
             </p>
           </WikiSection>
 
           <WikiSection id="spot" title="Spot trading">
             <p>
-              Spot is the straightforward market: you trade SOL for USD (or the
-              other way around) at the price people are offering.
+              Spot trades SOL for USD against your ledger balances. No leverage.
             </p>
             <ul className="mt-4 list-disc space-y-2 pl-5">
               <li>
@@ -178,95 +207,123 @@ export function MarketExplorer() {
               </li>
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Limit order
+                  Limit
                 </strong>{" "}
-                — “only trade at this price (or better).” It can wait on the book.
+                — rests on the book at your price (or better). Optional IOC/FOK.
               </li>
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Market order
+                  Market
                 </strong>{" "}
-                — “trade now at whatever the market will give me.”
+                — fills now against the book. Buys can use a quote budget.
               </li>
             </ul>
             <p className="mt-4">
-              You can only spend what you have available. If some money is tied
-              up in an open order, it shows as locked on Home until that order
-              finishes or you cancel it.
+              Open orders lock size until filled or cancelled. Cancel from the
+              bottom orders list while status is still open.
             </p>
           </WikiSection>
 
           <WikiSection id="perps" title="Perps trading">
             <p>
-              Perpetuals (“perps”) let you bet that SOL’s price will rise or fall
-              without owning the coin the whole time. You put up USD as a
-              safety deposit (margin) and can control a larger size with leverage.
+              Perps let you go long or short SOL with USD margin and leverage.
+              You do not hold the coin outright.
             </p>
             <ul className="mt-4 list-disc space-y-2 pl-5">
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Long
+                  Long / Short
                 </strong>{" "}
-                — you profit if the price goes up.
-              </li>
-              <li>
-                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Short
-                </strong>{" "}
-                — you profit if the price goes down.
+                — profit if price rises or falls.
               </li>
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   Leverage
                 </strong>{" "}
-                — multiplies both gains and losses. Higher leverage means less
-                room for the price to move against you.
+                — slider on the ticket (about 1x to 20x). Higher leverage means
+                less room before liquidation.
               </li>
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Liquidation
+                  Position tab
                 </strong>{" "}
-                — if losses eat too much of your margin, the system closes the
-                position for you so you cannot go endlessly negative.
+                — side, size, entry, margin, unrealized PnL, equity vs
+                maintenance, and liquidation price.
+              </li>
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Mark price
+                </strong>{" "}
+                — fair price used for PnL and liquidation, not always last trade.
+              </li>
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Funding
+                </strong>{" "}
+                — small periodic payment between longs and shorts.
               </li>
             </ul>
             <p className="mt-4">
-              On the Perps page, the bottom tabs show your{" "}
-              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                Position
-              </strong>{" "}
-              (what you are currently holding) and your{" "}
-              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+              To reduce or flip exposure, send the opposite side. If equity falls
+              below maintenance, the engine can liquidate the position.
+            </p>
+          </WikiSection>
+
+          <WikiSection id="orders" title="Orders and status">
+            <p>
+              Home shows a short open/recent list.{" "}
+              <Link
+                href="/dashboard/orders"
+                className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+              >
                 Orders
-              </strong>
-              .
+              </Link>{" "}
+              is the full history with filters and a detail panel.
+            </p>
+            <dl className="mt-4 space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+              <DeskPart
+                name="Pending / Accepted / Open"
+                body="Working toward or resting on the book. You can usually cancel."
+              />
+              <DeskPart
+                name="Partial"
+                body="Some size filled; remainder still open."
+              />
+              <DeskPart name="Filled" body="Fully matched. Done." />
+              <DeskPart
+                name="Cancelled / Rejected / Failed"
+                body="No longer working. Rejected or failed may show a reason in detail."
+              />
+            </dl>
+            <p className="mt-4">
+              Click a row on Orders to see average fill, fill tape, and cancel
+              when still open. Filters cover market, side, type, and time.
             </p>
           </WikiSection>
 
           <WikiSection id="words" title="Simple glossary">
             <dl className="space-y-4">
               <GlossaryTerm term="Order book">
-                A live list of buy and sell prices waiting to be matched. Bids
-                are buyers; asks are sellers.
+                Live bids and asks waiting to match.
               </GlossaryTerm>
               <GlossaryTerm term="Fill">
-                When your order actually trades — part or all of it gets matched.
+                A matched piece of your order at a price and size.
               </GlossaryTerm>
               <GlossaryTerm term="Available / locked">
-                Available is free to use. Locked is reserved for an open order or
-                perp margin.
+                Free balance vs size reserved for open orders or margin.
+              </GlossaryTerm>
+              <GlossaryTerm term="BBO / Mid">
+                Best bid/offer on the book, and the midpoint between them.
               </GlossaryTerm>
               <GlossaryTerm term="Mark price">
-                On perps, the fair price used to measure profit and whether you
-                are close to liquidation.
+                Perp fair price for PnL and liquidation checks.
               </GlossaryTerm>
               <GlossaryTerm term="Funding">
-                A small periodic payment between longs and shorts that helps keep
-                the perp price near the spot market.
+                Periodic payment between longs and shorts.
               </GlossaryTerm>
             </dl>
             <p className="mt-6 text-zinc-500 dark:text-zinc-400">
-              Curious how the software is built behind the scenes? See{" "}
+              Want the engineering path behind a click? See{" "}
               <Link
                 href="/dashboard/how-it-works"
                 className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
@@ -278,29 +335,47 @@ export function MarketExplorer() {
           </WikiSection>
 
           <footer className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
-            <p className="text-zinc-500 dark:text-zinc-400">
-              Jump in:{" "}
+            <p className="font-mono text-[10px] tracking-[0.16em] text-zinc-400 uppercase">
+              Jump in
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
               <Link
                 href="/dashboard"
-                className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
+                  "h-9 rounded-md px-4 text-sm font-semibold",
+                )}
               >
                 Home
               </Link>
-              {" · "}
               <Link
                 href="/spot"
-                className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+                className={cn(
+                  buttonVariants(),
+                  "h-9 rounded-md px-4 text-sm font-semibold",
+                )}
               >
                 Spot
               </Link>
-              {" · "}
               <Link
                 href="/perps"
-                className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
+                  "h-9 rounded-md px-4 text-sm font-semibold",
+                )}
               >
                 Perps
               </Link>
-            </p>
+              <Link
+                href="/dashboard/orders"
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
+                  "h-9 rounded-md px-4 text-sm font-semibold",
+                )}
+              >
+                Orders
+              </Link>
+            </div>
           </footer>
         </article>
       </div>
@@ -324,6 +399,17 @@ function WikiSection({
       </h2>
       <div className="mt-4 space-y-4">{children}</div>
     </section>
+  );
+}
+
+function DeskPart({ name, body }: { name: string; body: string }) {
+  return (
+    <div className="flex flex-col gap-1 border-b border-zinc-100 pb-3 last:border-0 last:pb-0 dark:border-zinc-800 sm:flex-row sm:gap-6">
+      <dt className="shrink-0 font-medium text-zinc-950 sm:w-36 dark:text-zinc-50">
+        {name}
+      </dt>
+      <dd>{body}</dd>
+    </div>
   );
 }
 

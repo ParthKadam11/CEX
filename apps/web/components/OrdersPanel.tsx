@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, ChevronDown } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { venueForSymbol } from "@/lib/markets";
 import {
   formatTime,
@@ -101,6 +102,8 @@ export function OrdersPanel() {
 
   useEffect(() => {
     void loadInitial();
+    const timer = window.setInterval(() => void loadInitial(true), 3_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -119,10 +122,10 @@ export function OrdersPanel() {
     };
   }, [selectedId]);
 
-  async function loadInitial() {
-    setLoading(true);
+  async function loadInitial(silent = false) {
+    if (!silent) setLoading(true);
     const response = await fetch("/api/orders?limit=40", { cache: "no-store" });
-    setLoading(false);
+    if (!silent) setLoading(false);
     if (!response.ok) return;
     const body = (await response.json()) as {
       orders?: TradingOrder[];
@@ -175,7 +178,7 @@ export function OrdersPanel() {
       return;
     }
     setMessage("Cancel requested");
-    await loadInitial();
+    await loadInitial(true);
     if (selectedId) await loadDetail(selectedId);
   }
 
@@ -185,6 +188,16 @@ export function OrdersPanel() {
     const closed = orders.filter((o) => CLOSED_STATUSES.has(o.status)).length;
     return { open, filled, closed, all: orders.length };
   }, [orders]);
+
+  const filtersActive =
+    market !== "all" || side !== "all" || type !== "all" || range !== "all";
+
+  function clearFilters() {
+    setMarket("all");
+    setSide("all");
+    setType("all");
+    setRange("all");
+  }
 
   const visible = useMemo(() => {
     return orders.filter((order) => {
@@ -212,17 +225,31 @@ export function OrdersPanel() {
   const selectedVenue = venueForSymbol(selected?.market);
   const selectedAvg = avgFillPrice(selected?.fills);
   const selectedOpen = selected ? isOpen(selected.status) : false;
+  const fillPct =
+    selected && selected.quantity > 0
+      ? Math.min(100, (selected.filledQuantity / selected.quantity) * 100)
+      : 0;
 
   return (
-    <div className="animate-fade-up w-full py-6 sm:py-8">
-      <header className="mb-8 border-b border-zinc-200 pb-6 dark:border-zinc-800">
-        <h1 className="font-display text-3xl tracking-tight text-zinc-950 dark:text-zinc-50">
+    <div className="animate-fade-up w-full py-4 sm:py-6">
+      <header className="mb-8 border-b border-zinc-200 pb-6 sm:mb-10 dark:border-zinc-800">
+        <p className="font-mono text-[10px] tracking-[0.18em] text-emerald-700 uppercase dark:text-emerald-400">
+          Order history
+        </p>
+        <h1 className="mt-1 font-display text-3xl tracking-tight text-zinc-950 dark:text-zinc-50">
           Orders
         </h1>
-        <p className="mt-2 max-w-xl text-sm text-zinc-500 dark:text-zinc-400">
-          Full history of your paper trades: open, filled, and cancelled.
+        <p className="mt-1 max-w-xl text-sm text-zinc-500 dark:text-zinc-400">
+          Open, filled, and cancelled paper trades across Spot and Perps.
         </p>
       </header>
+
+      <div className="mb-8 grid gap-6 border-b border-zinc-200 pb-8 sm:grid-cols-4 sm:gap-8 dark:border-zinc-800">
+        <SummaryStat label="Open" value={String(counts.open)} />
+        <SummaryStat label="Filled" value={String(counts.filled)} />
+        <SummaryStat label="Cancelled" value={String(counts.closed)} />
+        <SummaryStat label="Loaded" value={String(counts.all)} />
+      </div>
 
       <div
         className="mb-6 flex flex-wrap gap-x-6 gap-y-1 border-b border-zinc-200 dark:border-zinc-800"
@@ -253,7 +280,7 @@ export function OrdersPanel() {
             {label}
             <span
               className={cn(
-                "ml-2 tabular-nums",
+                "ml-2 font-mono text-xs tabular-nums",
                 tab === id
                   ? "text-zinc-500"
                   : "text-zinc-300 dark:text-zinc-600",
@@ -265,7 +292,7 @@ export function OrdersPanel() {
         ))}
       </div>
 
-      <div className="mb-6 flex flex-wrap gap-2">
+      <div className="mb-6 flex flex-wrap items-end gap-3">
         <FilterSelect
           label="Market"
           value={market}
@@ -306,21 +333,60 @@ export function OrdersPanel() {
             { value: "7d", label: "Last 7 days" },
           ]}
         />
+        {filtersActive ? (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="mb-0.5 h-8 text-xs font-medium text-zinc-500 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50"
+          >
+            Clear filters
+          </button>
+        ) : null}
+        <p className="mb-1 ml-auto font-mono text-[11px] tabular-nums text-zinc-400">
+          {visible.length} shown
+        </p>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-10">
         <section className="min-w-0">
           {loading ? (
-            <p className="py-16 text-center text-sm text-zinc-400">Loading…</p>
+            <p className="py-16 text-sm text-zinc-400">Loading orders…</p>
           ) : visible.length === 0 ? (
-            <p className="py-16 text-center text-sm text-zinc-400 dark:text-zinc-500">
-              No orders match these filters.
-            </p>
+            <div className="flex flex-col items-start py-14">
+              <p className="font-mono text-[10px] tracking-[0.18em] text-zinc-400 uppercase">
+                Empty book
+              </p>
+              <p className="mt-2 max-w-sm text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                {filtersActive || tab !== "all"
+                  ? "No orders match these filters. Clear filters or switch tabs to see more history."
+                  : "No orders yet. Fund paper balances on Home, then send size on Spot or Perps."}
+              </p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                {filtersActive ? (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="h-9 text-sm font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+                  >
+                    Clear filters
+                  </button>
+                ) : null}
+                <Link
+                  href="/spot"
+                  className={cn(
+                    buttonVariants(),
+                    "h-9 rounded-md px-4 text-sm font-semibold",
+                  )}
+                >
+                  Place on Spot
+                </Link>
+              </div>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead>
-                  <tr className="text-xs font-medium tracking-wide text-zinc-400 uppercase">
+                  <tr className="font-mono text-[10px] tracking-[0.14em] text-zinc-400 uppercase">
                     <th className="pb-3 pr-3 font-medium">Time</th>
                     <th className="pb-3 pr-3 font-medium">Market</th>
                     <th className="pb-3 pr-3 font-medium">Side</th>
@@ -341,17 +407,17 @@ export function OrdersPanel() {
                         className={cn(
                           "cursor-pointer align-middle transition-colors",
                           active
-                            ? "bg-zinc-50 dark:bg-zinc-900/60"
+                            ? "bg-zinc-100/70 dark:bg-zinc-900/60"
                             : "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/40",
                         )}
                         onClick={() =>
                           setSelectedId(active ? null : order.engineOrderId)
                         }
                       >
-                        <td className="py-3.5 pr-3 whitespace-nowrap text-zinc-400">
+                        <td className="py-3.5 pr-3 whitespace-nowrap font-mono text-xs text-zinc-400">
                           {formatTime(order.createdAt)}
                         </td>
-                        <td className="py-3.5 pr-3 text-zinc-600 dark:text-zinc-300">
+                        <td className="py-3.5 pr-3 font-mono text-xs text-zinc-600 dark:text-zinc-300">
                           {venue.label}
                         </td>
                         <td
@@ -359,7 +425,7 @@ export function OrdersPanel() {
                             "py-3.5 pr-3 font-medium",
                             order.side === "BUY"
                               ? "text-emerald-700 dark:text-emerald-400"
-                              : "text-red-600 dark:text-red-400",
+                              : "text-rose-600 dark:text-rose-400",
                           )}
                         >
                           {sideLabel(order)}
@@ -367,18 +433,20 @@ export function OrdersPanel() {
                         <td className="py-3.5 pr-3 capitalize text-zinc-600 dark:text-zinc-300">
                           {order.type.toLowerCase()}
                         </td>
-                        <td className="py-3.5 pr-3 tabular-nums text-zinc-950 dark:text-zinc-50">
+                        <td className="py-3.5 pr-3 font-mono text-xs tabular-nums text-zinc-950 dark:text-zinc-50">
                           {order.quantity.toLocaleString()}
                         </td>
-                        <td className="py-3.5 pr-3 tabular-nums text-zinc-950 dark:text-zinc-50">
-                          {order.price > 0 ? order.price.toLocaleString() : "Mkt"}
+                        <td className="py-3.5 pr-3 font-mono text-xs tabular-nums text-zinc-950 dark:text-zinc-50">
+                          {order.price > 0
+                            ? order.price.toLocaleString()
+                            : "Mkt"}
                         </td>
-                        <td className="py-3.5 pr-3 tabular-nums text-zinc-500">
+                        <td className="py-3.5 pr-3 font-mono text-xs tabular-nums text-zinc-500">
                           {order.filledQuantity.toLocaleString()}/
                           {order.quantity.toLocaleString()}
                         </td>
-                        <td className="py-3.5 text-zinc-600 dark:text-zinc-300">
-                          {friendlyStatus(order.status)}
+                        <td className="py-3.5">
+                          <StatusPill status={order.status} />
                         </td>
                       </tr>
                     );
@@ -401,15 +469,46 @@ export function OrdersPanel() {
         </section>
 
         <aside className="min-w-0 lg:border-l lg:border-zinc-200 lg:pl-8 dark:lg:border-zinc-800">
-          <h2 className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
+          <h2 className="font-mono text-[10px] tracking-[0.18em] text-zinc-400 uppercase">
             Detail
           </h2>
           {!selected ? (
-            <p className="mt-6 text-sm text-zinc-400 dark:text-zinc-500">
-              Select a row to see fills and status.
-            </p>
+            <div className="mt-6">
+              <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                Select a row to inspect fills, average price, and cancel if
+                still open.
+              </p>
+              <p className="mt-4 font-mono text-[10px] tracking-[0.14em] text-zinc-400 uppercase">
+                Tip
+              </p>
+              <p className="mt-1.5 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
+                Click the same row again to deselect.
+              </p>
+            </div>
           ) : (
             <div className="mt-5 space-y-4 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <StatusPill status={selected.status} />
+                <span className="font-mono text-[11px] text-zinc-400">
+                  {formatTime(selected.createdAt)}
+                </span>
+              </div>
+
+              <div>
+                <div className="mb-1.5 flex justify-between text-xs text-zinc-400">
+                  <span>Fill progress</span>
+                  <span className="font-mono tabular-nums">
+                    {fillPct.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden bg-zinc-100 dark:bg-zinc-800">
+                  <div
+                    className="h-full bg-emerald-600 dark:bg-emerald-400"
+                    style={{ width: `${fillPct}%` }}
+                  />
+                </div>
+              </div>
+
               <DetailRow label="Market" value={selectedVenue.label} />
               <DetailRow
                 label="Side / type"
@@ -443,10 +542,6 @@ export function OrdersPanel() {
                     : "—"
                 }
               />
-              <DetailRow
-                label="Status"
-                value={friendlyStatus(selected.status)}
-              />
               {selected.failureReason ? (
                 <DetailRow label="Reason" value={selected.failureReason} />
               ) : null}
@@ -454,24 +549,28 @@ export function OrdersPanel() {
 
               <div className="flex flex-wrap gap-2 pt-1">
                 {selectedOpen ? (
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
                     onClick={() => void cancelOrder(selected.engineOrderId)}
-                    className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                    className="h-8 rounded-md px-3 text-xs font-semibold"
                   >
-                    Cancel
-                  </button>
+                    Cancel order
+                  </Button>
                 ) : null}
                 <Link
                   href={selectedVenue.href}
-                  className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                  className={cn(
+                    buttonVariants({ variant: selectedOpen ? "ghost" : "outline" }),
+                    "h-8 rounded-md px-3 text-xs font-semibold",
+                  )}
                 >
                   Open {selectedVenue.label}
                 </Link>
               </div>
 
-              <div className="border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                <p className="mb-2 text-xs font-medium tracking-wide text-zinc-400 uppercase">
+              <div className="border-t border-zinc-200 pt-4 dark:border-zinc-800">
+                <p className="mb-2 font-mono text-[10px] tracking-[0.16em] text-zinc-400 uppercase">
                   Fills
                 </p>
                 {(selected.fills?.length ?? 0) === 0 ? (
@@ -483,7 +582,7 @@ export function OrdersPanel() {
                     {selected.fills!.map((fill) => (
                       <div
                         key={fill.id}
-                        className="flex justify-between gap-3 py-2 text-xs"
+                        className="flex justify-between gap-3 py-2 font-mono text-xs"
                       >
                         <span className="tabular-nums text-zinc-700 dark:text-zinc-200">
                           {fill.quantity.toLocaleString()} @{" "}
@@ -508,6 +607,40 @@ export function OrdersPanel() {
         </aside>
       </div>
     </div>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="font-mono text-[10px] tracking-[0.16em] text-zinc-400 uppercase">
+        {label}
+      </p>
+      <p className="mt-2 font-display text-3xl tracking-tight text-zinc-950 tabular-nums dark:text-zinc-50">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const label = friendlyStatus(status);
+  const tone =
+    status === "FILLED" || status === "OPEN" || status === "ACCEPTED"
+      ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+      : status === "REJECTED" || status === "FAILED" || status === "CANCELLED"
+        ? "bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+        : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-md px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase",
+        tone,
+      )}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -546,7 +679,7 @@ function FilterSelect({
 
   return (
     <div ref={rootRef} className="relative inline-flex min-w-[8rem] flex-col gap-1">
-      <span className="text-[10px] font-medium tracking-wide text-zinc-400 uppercase">
+      <span className="font-mono text-[10px] font-medium tracking-wide text-zinc-400 uppercase">
         {label}
       </span>
       <button
@@ -555,10 +688,10 @@ function FilterSelect({
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
         className={cn(
-          "flex h-8 w-full items-center justify-between gap-1.5 rounded-md border px-2.5 text-left text-xs transition-colors",
+          "flex h-8 w-full items-center justify-between gap-1.5 border px-2.5 text-left text-xs transition-colors",
           open
-            ? "border-zinc-400 bg-white text-zinc-950 dark:border-zinc-500 dark:bg-zinc-950 dark:text-zinc-50"
-            : "border-zinc-200 bg-white text-zinc-950 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:hover:border-zinc-600",
+            ? "border-zinc-400 bg-transparent text-zinc-950 dark:border-zinc-500 dark:text-zinc-50"
+            : "border-zinc-200 bg-transparent text-zinc-950 hover:border-zinc-300 dark:border-zinc-700 dark:text-zinc-50 dark:hover:border-zinc-600",
         )}
       >
         <span className="truncate">{selected?.label ?? value}</span>
@@ -575,7 +708,7 @@ function FilterSelect({
         <ul
           role="listbox"
           aria-label={label}
-          className="absolute top-[calc(100%+4px)] left-0 z-40 min-w-full overflow-hidden rounded-md border border-zinc-200 bg-white py-0.5 dark:border-zinc-700 dark:bg-zinc-950"
+          className="absolute top-[calc(100%+4px)] left-0 z-40 min-w-full overflow-hidden border border-zinc-200 bg-[#f4f7f5] py-0.5 dark:border-zinc-700 dark:bg-zinc-950"
         >
           {options.map((option) => {
             const active = option.value === value;
@@ -590,13 +723,16 @@ function FilterSelect({
                   className={cn(
                     "flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs transition-colors",
                     active
-                      ? "bg-zinc-100 text-zinc-950 dark:bg-zinc-900 dark:text-zinc-50"
-                      : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-zinc-50",
+                      ? "bg-zinc-200/70 text-zinc-950 dark:bg-zinc-900 dark:text-zinc-50"
+                      : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-zinc-50",
                   )}
                 >
                   <span>{option.label}</span>
                   {active ? (
-                    <Check className="size-3 shrink-0 text-zinc-500" aria-hidden />
+                    <Check
+                      className="size-3 shrink-0 text-zinc-500"
+                      aria-hidden
+                    />
                   ) : null}
                 </button>
               </li>
@@ -612,7 +748,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-4">
       <span className="text-xs text-zinc-400 dark:text-zinc-500">{label}</span>
-      <span className="max-w-[65%] text-right font-medium break-all text-zinc-950 dark:text-zinc-50">
+      <span className="max-w-[65%] text-right font-mono text-xs font-medium break-all text-zinc-950 dark:text-zinc-50">
         {value}
       </span>
     </div>

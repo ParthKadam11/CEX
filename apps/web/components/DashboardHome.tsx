@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import type { Balance } from "@cex/exchange-types";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { SPOT_VENUE } from "@/lib/markets";
 import {
   balanceFor,
@@ -112,35 +113,61 @@ export function DashboardHome() {
     [orders],
   );
   const visibleOrders = ordersTab === "open" ? openOrders : recentOrders;
+  const equityHint = usd.available + usd.locked;
 
   return (
-    <div className="animate-fade-up w-full py-6 sm:py-10">
-      <div className="mb-8 flex items-center gap-3 sm:mb-10">
-        {image ? (
-          <Image
-            src={image}
-            alt=""
-            width={40}
-            height={40}
-            className="size-10 rounded-full"
-          />
-        ) : (
-          <div className="flex size-10 items-center justify-center rounded-full bg-zinc-100 text-sm font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-            {name.charAt(0).toUpperCase()}
+    <div className="animate-fade-up w-full py-4 sm:py-6">
+      <header className="mb-8 border-b border-zinc-200 pb-6 sm:mb-10 dark:border-zinc-800">
+        <div className="flex items-center gap-3">
+          {image ? (
+            <Image
+              src={image}
+              alt=""
+              width={44}
+              height={44}
+              className="size-11 rounded-full ring-2 ring-emerald-500/20"
+            />
+          ) : (
+            <div className="flex size-11 items-center justify-center rounded-full bg-emerald-50 text-sm font-medium text-emerald-800 ring-2 ring-emerald-500/20 dark:bg-emerald-950 dark:text-emerald-300">
+              {name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div>
+            <p className="font-mono text-[10px] tracking-[0.18em] text-emerald-700 uppercase dark:text-emerald-400">
+              Paper ledger
+            </p>
+            <h1 className="font-display text-3xl tracking-tight text-zinc-950 dark:text-zinc-50">
+              {name}
+            </h1>
+            <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+              Fund balances, then trade SOL USD on Spot or Perps.
+            </p>
           </div>
-        )}
-        <div>
-          <h1 className="font-display text-2xl tracking-tight text-zinc-950 dark:text-zinc-50">
-            {name}
-          </h1>
-          <p className="text-sm text-zinc-400">Spot paper ledger</p>
         </div>
+      </header>
+
+      <div className="mb-8 grid gap-6 border-b border-zinc-200 pb-8 sm:grid-cols-3 sm:gap-8 dark:border-zinc-800">
+        <SummaryStat
+          label="USD available"
+          value={usd.available.toLocaleString()}
+          hint={`${usd.locked.toLocaleString()} locked`}
+        />
+        <SummaryStat
+          label="SOL available"
+          value={sol.available.toLocaleString()}
+          hint={`${sol.locked.toLocaleString()} locked`}
+        />
+        <SummaryStat
+          label="Open orders"
+          value={String(openOrders.length)}
+          hint={`${equityHint.toLocaleString()} USD on ledger`}
+        />
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,280px)] lg:gap-10">
         <section className="order-2 min-w-0 lg:order-1">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800">
-            <div className="flex gap-6" role="tablist" aria-label="Orders">
+            <div className="flex gap-5" role="tablist" aria-label="Orders">
               <OrdersTabButton
                 active={ordersTab === "open"}
                 onClick={() => setOrdersTab("open")}
@@ -156,23 +183,29 @@ export function DashboardHome() {
             </div>
             <Link
               href="/dashboard/orders"
-              className="mb-3 text-sm text-zinc-400 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50"
+              className="mb-3 font-mono text-[11px] tracking-[0.14em] text-zinc-400 uppercase transition-colors hover:text-zinc-950 dark:hover:text-zinc-50"
             >
               View all
             </Link>
           </div>
 
           {visibleOrders.length === 0 ? (
-            <div className="py-16">
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <div className="flex flex-col items-start py-14">
+              <p className="font-mono text-[10px] tracking-[0.18em] text-zinc-400 uppercase">
+                Empty book
+              </p>
+              <p className="mt-2 max-w-sm text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
                 {ordersTab === "open"
-                  ? "No open orders."
-                  : "No recent fills or cancels yet."}
+                  ? "No open orders. Fund paper balances, then send size on Spot."
+                  : "No recent fills or cancels yet. Activity shows up here after you trade."}
               </p>
               {ordersTab === "open" && (
                 <Link
                   href="/spot"
-                  className="mt-3 inline-block text-sm font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+                  className={cn(
+                    buttonVariants(),
+                    "mt-5 h-9 rounded-md px-4 text-sm font-semibold",
+                  )}
                 >
                   Place on Spot
                 </Link>
@@ -180,15 +213,15 @@ export function DashboardHome() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[520px] text-left text-sm">
+              <table className="w-full min-w-[560px] text-left text-sm">
                 <thead>
-                  <tr className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                  <tr className="font-mono text-[10px] tracking-[0.14em] text-zinc-400 uppercase">
                     <th className="pb-3 pr-4 font-medium">Side</th>
                     <th className="pb-3 pr-4 font-medium">Market</th>
                     <th className="pb-3 pr-4 font-medium">Size</th>
                     <th className="pb-3 pr-4 font-medium">Price</th>
                     <th className="pb-3 pr-4 font-medium">Filled</th>
-                    <th className="pb-3 font-medium">Status</th>
+                    <th className="pb-3 pr-4 font-medium">Status</th>
                     <th className="pb-3 font-medium">Time</th>
                   </tr>
                 </thead>
@@ -200,27 +233,27 @@ export function DashboardHome() {
                           "py-3.5 pr-4 font-medium",
                           order.side === "BUY"
                             ? "text-emerald-700 dark:text-emerald-400"
-                            : "text-red-600 dark:text-red-400",
+                            : "text-rose-600 dark:text-rose-400",
                         )}
                       >
                         {order.side}
                       </td>
-                      <td className="py-3.5 pr-4 text-zinc-600 dark:text-zinc-300">
+                      <td className="py-3.5 pr-4 font-mono text-xs text-zinc-600 dark:text-zinc-300">
                         {order.market}
                       </td>
-                      <td className="py-3.5 pr-4 tabular-nums text-zinc-950 dark:text-zinc-50">
+                      <td className="py-3.5 pr-4 font-mono text-xs tabular-nums text-zinc-950 dark:text-zinc-50">
                         {order.quantity.toLocaleString()}
                       </td>
-                      <td className="py-3.5 pr-4 tabular-nums text-zinc-950 dark:text-zinc-50">
+                      <td className="py-3.5 pr-4 font-mono text-xs tabular-nums text-zinc-950 dark:text-zinc-50">
                         {order.price > 0 ? order.price.toLocaleString() : "—"}
                       </td>
-                      <td className="py-3.5 pr-4 tabular-nums text-zinc-500">
+                      <td className="py-3.5 pr-4 font-mono text-xs tabular-nums text-zinc-500">
                         {order.filledQuantity.toLocaleString()}
                       </td>
-                      <td className="py-3.5 pr-4 text-zinc-600 dark:text-zinc-300">
-                        {friendlyStatus(order.status)}
+                      <td className="py-3.5 pr-4">
+                        <StatusPill status={order.status} />
                       </td>
-                      <td className="py-3.5 whitespace-nowrap text-zinc-400">
+                      <td className="py-3.5 whitespace-nowrap font-mono text-xs text-zinc-400">
                         {formatTime(order.createdAt)}
                       </td>
                     </tr>
@@ -231,12 +264,12 @@ export function DashboardHome() {
           )}
         </section>
 
-        <aside className="order-1 space-y-4 lg:order-2 lg:pt-1">
+        <aside className="order-1 space-y-6 lg:order-2">
           <div className="flex items-baseline justify-between gap-3">
-            <h2 className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
+            <h2 className="font-mono text-[10px] tracking-[0.18em] text-zinc-400 uppercase">
               Balances
             </h2>
-            <p className="text-xs text-zinc-400">Available / locked</p>
+            <p className="text-xs text-zinc-400">Paper credit</p>
           </div>
 
           <BalanceCard
@@ -257,9 +290,9 @@ export function DashboardHome() {
           />
 
           {creditAsset && (
-            <div className="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+            <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
               <p className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
-                Add {creditAsset}
+                Add paper {creditAsset}
               </p>
               <input
                 id="credit-amount"
@@ -276,17 +309,17 @@ export function DashboardHome() {
                   }
                 }}
                 placeholder="Amount"
-                className="h-10 w-full rounded-md border border-zinc-200 bg-transparent px-3 text-sm tabular-nums text-zinc-950 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:text-zinc-50"
+                className="h-10 w-full border border-zinc-200 bg-transparent px-3 font-mono text-sm tabular-nums text-zinc-950 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:text-zinc-50 dark:focus:border-zinc-500"
               />
               <div className="flex gap-2">
-                <button
+                <Button
                   type="button"
                   disabled={funding}
                   onClick={submitCredit}
-                  className="h-9 flex-1 rounded-md bg-zinc-950 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+                  className="h-9 flex-1 rounded-md text-sm font-semibold"
                 >
                   {funding ? "Adding…" : "Confirm"}
-                </button>
+                </Button>
                 <button
                   type="button"
                   disabled={funding}
@@ -294,7 +327,7 @@ export function DashboardHome() {
                     setCreditAsset(null);
                     setCreditAmount("");
                   }}
-                  className="h-9 px-3 text-sm text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
+                  className="h-9 px-3 text-sm text-zinc-500 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50"
                 >
                   Cancel
                 </button>
@@ -305,8 +338,40 @@ export function DashboardHome() {
           {message && (
             <p className="text-sm text-zinc-500 dark:text-zinc-400">{message}</p>
           )}
+
+          <div className="border-t border-zinc-200 pt-4 dark:border-zinc-800">
+            <p className="font-mono text-[10px] tracking-[0.16em] text-zinc-400 uppercase">
+              Demo only
+            </p>
+            <p className="mt-1.5 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
+              Credits are paper balances for learning. Nothing here settles real
+              funds.
+            </p>
+          </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) {
+  return (
+    <div>
+      <p className="font-mono text-[10px] tracking-[0.16em] text-zinc-400 uppercase">
+        {label}
+      </p>
+      <p className="mt-2 font-display text-3xl tracking-tight text-zinc-950 tabular-nums dark:text-zinc-50">
+        {value}
+      </p>
+      <p className="mt-1 text-xs text-zinc-400">{hint}</p>
     </div>
   );
 }
@@ -338,7 +403,7 @@ function OrdersTabButton({
       {label}
       <span
         className={cn(
-          "ml-2 tabular-nums",
+          "ml-2 font-mono text-xs tabular-nums",
           active ? "text-zinc-500" : "text-zinc-300 dark:text-zinc-600",
         )}
       >
@@ -367,10 +432,10 @@ function BalanceCard({
   const availablePct = total > 0 ? (available / total) * 100 : 100;
 
   return (
-    <div className="rounded-xl border border-zinc-200 p-5 dark:border-zinc-800">
+    <div>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-medium tracking-wide text-zinc-400 uppercase">
+          <p className="font-mono text-[10px] tracking-[0.16em] text-zinc-400 uppercase">
             {asset}
           </p>
           <p className="mt-2 font-display text-3xl tracking-tight text-zinc-950 tabular-nums dark:text-zinc-50">
@@ -383,27 +448,50 @@ function BalanceCard({
           disabled={funding}
           onClick={onAdd}
           className={cn(
-            "rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50",
+            "px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50",
             adding
-              ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-              : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 dark:hover:bg-zinc-900 dark:hover:text-zinc-50",
+              ? "text-emerald-700 dark:text-emerald-400"
+              : "text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50",
           )}
         >
-          Add {asset}
+          Add
         </button>
       </div>
 
-      <div className="mt-5 h-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+      <div className="mt-5 h-1.5 overflow-hidden bg-zinc-100 dark:bg-zinc-800">
         <div
-          className="h-full rounded-full bg-zinc-950 dark:bg-zinc-100"
+          className="h-full bg-emerald-600 dark:bg-emerald-400"
           style={{ width: `${availablePct}%` }}
         />
       </div>
       <div className="mt-2 flex justify-between text-xs text-zinc-400">
         <span>{availablePct === 100 ? "Fully free" : "Available share"}</span>
-        <span className="tabular-nums">{locked.toLocaleString()} locked</span>
+        <span className="font-mono tabular-nums">
+          {locked.toLocaleString()} locked
+        </span>
       </div>
     </div>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const label = friendlyStatus(status);
+  const tone =
+    status === "FILLED" || status === "OPEN" || status === "ACCEPTED"
+      ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+      : status === "REJECTED" || status === "FAILED" || status === "CANCELLED"
+        ? "bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+        : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-md px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase",
+        tone,
+      )}
+    >
+      {label}
+    </span>
   );
 }
 

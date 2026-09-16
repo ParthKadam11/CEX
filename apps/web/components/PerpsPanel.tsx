@@ -795,133 +795,137 @@ export function PerpsPanel() {
                   href="/dashboard/orders"
                   className="mb-2.5 text-xs font-medium text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
                 >
-                  Full history
+                  Full history · {orders.length}
                 </Link>
               )}
             </div>
 
-            {bottomTab === "position" ? (
-              <div className="min-h-0 flex-1 overflow-y-auto pb-3">
-                {!position ? (
-                  <p className="py-6 text-center text-sm text-zinc-400 dark:text-zinc-500">
-                    No open position. Long or short to open one.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-                    <TickerStat
-                      label="Side"
-                      value={position.size > 0 ? "Long" : "Short"}
-                      tone={position.size > 0 ? "up" : "down"}
-                    />
-                    <TickerStat
-                      label="Size"
-                      value={fmtNum(Math.abs(position.size))}
-                    />
-                    <TickerStat
-                      label="Entry"
-                      value={fmtNum(position.entryPrice)}
-                    />
-                    <TickerStat
-                      label="Margin"
-                      value={fmtNum(position.margin)}
-                    />
-                    <TickerStat
-                      label="uPnL"
-                      value={
-                        upnl == null
-                          ? "—"
-                          : `${upnl >= 0 ? "+" : ""}${fmtNum(upnl)}`
-                      }
-                      tone={
-                        upnl == null ? undefined : upnl >= 0 ? "up" : "down"
-                      }
-                    />
-                    <TickerStat
-                      label="Equity"
-                      value={
-                        equity == null || maintenance == null
-                          ? "—"
-                          : `${fmtNum(equity)} / ${fmtNum(maintenance)}`
-                      }
-                      tone={
-                        equity == null || maintenance == null
-                          ? undefined
-                          : equity < maintenance
-                            ? "down"
-                            : "up"
-                      }
-                    />
-                    <TickerStat label="Liq. price" value={fmtNum(liqPrice)} />
-                  </div>
-                )}
-              </div>
-            ) : orders.length === 0 ? (
-              <p className="py-6 text-center text-sm text-zinc-400 dark:text-zinc-500">
-                No SOL-USD-PERP orders yet.
-              </p>
-            ) : (
-              <div className="min-h-0 flex-1 divide-y divide-zinc-100 overflow-y-auto pb-3 dark:divide-zinc-800">
-                {orders.map((order) => {
-                  const open = OPEN_ORDER_STATUSES.includes(
-                    order.status as (typeof OPEN_ORDER_STATUSES)[number],
-                  );
-                  const expanded = expandedOrderId === order.id;
-                  return (
-                    <div key={order.id} className="py-2.5 text-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <button
-                          type="button"
-                          className="text-left"
-                          onClick={() =>
-                            setExpandedOrderId(expanded ? null : order.id)
-                          }
-                        >
-                          <p className="font-medium text-zinc-950 dark:text-zinc-50">
-                            <span
-                              className={
-                                order.side === "BUY"
-                                  ? "text-emerald-600 dark:text-emerald-400"
-                                  : "text-red-600 dark:text-red-400"
-                              }
-                            >
-                              {order.side === "BUY" ? "Long" : "Short"}
-                            </span>{" "}
-                            {order.type} {order.quantity} SOL @{" "}
-                            {order.price || "mkt"}
-                          </p>
-                          <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                            filled {order.filledQuantity}/{order.quantity}
-                            {order.failureReason
-                              ? ` · ${order.failureReason}`
-                              : ""}
-                          </p>
-                        </button>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                            {order.status}
-                          </span>
-                          {open && (
-                            <button
-                              type="button"
-                              onClick={() => cancelOrder(order.engineOrderId)}
-                              className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      {expanded && (
-                        <OrderFills
-                          orderId={order.engineOrderId}
-                          fallback={order.fills}
-                        />
-                      )}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {bottomTab === "position" ? (
+                <div className="pb-3">
+                  {!position ? (
+                    <p className="py-6 text-center text-sm text-zinc-400 dark:text-zinc-500">
+                      No open position. Long or short to open one.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+                      <TickerStat
+                        label="Side"
+                        value={position.size > 0 ? "Long" : "Short"}
+                        tone={position.size > 0 ? "up" : "down"}
+                      />
+                      <TickerStat
+                        label="Size"
+                        value={fmtNum(Math.abs(position.size))}
+                      />
+                      <TickerStat
+                        label="Entry"
+                        value={fmtNum(position.entryPrice)}
+                      />
+                      <TickerStat
+                        label="Margin"
+                        value={fmtNum(position.margin)}
+                      />
+                      <TickerStat
+                        label="uPnL"
+                        value={
+                          upnl == null
+                            ? "—"
+                            : `${upnl >= 0 ? "+" : ""}${fmtNum(upnl)}`
+                        }
+                        tone={
+                          upnl == null ? undefined : upnl >= 0 ? "up" : "down"
+                        }
+                      />
+                      <TickerStat
+                        label="Equity"
+                        value={
+                          equity == null || maintenance == null
+                            ? "—"
+                            : `${fmtNum(equity)} / ${fmtNum(maintenance)}`
+                        }
+                        tone={
+                          equity == null || maintenance == null
+                            ? undefined
+                            : equity < maintenance
+                              ? "down"
+                              : "up"
+                        }
+                      />
+                      <TickerStat label="Liq. price" value={fmtNum(liqPrice)} />
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+                </div>
+              ) : orders.length === 0 ? (
+                <p className="py-6 text-center text-sm text-zinc-400 dark:text-zinc-500">
+                  No SOL-USD-PERP orders yet.
+                </p>
+              ) : (
+                <div className="divide-y divide-zinc-100 pb-3 dark:divide-zinc-800">
+                  {orders.map((order) => {
+                    const open = OPEN_ORDER_STATUSES.includes(
+                      order.status as (typeof OPEN_ORDER_STATUSES)[number],
+                    );
+                    const expanded = expandedOrderId === order.id;
+                    return (
+                      <div key={order.id} className="py-2.5 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <button
+                            type="button"
+                            className="text-left"
+                            onClick={() =>
+                              setExpandedOrderId(expanded ? null : order.id)
+                            }
+                          >
+                            <p className="font-medium text-zinc-950 dark:text-zinc-50">
+                              <span
+                                className={
+                                  order.side === "BUY"
+                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    : "text-red-600 dark:text-red-400"
+                                }
+                              >
+                                {order.side === "BUY" ? "Long" : "Short"}
+                              </span>{" "}
+                              {order.type} {order.quantity} SOL @{" "}
+                              {order.price || "mkt"}
+                            </p>
+                            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                              filled {order.filledQuantity}/{order.quantity}
+                              {order.failureReason
+                                ? ` · ${order.failureReason}`
+                                : ""}
+                            </p>
+                          </button>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                              {order.status}
+                            </span>
+                            {open && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  cancelOrder(order.engineOrderId)
+                                }
+                                className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {expanded && (
+                          <OrderFills
+                            orderId={order.engineOrderId}
+                            fallback={order.fills}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </section>
         }
       />

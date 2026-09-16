@@ -45,6 +45,10 @@ export function Appbar({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/spot") ||
     pathname.startsWith("/perps") ||
     pathname.startsWith("/trade");
+  const isTradeDesk =
+    pathname.startsWith("/spot") ||
+    pathname.startsWith("/perps") ||
+    pathname.startsWith("/trade");
 
   // Landing owns its own chrome — never show the app sidebar there.
   // While session hydrates, keep the app chrome on app routes so the guest
@@ -76,7 +80,7 @@ export function Appbar({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-full flex-col md:flex-row">
+    <div className="flex min-h-full flex-col md:h-dvh md:flex-row md:overflow-hidden">
       {/* Mobile top bar */}
       <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 bg-background px-3 md:hidden dark:border-zinc-800">
         <Link
@@ -180,7 +184,14 @@ export function Appbar({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="min-h-0 min-w-0 flex-1 bg-background">{children}</div>
+      <div
+        className={cn(
+          "min-h-0 min-w-0 flex-1 bg-background",
+          isTradeDesk ? "md:overflow-hidden" : "overflow-y-auto",
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }
