@@ -1,0 +1,72 @@
+name: Deploy
+
+on:
+  # After CI finishes on main (avoids deploying a red build)
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # Manual "Run workflow" in the Actions tab
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Contabo VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Skip failed CI runs; always allow manual dispatch
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          # Non-interactive SSH often has a minimal PATH
+          envs: DEPLOY_PATH
+          script_stop: true
+          script: |
+            set -euo pipefail
+            export PATH="/usr/bin:/bin:/usr/local/bin:$PATH"
+            cd "${DEPLOY_PATH:-$HOME/apps/CEX}"
+
+            echo "==> git"
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+
+            echo "==> install"
+            pnpm install --frozen-lockfile
+
+            echo "==> build web"
+            pnpm build:web
+
+            echo "==> reload pm2"
+            pm2 reload ecosystem.config.cjs --update-env
+            pm2 save
+
+            echo "==> nginx"
+            if command -v nginx >/dev/null && sudo -n nginx -t 2>/dev/null; then
+              sudo -n systemctl reload nginx
+            else
+              echo "skip nginx reload (no passwordless sudo or nginx -t failed)"
+            fi
+
+            echo "==> health"
+            curl -fsS http://127.0.0.1:4010/health/live >/dev/null
+            curl -fsS http://127.0.0.1:4020/health/live >/dev/null
+            curl -fsS http://127.0.0.1:4030/health/live >/dev/null
+            curl -fsS http://127.0.0.1:4040/health/live >/dev/null
+            curl -fsS -o /dev/null http://127.0.0.1:3000/
+
+            echo "deploy ok"
+        env:
+          DEPLOY_PATH: /home/deployer/apps/CEX
