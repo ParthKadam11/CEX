@@ -1,242 +1,81 @@
 # Deploying CEX
 
-Target layout:
+Day-to-day development is **local**: see the root [README](../README.md) (`pnpm infra:up` → `pnpm setup:local` → `pnpm dev:stack`). This file is only for putting the stack on a public host.
+
+Two deploy shapes:
+
+| | **A — Single host** | **B — Split cloud** |
+| --- | --- | --- |
+| Apps | Compose + PM2 on one machine | Render (`render.yaml`) |
+| Web | Same host + nginx | Vercel |
+| Data | Compose Postgres / Timescale / Redis | Neon + TigerCloud + Render Redis |
+| Docs | §1 | §2 |
+
+---
+
+## 1. Single host (Compose + PM2 + nginx + Actions)
+
+```text
+Browser ──HTTPS──► nginx
+                     ├─ <web-host>  → 127.0.0.1:3000  (Next.js)
+                     └─ <gw-host>   → 127.0.0.1:4020  (gateway SSE)
+```
+
+| Piece | Role |
+| --- | --- |
+| Docker Compose | Redis, Postgres, Timescale (`127.0.0.1` only) |
+| PM2 (`ecosystem.config.cjs`) | exchange, gateway, OMS, ingester, web |
+| nginx (`infra/nginx/`) | TLS + reverse proxy |
+| certbot | Let’s Encrypt |
+| GitHub Actions | CI; optional SSH deploy |
+
+### Bring-up (outline)
+
+Same as local through `pnpm infra:up` / env / migrate, then on the server:
+
+```bash
+pnpm build:web
+pnpm pm2:start
+pm2 save && pm2 startup
+```
+
+DNS → server; enable nginx samples; `sudo certbot --nginx -d <web-host> -d <gw-host>`.
+
+### Env differences vs local
+
+| Variable | Local | Production |
+| --- | --- | --- |
+| `NEXTAUTH_URL` | `http://localhost:3000` | `https://<web-host>` |
+| `ENGINE_GATEWAY_PUBLIC_URL` | `http://127.0.0.1:4020` | `https://<gw-host>` |
+| `CORS_ORIGINS` | optional | `https://<web-host>` |
+| Internal tokens | `local-dev-*` from `.env.example` | random; keep pairs matched |
+
+Production SSE is **direct to the gateway** (ticket from the BFF). Deploy secrets for Actions: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY_B64`.
+
+---
+
+## 2. Split cloud (Vercel + Render)
 
 | Piece | Where |
 | --- | --- |
-| Web (`apps/web`) | **Vercel** |
-| Exchange, gateway, OMS, ingester, Redis | **Render** (`render.yaml`) |
-| App Postgres | **Neon** (`DATABASE_URL`) |
-| Market-data Timescale | **TigerCloud** (or any Timescale) (`TIMESCALE_URL`) |
-
-Local Docker Compose (`pnpm infra:up`) is for development only.
-
-## Architecture on deploy
+| Web | **Vercel** |
+| Exchange, gateway, OMS, ingester, Redis | **Render** |
+| Postgres | **Neon** |
+| Timescale | **TigerCloud** (or compatible) |
 
 ```text
-Browser ──HTTPS──► Vercel (Next.js BFF + auth)
-                      │
-                      ├─ OMS_URL ──────────────► cex-oms (Render web)
-                      ├─ ENGINE_GATEWAY_URL ───► cex-gateway (Render web)
-                      └─ MARKET_DATA_URL ──────► cex-ingester (Render web)
-
-Browser ──EventSource──► ENGINE_GATEWAY_PUBLIC_URL/markets/…/stream?ticket=…
-                         (ticket issued by Vercel after Google session)
-
-cex-gateway ──private──► cex-exchange:10000  (+ WAL disk)
-OMS / gateway / ingester ──► Render Key Value (Redis)
-OMS ──► Neon
-ingester ──► TigerCloud
+Browser ──HTTPS──► Vercel
+                      ├─ OMS / gateway / market-data URLs ──► Render
+Browser ──EventSource──► ENGINE_GATEWAY_PUBLIC_URL/…/stream?ticket=…
 ```
 
-## 1. External databases
+Use `render.yaml` blueprint; build with `npx pnpm@10.14.0 install --frozen-lockfile`. Pin Node 20.x. Mount a WAL disk for exchange and set `EXCHANGE_DATA_DIR`. Copy generated tokens into Vercel; set gateway `CORS_ORIGINS` to the Vercel origin. OAuth callback: `https://<vercel-domain>/api/auth/callback/google`.
 
-### Neon (Postgres)
-
-1. Create a Neon project / database.
-2. Copy the connection string (`DATABASE_URL`).
-3. You will paste it into Render **cex-oms** and Vercel.
-
-### TigerCloud / Timescale
-
-1. Create a Timescale-compatible Postgres database.
-2. Copy the **public** connection string into Render as `TIMESCALE_URL` (not `127.0.0.1`).
-   - Paste the string **exactly** from the dashboard (no wrapping quotes in the value).
-   - If the password has `@`, `#`, `%`, etc., it must already be **URL-encoded** in that string.
-3. Ingester runs its own schema migrate on boot.
-
-**SSL (common on TigerCloud):** Node `pg` treats URL `sslmode=require` as **verify-full**, which overrides a Pool `ssl` option and fails with `self-signed certificate in certificate chain`. The ingester **strips** `sslmode` from the URL and sets `ssl: { rejectUnauthorized: false }` for remote hosts (TLS still on).
-
-| Knob | Effect |
-| --- | --- |
-| *(default, remote URL)* | TLS on, CA verify relaxed |
-| `TIMESCALE_SSL_REJECT_UNAUTHORIZED=false` | Force relaxed verify |
-| `TIMESCALE_SSL_REJECT_UNAUTHORIZED=true` | Strict verify |
-| `?sslmode=verify-full` on URL | Strict verify (read before strip) |
-| Local `127.0.0.1` / `localhost` | No SSL object (Compose) |
-
-Also allow inbound connections from Render (TigerCloud IP allowlist / “allow all” for bring-up).
-
-### Redis
-
-Created by the blueprint (`cex-redis`). Prefer **internal-only** (`ipAllowList: []`). Do not point Vercel at Redis unless you intentionally open it.
-
-## 2. Render blueprint
-
-From the [Render Dashboard](https://dashboard.render.com/) → **New** → **Blueprint** → connect this repo (blueprint file: `render.yaml` at the repo root).
-
-Grant Render access to the GitHub repo if the clone log warns about permissions.
-
-**Build command note:** On Render do **not** use `corepack enable` (`EROFS`) or `pnpm i -g …` (no global bin). Use:
-
-```bash
-npx pnpm@10.14.0 install --frozen-lockfile
-```
-
-Pin Node via root `engines.node` / `.node-version` (`20.x`). Avoid relying on the newest Node Render picks from `>=20`.
-
-`pnpm install` runs `@cex/db` `postinstall` → `prisma generate`. That must **not** require `DATABASE_URL` (exchange/gateway have none). `packages/db/prisma.config.ts` uses `process.env.DATABASE_URL` for that reason.
-
-Start (repo root, empty Root Directory):
-
-```bash
-npx pnpm@10.14.0 --filter @cex/<app> start
-```
-
-Services created:
-
-| Name | Type | Notes |
-| --- | --- | --- |
-| `cex-redis` | Key Value | Streams + pub/sub; `noeviction` |
-| `cex-exchange` | Private service | Disk at `/opt/render/project/src/apps/exchange/data` |
-| `cex-gateway` | Web | Public HTTPS; browser SSE |
-| `cex-oms` | Web | Public HTTPS; `preDeployCommand` runs `pnpm db:migrate:deploy` |
-| `cex-ingester` | Web | Public HTTPS; history API |
-
-On first sync, Render prompts for:
-
-- `DATABASE_URL` (OMS)
-- `TIMESCALE_URL` (ingester)
-- `CORS_ORIGINS` (gateway) — e.g. `https://your-app.vercel.app` (comma-separated). Default in code is `*` if unset at runtime; set this in production.
-
-Generated secrets (`GATEWAY_INTERNAL_TOKEN`, `OMS_INTERNAL_TOKEN`, `INGESTER_INTERNAL_TOKEN`, `EXCHANGE_GATEWAY_TOKEN`) appear in each service’s **Environment** tab. Copy them into Vercel as below.
-
-### Ports
-
-All Render services prefer `process.env.PORT` (platform-assigned). The exchange private service pins `PORT=10000` so gateway can use a stable internal URL:
-
-```text
-EXCHANGE_URL=http://cex-exchange:10000
-```
-
-You do **not** expose local ports `4010`–`4040` on Render.
-
-### WAL disk
-
-`cex-exchange` should use a **persistent disk** (paid Render plan). Without it, WAL files live on the ephemeral filesystem and are wiped on redeploy.
-
-**Recommended Mount Path** (allowed Node subdir of the source tree):
-
-```text
-/opt/render/project/src/apps/exchange/data
-```
-
-Set `EXCHANGE_DATA_DIR` to that **exact** same path.
-
-**Manual service:** Disks → Add disk → Mount Path as above → Manual Deploy.
-
-**Boot without a disk (bring-up only):**
-
-```env
-EXCHANGE_DATA_DIR=/opt/render/project/src/apps/exchange/data
-```
-
-That path is writable on Render without attaching a disk, but data is lost on redeploy until a disk is mounted there.
-
-Do **not** use `/data` or `/var/data/...` unless you have actually attached a disk at that path — otherwise you get `EACCES`.
-
-Disks force a single instance and brief downtime on deploy — expected for this engine.
-
-## 3. Vercel (web)
-
-1. Import the monorepo (Root Directory blank).
-2. **Settings → General → Node.js Version** → **20.x** (matches `engines` / `.node-version`).
-3. **Settings → Environment Variables** — enable for **Production** (and Preview if needed).  
-   These must also appear in `turbo.json` `tasks.build.env` so Turborepo does not strip them on Vercel (that was the platform env warning).
-
-| Variable | Value |
-| --- | --- |
-| `DATABASE_URL` | Neon URL (same as OMS) |
-| `NEXTAUTH_SECRET` | long random string (`openssl rand -base64 32`) |
-| `NEXTAUTH_URL` | `https://<your-vercel-domain>` |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth |
-| `OMS_URL` | `https://cex-oms.onrender.com` (exact Render URL) |
-| `ENGINE_GATEWAY_URL` | `https://cex-gateway.onrender.com` |
-| `ENGINE_GATEWAY_PUBLIC_URL` | **same** as `ENGINE_GATEWAY_URL` (browser EventSource — **required**) |
-| `MARKET_DATA_URL` | `https://cex-ingester.onrender.com` |
-| `OMS_INTERNAL_TOKEN` | copy from Render `cex-oms` |
-| `ENGINE_GATEWAY_INTERNAL_TOKEN` | copy from Render `cex-gateway` (`GATEWAY_INTERNAL_TOKEN`) |
-| `MARKET_DATA_INTERNAL_TOKEN` | copy from Render `cex-ingester` (`INGESTER_INTERNAL_TOKEN`) |
-
-On **cex-gateway** (Render), set:
-
-| Variable | Value |
-| --- | --- |
-| `CORS_ORIGINS` | `https://<your-vercel-domain>` (comma-separate previews if needed) |
-
-### Direct SSE (required in production)
-
-Browsers connect with EventSource **straight to the gateway** after `/api/market/stream-ticket` issues a short-lived URL. Do **not** rely on `/api/market/stream` through Vercel (disabled in production).
-
-1. Vercel: `ENGINE_GATEWAY_PUBLIC_URL=https://cex-gateway.onrender.com`
-2. Render gateway: `CORS_ORIGINS=https://your-app.vercel.app`
-3. Tokens must match: Vercel `ENGINE_GATEWAY_INTERNAL_TOKEN` = Render `GATEWAY_INTERNAL_TOKEN`
-4. Spot/Perps status shows **SSE error** (not silent BFF fallback) if the ticket or gateway stream fails
-
-Local/dev may still fall back to `/api/market/stream`. Opt into the strict path with `NEXT_PUBLIC_REQUIRE_DIRECT_SSE=true`.
-
-Do **not** set `NODE_ENV` yourself on Vercel.
-
-4. Google Cloud Console → OAuth redirect URI:
-
-```text
-https://<your-vercel-domain>/api/auth/callback/google
-```
-
-Optional:
-
-```env
-AUTH_EMAIL_SUFFIX=@gmail.com
-# SIM_HEARTBEAT=false
-```
-
-### Market maker / sim
-
-`SIM_HEARTBEAT` runs inside the Next.js Node process. On Vercel serverless this is unreliable. For a live book in production, run the stack with a long-lived web instance or drive ticks from a Render cron/worker later. For demos, keep sim on a always-on host or accept cold starts.
-
-## 4. Smoke checklist
-
-After deploy:
-
-```bash
-curl -sS https://cex-gateway.onrender.com/health/live
-curl -sS https://cex-oms.onrender.com/health/live
-curl -sS https://cex-ingester.onrender.com/health/live
-# private — only from gateway network / Render shell:
-# curl -sS http://cex-exchange:10000/health
-```
-
-Then:
-
-1. Open the Vercel site → Google sign-in.
-2. Spot / Perps → paper **Add USD / Add SOL**.
-3. Confirm SSE connected (book updates).
-4. Place / cancel an order.
-5. Restart **cex-exchange** on Render → balances/book should return from WAL (same disk).
-
-## 5. Common failures
+Never use `127.0.0.1` in Vercel ↔ Render URLs. `SIM_HEARTBEAT` is unreliable on Vercel serverless.
 
 | Symptom | Likely cause |
 | --- | --- |
-| Render health check fails | App not listening on `PORT` (fixed in code: prefer `PORT`) |
-| Vercel 502 to OMS/gateway | Wrong `*_URL` or token mismatch |
-| SSE never connects / **SSE error** | Missing `ENGINE_GATEWAY_PUBLIC_URL`, wrong `CORS_ORIGINS`, or token mismatch. BFF `/api/market/stream` is disabled in production |
-| Intermittent `/api/market/balances` 502 | Gateway↔exchange timeout/cold start; gateway now uses 8s timeout and does not trip the circuit on read polls |
-| Empty book / `EACCES mkdir` on exchange | `EXCHANGE_DATA_DIR` points at a path with no disk (e.g. `/data`). Use `/opt/render/project/src/apps/exchange/data` |
-| OMS migrate fails | Bad `DATABASE_URL` or Neon IP allowlist |
-| Ingester `ECONNREFUSED` | `TIMESCALE_URL` missing / still `127.0.0.1` |
-| Ingester `self-signed certificate in certificate chain` | Redeploy SSL strip fix, or set `TIMESCALE_SSL_REJECT_UNAUTHORIZED=false` |
-| Ingester `SCRAM` / `password must be a string` | Bad `TIMESCALE_URL` (empty, truncated, or password mangled). Re-paste full URL; encode special chars in the password |
-| Google login loop | `NEXTAUTH_URL` / callback URI mismatch |
-
-## 6. Local vs production URLs
-
-| Local | Production |
-| --- | --- |
-| `http://127.0.0.1:4010` | `http://cex-exchange:10000` (private) |
-| `http://127.0.0.1:4020` | `https://cex-gateway.onrender.com` |
-| `http://127.0.0.1:4030` | `https://cex-oms.onrender.com` |
-| `http://127.0.0.1:4040` | `https://cex-ingester.onrender.com` |
-| `./apps/exchange/data` | `/opt/render/project/src/apps/exchange/data` |
-
-Never leave `127.0.0.1` in Vercel or Render service-to-service URLs.
+| SSE error | `ENGINE_GATEWAY_PUBLIC_URL` / `CORS_ORIGINS` / token mismatch |
+| 502 BFF → backends | Wrong URL or token |
+| Empty book / `EACCES` | `EXCHANGE_DATA_DIR` without a disk |
+| Google login loop | `NEXTAUTH_URL` / redirect mismatch |

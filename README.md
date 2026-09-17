@@ -35,11 +35,11 @@ Application-layer Redis Streams / pub/sub contracts.
 - `packages/db`  
 Prisma schema for users and OMS order state.
 - `infra`  
-Local Redis, PostgreSQL, and TimescaleDB (Compose), plus sample nginx reverse-proxy configs.
+Local Redis, PostgreSQL, and TimescaleDB (Compose). Optional nginx samples for a public host.
 - `.github/workflows`  
-CI (lint / typecheck / unit tests) and optional SSH deploy to a host.
+CI (lint / typecheck / unit tests). Optional SSH deploy workflow.
 - `ecosystem.config.cjs`  
-PM2 process file for running the five Node apps on a single machine.
+Optional PM2 process file when running all Node apps on one machine.
 
 
 
@@ -207,11 +207,11 @@ pnpm infra:logs
 ```
 
 See [`infra/README.md`](infra/README.md) for local Compose.  
-Cloud-style split deploy (e.g. Vercel + Render): [`infra/DEPLOY.md`](infra/DEPLOY.md).
+Cloud-style split deploy (e.g. Vercel + Render): [`infra/DEPLOY.md`](infra/DEPLOY.md) §2.
 
-### Production shape (single host)
+### Production shape (optional)
 
-What this repo is set up to run when you put everything on one machine:
+When you deploy to a single public host (not required for local work):
 
 | Piece | Role |
 | --- | --- |
@@ -223,7 +223,7 @@ What this repo is set up to run when you put everything on one machine:
 
 Public surface is HTTPS for the **web UI** and **gateway SSE**. App processes and databases listen on **localhost**; only the proxy (and SSH) need to be reachable from the internet. Live market streams use a short-lived ticket from the web BFF, then EventSource the gateway origin directly.
 
-Configure matching internal tokens across services (`OMS_*`, `GATEWAY_*` / `ENGINE_GATEWAY_*`, `EXCHANGE_GATEWAY_*`, market-data / ingester) and set `ENGINE_GATEWAY_PUBLIC_URL` + `CORS_ORIGINS` to your HTTPS origins. Helpers: `pnpm test:ci`, `pnpm typecheck`, `pnpm build:web`, `pnpm pm2:start` / `pm2:reload`.
+Configure matching internal tokens across services (`OMS_*`, `GATEWAY_*` / `ENGINE_GATEWAY_*`, `EXCHANGE_GATEWAY_*`, market-data / ingester) and set `ENGINE_GATEWAY_PUBLIC_URL` + `CORS_ORIGINS` to your HTTPS origins. Helpers: `pnpm test:ci`, `pnpm typecheck`, `pnpm build:web`, `pnpm pm2:start` / `pm2:reload`. Full steps: [`infra/DEPLOY.md`](infra/DEPLOY.md) §1.
 
 See [API.md](API.md) for request IDs, error envelopes, order pagination, and BFF/internal boundaries.
 

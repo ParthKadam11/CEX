@@ -1,47 +1,49 @@
 # Local Infrastructure
 
-`pnpm infra:up` starts Redis, PostgreSQL, and TimescaleDB for local development.
+`pnpm infra:up` starts Redis, PostgreSQL, and TimescaleDB for **local development**.
 
-Application processes (exchange, gateway, OMS, ingester, web) are **not** in Compose — start them with `pnpm dev:stack` from the repo root after infra is healthy.
+App processes are not in Compose. After infra is healthy:
+
+```bash
+pnpm setup:local
+pnpm dev:stack
+```
 
 ## Quick path
 
 ```bash
 pnpm infra:up
-pnpm setup:local
-pnpm dev:stack
+pnpm setup:local   # writes .env files if missing + prisma migrate deploy
+pnpm dev:stack     # exchange, gateway, OMS, ingester, web
 ```
+
+Open http://localhost:3000. Fill `GOOGLE_*` and `NEXTAUTH_SECRET` in `apps/web/.env` to sign in.
 
 ## Services
 
 ### Redis
 
-- Streams: command/event delivery between OMS and the engine gateway
-- Pub/sub: live market-data fan-out
-
 ```env
 REDIS_URL=redis://127.0.0.1:6379
 ```
 
-### PostgreSQL
+Streams (OMS ↔ gateway) and pub/sub (live market fan-out).
 
-Users and OMS order state via Prisma (`@cex/db`).
+### PostgreSQL
 
 ```env
 DATABASE_URL=postgresql://postgres:mysecretpassword@127.0.0.1:5432/postgres
 ```
 
-`pnpm setup:local` writes this into `packages/db/.env` and `apps/web/.env` when missing. Trading balances live in the exchange **WAL** on disk (not Postgres). Locally that is `apps/exchange/data/`. On a host like Render, mount a persistent disk and set `EXCHANGE_DATA_DIR` to that mount — otherwise a restart looks like a wiped exchange even though WAL is working.
+Users and OMS via Prisma. Trading balances live in the exchange **WAL** under `apps/exchange/data/` (not Postgres).
 
 ### TimescaleDB
-
-Ingester history: BBO snapshots, trade ticks, candle aggregates.
 
 ```env
 TIMESCALE_URL=postgresql://cex:cex@127.0.0.1:5434/cex_md
 ```
 
-Ingester migrates its own schema on boot and serves history on `:4040`.
+Ingester migrates on boot and serves history on `:4040`.
 
 ## Commands
 
@@ -53,25 +55,25 @@ pnpm infra:logs
 
 ## Ports
 
-| Service | Host port | Purpose |
+| Service | Port | Purpose |
 | --- | --- | --- |
-| Redis | `6379` | Streams and pub/sub |
-| PostgreSQL | `5432` | Users, OMS orders |
+| Redis | `6379` | Streams / pub/sub |
+| PostgreSQL | `5432` | Users, OMS |
 | TimescaleDB | `5434` | Market-data history |
+
+Compose binds these to `127.0.0.1` (fine for local; safer if the same Compose file is reused on a server).
 
 ## Requirements
 
-- Docker Desktop or a Docker-compatible engine
-- Free ports `6379`, `5432`, and `5434`
+- Docker Desktop (or compatible)
+- Free local ports `6379`, `5432`, `5434`
 
 ## What this stack does not start
 
-- Next.js (`apps/web`)
-- Exchange engine
-- Engine gateway, OMS, or ingester
+Exchange, gateway, OMS, ingester, or Next.js — use `pnpm dev:stack` or `pnpm dev:backend`.
 
-Use `pnpm dev:stack` (or `pnpm dev:backend`) for those.
+You do **not** need nginx, PM2, or certbot for local work.
 
-## Production
+## Deploy (optional)
 
-Deploy backends with the root [`render.yaml`](../render.yaml) blueprint. Full steps (Neon, TigerCloud, Vercel env, WAL disk, ports): [`DEPLOY.md`](./DEPLOY.md).
+When you want a public host: [`DEPLOY.md`](./DEPLOY.md) (single-host PM2 + nginx, or Vercel + Render). Sample proxy configs: [`nginx/`](./nginx/).

@@ -1,54 +1,29 @@
 # `@cex/web`
 
-Next.js trading UI + BFF for the paper exchange: Google auth, Spot / Perps desks, charts, and proxies to OMS / gateway / market-data.
+Next.js trading UI + BFF: Google auth, Spot / Perps desks, charts, and proxies to OMS / gateway / market-data.
 
-## Production
+## Local setup
 
-| | URL |
-| --- | --- |
-| App | https://papertrade.parthkadam.tech |
-| Gateway SSE | https://papertrade-gw.parthkadam.tech |
-
-Runs on the Contabo VPS under PM2 (`cex-web`), behind nginx TLS. Live market streams use **direct SSE** to the gateway (ticket from `/api/market/stream-ticket`); the BFF `/api/market/stream` path is not used in production.
-
-Deploy: push to `main` → GitHub Actions **CI** → **Deploy** (SSH pull + `pnpm build:web` + `pm2 reload`).
-
-## What it does
-
-- Google sign-in (NextAuth)
-- User row in Postgres via `@cex/db`
-- Dashboard: paper balances, open/recent orders, paper credit
-- Spot (`SOL-USD`) and Perps (`SOL-USD-PERP`) trading surfaces
-- Charts / history via market-data API
-- Optional in-app market simulation controls
-
-## Main routes
-
-| Route | Purpose |
-| --- | --- |
-| `/` | Landing |
-| `/dashboard` | Balances + orders |
-| `/spot` | Spot desk |
-| `/perps` | Perps desk |
-| `/dashboard/orders` | Order history |
-| `/dashboard/apps` | Market explorer |
-| `/api/auth/[...nextauth]` | NextAuth |
-| `/api/orders` | OMS proxy |
-| `/api/market/*` | Gateway / balances / credit / stream ticket |
-| `/api/sim/market-maker` | Simulation controls |
-
-## Local
+From the repo root:
 
 ```bash
 pnpm infra:up
 pnpm setup:local
-# fill GOOGLE_* + NEXTAUTH_SECRET in apps/web/.env
+# edit apps/web/.env — set GOOGLE_* and NEXTAUTH_SECRET
 pnpm dev:stack
 ```
 
-Web only (backends already up): `pnpm dev` → http://localhost:3000
+Open http://localhost:3000.
 
-## Required env (`apps/web/.env`)
+Web only (backends already running):
+
+```bash
+pnpm dev
+```
+
+### Local env (`apps/web/.env`)
+
+`setup:local` creates this from `.env.example` if missing. Typical local values:
 
 ```env
 DATABASE_URL=postgresql://postgres:mysecretpassword@127.0.0.1:5432/postgres
@@ -65,4 +40,33 @@ MARKET_DATA_URL=http://127.0.0.1:4040
 MARKET_DATA_INTERNAL_TOKEN=local-dev-market-data-token
 ```
 
-Production: set `NEXTAUTH_URL` and `ENGINE_GATEWAY_PUBLIC_URL` to the HTTPS hosts above. Tokens must match the backend services.
+OAuth redirect for local: `http://localhost:3000/api/auth/callback/google`.
+
+In local/dev, the market stream may use the BFF `/api/market/stream` fallback if a direct gateway ticket is unavailable. Force direct SSE with `NEXT_PUBLIC_REQUIRE_DIRECT_SSE=true`.
+
+## What it does
+
+- Google sign-in (NextAuth); user row in Postgres via `@cex/db`
+- Dashboard: paper balances, orders, paper credit
+- Spot (`SOL-USD`) and Perps (`SOL-USD-PERP`)
+- Charts / history via market-data
+- Optional market simulation controls
+
+## Main routes
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Landing |
+| `/dashboard` | Balances + orders |
+| `/spot` | Spot desk |
+| `/perps` | Perps desk |
+| `/dashboard/orders` | Order history |
+| `/dashboard/apps` | Market explorer |
+| `/api/auth/[...nextauth]` | NextAuth |
+| `/api/orders` | OMS proxy |
+| `/api/market/*` | Gateway / balances / credit / stream ticket |
+| `/api/sim/market-maker` | Simulation controls |
+
+## Production notes
+
+When deploying behind HTTPS, set `NEXTAUTH_URL` and `ENGINE_GATEWAY_PUBLIC_URL` to public origins; match backend tokens. In production, browsers EventSource the gateway after `/api/market/stream-ticket` (BFF stream is off unless `ALLOW_BFF_MARKET_STREAM=true`). See [`infra/DEPLOY.md`](../../infra/DEPLOY.md).
