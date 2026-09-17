@@ -1,10 +1,19 @@
 # CEX
 
-A multi-service paper centralized exchange built to study what actually happens after someone clicks Buy: matching, balance locks, durable order flow, market-data persistence, and perpetual risk.
+A multi-service **paper** centralized exchange built to study what actually happens after someone clicks Buy: matching, balance locks, durable order flow, market-data persistence, and perpetual risk.
 
 It is a systems project: a single-writer matching engine, an asynchronous OMS with a transactional outbox, a gateway that translates Redis Streams and exchange SSE, and a separate TimescaleDB ingester. Spot and perpetual markets run in-process with mark price, liquidation, and funding.
 
-Built to make failure modes visible duplicate commands, maker/taker fills, reconnect gaps, crash windows between engine execution and event publication instead of hiding them behind a single CRUD API.
+Built to make failure modes visible — duplicate commands, maker/taker fills, reconnect gaps, crash windows between engine execution and event publication — instead of hiding them behind a single CRUD API.
+
+## Live demo
+
+| | URL |
+| --- | --- |
+| Trading UI | https://papertrade.parthkadam.tech |
+| Gateway SSE | https://papertrade-gw.parthkadam.tech |
+
+Hosted on a Contabo VPS: Docker Compose for Redis/Postgres/Timescale, PM2 for Node apps, nginx + Let’s Encrypt for HTTPS. Google sign-in required.
 
 ## What makes it different
 
@@ -14,99 +23,75 @@ Built to make failure modes visible duplicate commands, maker/taker fills, recon
 - Live market data is ephemeral (pub/sub); history is durable (`md:events` → Timescale)
 - Perps add margin, positions, mark, liquidation, and funding on top of the same engine model
 - SSE reconnect uses `streamSeq` catch-up, with reconcile when the in-memory ring was overrun
+- Production browsers EventSource the gateway **directly** (stream ticket from the web BFF)
 
-## Repository Overview
+## Repository overview
 
-- `apps/exchange`  
-Single-writer matching engine. One process hosts spot `SOL-USD` and perpetual `SOL-USD-PERP` by default (USD margin, positions, mark, liquidation, funding).
-- `apps/oms`  
-Product-facing order state in Postgres, transactional command outbox, and event-driven status updates.
-- `apps/engine-gateway`  
-Sole client of the exchange: Redis commands → engine HTTP; SSE → `orders:events` + `md:events` + live pub/sub.
-- `apps/ingester`  
-Consumes durable market-data events into TimescaleDB and serves historical trades, BBO, and candles.
-- `apps/web`  
-Next.js trading app: Google auth, paper credit, Spot / Perps surfaces, charts, and BFF proxies.
-- `packages/exchange-types`  
-Shared engine domain types: orders, trades, balances, positions, events, commands.
-- `packages/app-contracts`  
-Application-layer Redis Streams / pub/sub contracts.
-- `packages/db`  
-Prisma schema for users and OMS order state.
-- `infra`  
-Local Redis, PostgreSQL, and TimescaleDB.
+| Path | Role |
+| --- | --- |
+| `apps/exchange` | Matching engine + balances + WAL (spot `SOL-USD` + perp `SOL-USD-PERP`) |
+| `apps/oms` | Postgres order state, outbox, status projection |
+| `apps/engine-gateway` | Redis commands → exchange; public SSE + internal APIs |
+| `apps/ingester` | `md:events` → Timescale; history HTTP API |
+| `apps/web` | Next.js UI + auth BFF ([details](apps/web/README.md)) |
+| `packages/*` | Shared types, contracts, Prisma, TS config |
+| `infra/` | Docker Compose, nginx site configs |
+| `ecosystem.config.cjs` | PM2 process file (VPS) |
+| `.github/workflows/` | CI (lint/typecheck/unit) + Deploy (SSH to VPS) |
 
-
-
-## Current Architecture
+## Architecture
 
 ```text
-apps/web
-  └─ user auth + trading UX
+Browser ──HTTPS──► nginx
+                     ├─ papertrade…      → web :3000 (loopback)
+                     └─ papertrade-gw…   → gateway :4020 (loopback, SSE)
 
-apps/exchange
-  └─ matching engine + balances + WAL + snapshots + HTTP/SSE
+apps/web (BFF)
+  ├─ OMS_URL            → oms :4030
+  ├─ ENGINE_GATEWAY_URL → gateway :4020
+  └─ MARKET_DATA_URL    → ingester :4040
 
-Application layer
-  └─ OMS → engine-gateway → exchange
-  └─ Redis Streams + Redis pub/sub
-  └─ exchange SSE → engine-gateway → md:events + orders:events
-  └─ md:events → ingester → TimescaleDB
+OMS ──Redis streams──► gateway ──HTTP──► exchange :4010
+gateway ◄──SSE── exchange
+gateway ──md:events / orders:events──► Redis
+ingester ◄──md:events── Redis ──► TimescaleDB
 ```
 
-
+Internal app ports and Compose DB ports bind to **127.0.0.1**. Only SSH + nginx (80/443) are public.
 
 ### Exchange engine
 
-The exchange engine is intentionally single-writer per market. It keeps matching logic in memory and uses disk only for crash recovery.
+Single-writer per market; matching in memory; disk for crash recovery.
 
-- `MarketRuntime` coordinates live commands, WAL persistence, replay, and checkpoints.
-- `CommandQueue` serializes concurrent commands and batches WAL flushes.
-- `FileWal` appends `CREDIT`, `PLACE`, `CANCEL`, `LIQUIDATE`, and `FUNDING` commands.
-- Snapshots shorten restart time by restoring state and replaying only the WAL tail.
-- `EventBus` publishes live `ORDER`, `BBO`, `CREDIT`, `TRADE`, `POSITION`, `LIQUIDATION`, and `FUNDING` events for SSE consumers.
-- SSE includes a monotonic `streamSeq` and a bounded ring so reconnecting gateways can catch up via `?afterSeq=` / `Last-Event-ID` (gap signal when the ring was overrun).
-- On SSE `gap`, the gateway calls `GET /v1/markets/:market/reconcile` and republishes retained order events, order snapshots, positions, liquidations, and funding to `orders:events` so OMS can catch up.
+- `MarketRuntime` — commands, WAL, replay, checkpoints
+- `FileWal` — `CREDIT` / `PLACE` / `CANCEL` / `LIQUIDATE` / `FUNDING`
+- SSE with monotonic `streamSeq` + ring buffer (`?afterSeq=` / `Last-Event-ID`)
+- On SSE `gap`, gateway reconciles and republishes to `orders:events` for OMS catch-up
 
+### Application layer
 
+- Redis Streams between OMS and gateway
+- Exchange SSE as source for BBO, trades, maker fills
+- Redis pub/sub for live book/trade fan-out
+- Timescale for history; Postgres for users + OMS
 
-### Application layer direction
-
-The application layer wraps the engine with service boundaries:
-
-- Redis Streams for command/event delivery between OMS and the engine gateway
-- Exchange SSE as the canonical source for BBO, trades, and maker-side fills
-- Redis pub/sub for live best bid/ask and trade fan-out
-- The durable `md:events` stream and TimescaleDB for historical market data
-- The existing Postgres database for users, wallets, and OMS order state
-
-
-
-## Monorepo Layout
+## Monorepo layout
 
 ```text
 CEX/
-├── apps/
-│   ├── exchange/
-│   ├── engine-gateway/
-│   ├── ingester/
-│   ├── oms/
-│   └── web/
-├── infra/
-└── packages/
-    ├── app-contracts/
-    ├── db/
-    ├── exchange-types/
-    └── typescript-config/
+├── apps/           # exchange, engine-gateway, ingester, oms, web
+├── packages/       # app-contracts, db, exchange-types, logger, typescript-config
+├── infra/          # docker-compose.yml, nginx/
+├── .github/workflows/
+├── ecosystem.config.cjs
+└── package.json
 ```
-
-
 
 ## Prerequisites
 
-- Node.js `>=20`
-- pnpm `10.14.0` (enable with `corepack enable`)
-- Docker Desktop (or compatible) for Redis / Postgres / Timescale
+- Node.js `20.x`
+- pnpm `10.14.0`
+- Docker (Redis / Postgres / Timescale)
 
 ## Local quickstart
 
@@ -116,13 +101,11 @@ pnpm infra:up
 pnpm setup:local          # creates .env files if missing + migrate deploy
 ```
 
-Edit `apps/web/.env` and set:
+Edit `apps/web/.env`:
 
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
-- `NEXTAUTH_SECRET` (any random string locally)
+- `NEXTAUTH_SECRET`
 - `NEXTAUTH_URL=http://localhost:3000`
-
-Then start the full stack (exchange, gateway, OMS, ingester, web):
 
 ```bash
 pnpm dev:stack
@@ -130,21 +113,20 @@ pnpm dev:stack
 
 Open [http://localhost:3000](http://localhost:3000).
 
-| Command | What it starts |
+| Command | What it does |
 | --- | --- |
 | `pnpm infra:up` | Redis `:6379`, Postgres `:5432`, Timescale `:5434` |
 | `pnpm setup:local` | Env templates + `prisma migrate deploy` |
-| `pnpm dev:stack` | All app processes (labeled logs) |
-| `pnpm dev:backend` | Same without Next.js |
-| `pnpm dev` | Web only |
+| `pnpm dev:stack` | All app processes |
+| `pnpm dev:backend` | Without Next.js |
+| `pnpm test:ci` | Unit tests used in GitHub Actions |
+| `pnpm typecheck` | Backend `tsc --noEmit` |
+| `pnpm build:web` | Prisma generate + Next production build |
+| `pnpm pm2:start` / `pm2:reload` | VPS process management |
 
-Default local tokens and URLs live in [`.env.example`](.env.example). `setup:local` copies them to root `.env`, `packages/db/.env`, and `apps/web/.env` when those files are missing (never overwrites).
+Defaults: [`.env.example`](.env.example). `setup:local` never overwrites existing env files. Backends load root `.env`; Next.js only reads `apps/web/.env`.
 
-Backend services load env from cwd / repo root / `packages/db/.env`. Next.js only reads `apps/web/.env`.
-
-Sign-in still uses Google (Gmail). Auth is unchanged for this local pass.
-
-### Ports
+### Ports (local / loopback on VPS)
 
 | Service | Port |
 | --- | --- |
@@ -152,144 +134,64 @@ Sign-in still uses Google (Gmail). Auth is unchanged for this local pass.
 | Exchange | `4010` |
 | Engine gateway | `4020` |
 | OMS | `4030` |
-| Ingester (history) | `4040` |
+| Ingester | `4040` |
 | Redis | `6379` |
 | Postgres | `5432` |
 | Timescale | `5434` |
 
-### Individual services
-
-```bash
-pnpm dev:exchange
-pnpm dev:gateway
-pnpm dev:oms
-pnpm dev:ingester
-pnpm dev
-```
-
-Exchange hosts both `SOL-USD` and `SOL-USD-PERP` on `:4010` by default. WALs live under `apps/exchange/data/<market>.jsonl`.
-
-```bash
-# Spot only
-cross-env EXCHANGE_MARKET=SOL-USD pnpm dev:exchange
-
-# Legacy separate perp process on :4011
-pnpm dev:exchange:perp
-```
-
-Supported engine environment variables:
-
-- `EXCHANGE_MARKETS` — comma list, default `SOL-USD,SOL-USD-PERP`
-- `EXCHANGE_MARKET` — single-market override
-- `EXCHANGE_PORT` — HTTP/SSE port (default `4010`)
-- `EXCHANGE_WAL_PATH` — only when hosting a single market
-- `EXCHANGE_DATA_DIR` — WAL directory (default `apps/exchange/data`)
-
-### Database migrations
-
-```bash
-pnpm db:migrate:deploy   # apply existing migrations (CI / local setup)
-pnpm db:migrate          # prisma migrate dev (schema authors)
-pnpm db:generate
-```
-
-### Infra only
+### Production (this VPS)
 
 ```bash
 pnpm infra:up
-pnpm infra:down
-pnpm infra:logs
+# configure root .env + apps/web/.env (HTTPS URLs, random internal tokens, Google OAuth)
+pnpm build:web
+pnpm pm2:start
+pm2 save && pm2 startup
 ```
 
-See [`infra/README.md`](infra/README.md) for local Compose.  
-See [`infra/DEPLOY.md`](infra/DEPLOY.md) for Render + Vercel + Neon + TigerCloud production deploy (`render.yaml`).
+nginx terminates TLS and proxies to loopback (see `infra/nginx/`).  
+CI: push/PR → `.github/workflows/ci.yml`.  
+Deploy: green CI on `main` (or manual) → `.github/workflows/deploy.yml` SSHs in, pulls, builds, `pm2 reload`.
 
-### Tokens for non-local deployments
+Required matching tokens: `OMS_INTERNAL_TOKEN`, `GATEWAY_INTERNAL_TOKEN` / `ENGINE_GATEWAY_INTERNAL_TOKEN`, `EXCHANGE_GATEWAY_TOKEN`, `INGESTER_INTERNAL_TOKEN` / `MARKET_DATA_INTERNAL_TOKEN`. Set `ENGINE_GATEWAY_PUBLIC_URL` and `CORS_ORIGINS` to the public HTTPS origins.
 
-Set matching tokens across services: `OMS_INTERNAL_TOKEN`, `GATEWAY_INTERNAL_TOKEN` / `ENGINE_GATEWAY_INTERNAL_TOKEN`, `EXCHANGE_GATEWAY_TOKEN`, `INGESTER_INTERNAL_TOKEN` / `MARKET_DATA_INTERNAL_TOKEN`. Point `MARKET_DATA_URL` at the ingester.
+Alternate cloud layout (Vercel + Render): [`infra/DEPLOY.md`](infra/DEPLOY.md).
 
-See [API.md](API.md) for request IDs, error envelopes, order pagination, and BFF/internal boundaries.
+API details: [API.md](API.md).
 
-## Exchange API
+## Exchange API (summary)
 
-One exchange process hosts both markets (`SOL-USD` and `SOL-USD-PERP`) by default. Command, balance, book, and stream APIs require `x-gateway-token`. Only `/health` is public.
+Commands require `x-gateway-token`. Health is public.
 
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Process health |
+| `POST` | `/v1/markets/:market/credit` | Paper credit |
+| `POST` | `/v1/markets/:market/orders` | Place order |
+| `DELETE` | `/v1/markets/:market/orders/:orderId` | Cancel |
+| `GET` | `/v1/markets/:market/book` | Book snapshot |
+| `GET` | `/v1/markets/:market/stream` | Live SSE |
+| `GET` | `/v1/markets/:market/reconcile` | Gap recovery |
 
-| Method   | Path                                           | Purpose                                              |
-| -------- | ---------------------------------------------- | ---------------------------------------------------- |
-| `GET`    | `/health`                                      | Process health and active markets                    |
-| `POST`   | `/v1/markets/:market/credit`                   | Internal gateway credit operation                    |
-| `POST`   | `/v1/markets/:market/orders`                   | Place a limit or market order (`leverage` for perps) |
-| `DELETE` | `/v1/markets/:market/orders/:orderId`          | Cancel an order                                      |
-| `GET`    | `/v1/markets/:market/orders/:orderId`          | Fetch one order                                      |
-| `GET`    | `/v1/markets/:market/orders?userId=&openOnly=` | Fetch user orders                                    |
-| `GET`    | `/v1/markets/:market/balances/:userId`         | Fetch engine balances                                |
-| `GET`    | `/v1/markets/:market/positions`                | List positions with risk fields (perp)               |
-| `GET`    | `/v1/markets/:market/positions/:userId`        | Fetch one user position                              |
-| `GET`    | `/v1/markets/:market/mark`                     | Mark price (BBO mid or last trade)                   |
-| `GET`    | `/v1/markets/:market/funding`                  | Funding rate / interval (perp)                       |
-| `POST`   | `/v1/markets/:market/funding/settle`           | Force a funding settle tick (perp)                   |
-| `GET`    | `/v1/markets/:market/book`                     | Fetch order book snapshot                            |
-| `GET`    | `/v1/markets/:market/reconcile`                | Gap recovery snapshot (orders, events, risk)         |
-| `GET`    | `/v1/markets/:market/stream?userId=`           | Subscribe to live SSE                                |
-
-
-Notable engine rules:
-
-- Units are integer-only.
-- Spot market buys require `quoteBudget`; perp MARKET orders require `quoteBudget` on both sides (notional cap for margin).
-- Perps lock USD margin (`ceil(notional / leverage)`); fills update positions and realize PnL — no SOL delivery.
-- Maintenance liquidation force-closes underwater perps at mark vs house (`sim-liquidator`).
-- Funding settles periodically (demo: 100 bps / 60s); longs pay shorts when rate > 0.
-- Credit balances per market separately (spot USD and perp USD are not shared).
-- Exchange place/credit are idempotent on retry: same `orderId`+intent returns the prior order; credit with `commandId` does not double-apply.
-- Gateway command handling journals the outcome in Redis before publish, then marks processed — crash mid-flight retries replay the outcome (deterministic event ids) instead of relying on a best-effort mark.
-- `FOK_BUDGET` is a market-buy-only fill-or-kill order. It must fill the
-requested quantity within `quoteBudget` or reject before matching.
-- The exchange `BalanceStore` and its WAL are authoritative for trading balances.
-
-
+Integer units only. Spot MARKET buys need `quoteBudget`. Perps use USD margin, mark, liquidation, and funding. WAL under `EXCHANGE_DATA_DIR` is authoritative for balances.
 
 ## Testing
 
-
-
-### Exchange test suite
-
 ```bash
-pnpm test:exchange
+pnpm test:ci                 # unit suites (CI)
 pnpm test:exchange:unit
-pnpm test:exchange:integration
-pnpm test:exchange:e2e
-```
-
-- Unit tests cover core engine modules.
-- Integration tests cover replay and durability behavior.
-- End-to-end tests cover the HTTP surface and restart behavior.
-
-
-
-### OMS test suite
-
-```bash
 pnpm test:oms
-pnpm test:oms:integration
+pnpm test:gateway:unit
+pnpm test:ingester
+pnpm test:exchange:integration   # needs infra
+pnpm test:oms:integration        # needs full stack
 ```
 
-The integration test requires PostgreSQL, Redis, the exchange, the engine gateway, and OMS to be running.
+## Implemented
 
-### Implemented
-
-- Spot exchange engine for `SOL-USD` and perp engine for `SOL-USD-PERP` (one multi-market process by default)
-- Spot balance locking / delivery settlement; perp USD margin + positions + PnL
-- Mark price, maintenance liquidation (force-close at mark), and periodic funding payments
-- WAL persistence with checkpoints and replay (`CREDIT` / `PLACE` / `CANCEL` / `LIQUIDATE` / `FUNDING`; positions in snapshot v2)
-- HTTP commands and queries (orders, balances, book, mark, positions + risk fields, funding)
-- SSE for live order, credit, BBO, trade, position, liquidation, and funding events
-- Engine gateway multi-market routing; Redis fan-out for POSITION / LIQUIDATION / FUNDING
-- OMS order APIs with perp leverage persistence + idempotency, Postgres order state, outbox, event-driven status updates
-- OMS cancel uses a conditional status update (`PENDING`/`ACCEPTED`/`OPEN`/`PARTIALLY_FILLED` only) so a fill race cannot mark a terminal order `CANCEL_REQUESTED`
-- Market-data writer (TimescaleDB history for trades, BBO, and one-minute candles per market)
-- Web app authentication, paper credit, and Spot / Perps trading surfaces (functional; design polish deferred)
-- Application-layer infra bootstrap and shared message contracts
-
+- Spot + perp engines in one process (`SOL-USD`, `SOL-USD-PERP`)
+- WAL + snapshots; mark, liquidation, funding
+- Gateway multi-market routing + direct browser SSE (ticketed)
+- OMS outbox / event-driven status; Timescale history
+- Web: Google auth, paper credit, Spot / Perps desks
+- Contabo deploy: Compose + PM2 + nginx + GitHub Actions
