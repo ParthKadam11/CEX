@@ -16,6 +16,9 @@ jobs:
     name: Deploy to Contabo VPS
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment:
+      name: production
+      url: https://papertrade.parthkadam.tech
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
