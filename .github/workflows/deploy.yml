@@ -21,46 +21,72 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
 
     steps:
+      - name: Setup SSH key
+        env:.
+          VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          if [ -n "${VPS_SSH_KEY_B64:-}" ]; then
+            echo "$VPS_SSH_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
+          elif [ -n "${VPS_SSH_KEY:-}" ]; then
+            printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          else
+            echo "Missing secret: set VPS_SSH_KEY_B64 (recommended) or VPS_SSH_KEY"
+            exit 1
+          fi
+
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
+
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 644 ~/.ssh/known_hosts
+
       - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
-          command_timeout: 15m
-          script: |
-            set -euo pipefail
-            export PATH="/usr/bin:/bin:/usr/local/bin:$PATH"
-            cd /home/deployer/apps/CEX
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes \
+            "${VPS_USER}@${VPS_HOST}" \
+            'bash -s' <<'REMOTE'
+          set -euo pipefail
+          export PATH="/usr/bin:/bin:/usr/local/bin:$PATH"
+          cd /home/deployer/apps/CEX
 
-            echo "==> git"
-            git fetch origin main
-            git checkout main
-            git pull --ff-only origin main
+          echo "==> git"
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
 
-            echo "==> install"
-            pnpm install --frozen-lockfile
+          echo "==> install"
+          pnpm install --frozen-lockfile
 
-            echo "==> build web"
-            pnpm build:web
+          echo "==> build web"
+          pnpm build:web
 
-            echo "==> reload pm2"
-            pm2 reload ecosystem.config.cjs --update-env
-            pm2 save
+          echo "==> reload pm2"
+          pm2 reload ecosystem.config.cjs --update-env
+          pm2 save
 
-            echo "==> nginx"
-            if command -v nginx >/dev/null && sudo -n nginx -t 2>/dev/null; then
-              sudo -n systemctl reload nginx
-            else
-              echo "skip nginx reload (no passwordless sudo or nginx -t failed)"
-            fi
+          echo "==> nginx"
+          if command -v nginx >/dev/null && sudo -n nginx -t 2>/dev/null; then
+            sudo -n systemctl reload nginx
+          else
+            echo "skip nginx reload (no passwordless sudo or nginx -t failed)"
+          fi
 
-            echo "==> health"
-            curl -fsS http://127.0.0.1:4010/health/live >/dev/null
-            curl -fsS http://127.0.0.1:4020/health/live >/dev/null
-            curl -fsS http://127.0.0.1:4030/health/live >/dev/null
-            curl -fsS http://127.0.0.1:4040/health/live >/dev/null
-            curl -fsS -o /dev/null http://127.0.0.1:3000/
+          echo "==> health"
+          curl -fsS http://127.0.0.1:4010/health/live >/dev/null
+          curl -fsS http://127.0.0.1:4020/health/live >/dev/null
+          curl -fsS http://127.0.0.1:4030/health/live >/dev/null
+          curl -fsS http://127.0.0.1:4040/health/live >/dev/null
+          curl -fsS -o /dev/null http://127.0.0.1:3000/
 
-            echo "deploy ok"
+          echo "deploy ok"
+          REMOTE
