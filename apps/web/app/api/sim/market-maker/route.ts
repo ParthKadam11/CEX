@@ -93,7 +93,30 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "start") {
-    const result = startSimHeartbeat();
+    const result = startSimHeartbeat({
+      intensity:
+        record.intensity === "low" ||
+        record.intensity === "medium" ||
+        record.intensity === "high"
+          ? record.intensity
+          : undefined,
+      intervalMs:
+        typeof record.intervalMs === "number" && Number.isFinite(record.intervalMs)
+          ? record.intervalMs
+          : undefined,
+      placeQuotes:
+        typeof record.placeQuotes === "boolean"
+          ? record.placeQuotes
+          : undefined,
+      placeTrades:
+        typeof record.placeTrades === "boolean"
+          ? record.placeTrades
+          : undefined,
+      spread:
+        typeof record.spread === "number" && Number.isFinite(record.spread)
+          ? record.spread
+          : undefined,
+    });
     return NextResponse.json({
       ok: true,
       market,

@@ -74,7 +74,7 @@ export function MarketMakerControls({
   );
   const [intensity, setIntensity] =
     useState<(typeof INTENSITY_OPTIONS)[number]>("medium");
-  const [placeQuotes, setPlaceQuotes] = useState(false);
+  const [placeQuotes, setPlaceQuotes] = useState(true);
   const [placeTrades, setPlaceTrades] = useState(false);
   const [spread, setSpread] = useState(2);
 
@@ -83,6 +83,8 @@ export function MarketMakerControls({
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
   const onTickRef = useRef(onTickAction);
   onTickRef.current = onTickAction;
+  const busyRef = useRef(false);
+  const toggleGenRef = useRef(0);
 
   function pushEvent(text: string, tone: SimEvent["tone"] = "ok") {
     setEvents((current) =>
@@ -94,12 +96,14 @@ export function MarketMakerControls({
   }
 
   async function refreshStatus() {
+    if (busyRef.current) return;
     try {
       const qs = new URLSearchParams({ market });
       const response = await fetch(`/api/sim/market-maker?${qs}`, {
         cache: "no-store",
       });
       if (!response.ok) return;
+      if (busyRef.current) return;
       const body = (await response.json()) as StatusBody;
       if (body.heartbeat) {
         setStatus(body.heartbeat);
@@ -181,6 +185,7 @@ export function MarketMakerControls({
   }, [open]);
 
   async function post(action: string, extra: Record<string, unknown> = {}) {
+    busyRef.current = true;
     setBusy(true);
     try {
       const response = await fetch("/api/sim/market-maker", {
@@ -200,6 +205,7 @@ export function MarketMakerControls({
       pushEvent("Sim unavailable — is gateway up?", "err");
       return null;
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -224,16 +230,72 @@ export function MarketMakerControls({
   }
 
   async function toggleHeartbeat() {
-    const enabled = status?.enabled ?? false;
-    if (!enabled && !placeQuotes && !placeTrades) {
-      pushEvent("Enable quotes and/or trades first", "err");
+    const gen = ++toggleGenRef.current;
+    const currentlyOn = status?.enabled ?? false;
+
+    if (currentlyOn) {
+      setStatus((current) =>
+        current ? { ...current, enabled: false } : current,
+      );
+      const body = await post("stop");
+      if (gen !== toggleGenRef.current) return;
+      if (!body) {
+        setStatus((current) =>
+          current ? { ...current, enabled: true } : current,
+        );
+        return;
+      }
+      pushEvent("Simulation paused");
       return;
     }
-    const body = await post(enabled ? "stop" : "start");
-    if (body) {
-      pushEvent(enabled ? "Simulation paused" : "Simulation started");
-      if (!enabled) await syncConfig();
+
+    // Turn on: ensure at least quotes are active, then start with full config.
+    let nextQuotes = placeQuotes;
+    let nextTrades = placeTrades;
+    if (!nextQuotes && !nextTrades) {
+      nextQuotes = true;
+      setPlaceQuotes(true);
     }
+    const speed =
+      SPEED_OPTIONS.find((s) => s.id === speedId)?.ms ?? 280;
+
+    setStatus((current) =>
+      current
+        ? {
+            ...current,
+            enabled: true,
+            placeQuotes: nextQuotes,
+            placeTrades: nextTrades,
+          }
+        : {
+            enabled: true,
+            intensity: intensity === "low" ? "idle" : intensity,
+            boost: intensity,
+            placeQuotes: nextQuotes,
+            placeTrades: nextTrades,
+            spread,
+            viewersActive: true,
+            lastTickAt: null,
+            lastError: null,
+            intervalMs: speed,
+          },
+    );
+
+    const body = await post("start", {
+      intervalMs: speed,
+      intensity,
+      placeQuotes: nextQuotes,
+      placeTrades: nextTrades,
+      spread,
+    });
+    if (gen !== toggleGenRef.current) return;
+    if (!body) {
+      setStatus((current) =>
+        current ? { ...current, enabled: false } : current,
+      );
+      return;
+    }
+    pushEvent("Simulation started");
   }
 
   async function runOnce() {

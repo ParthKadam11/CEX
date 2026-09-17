@@ -40,8 +40,8 @@ const SETTLE_MS = 20;
 const PRESENCE_TTL_MS = 45_000;
 /** Bump when MM accounts / funding change so hot-reload re-credits. */
 const FUND_EPOCH = 3;
-/** Bump when default MM behaviour changes (e.g. quotes-only). */
-const DEFAULTS_EPOCH = 2;
+/** Bump when default MM behaviour changes (e.g. quotes-on by default). */
+const DEFAULTS_EPOCH = 3;
 
 export type SimIntensity = "idle" | "medium" | "high";
 
@@ -105,9 +105,9 @@ function heartbeat(): HeartbeatState {
       enabled: false,
       boost: "medium",
       intervalMs: null,
-      placeQuotes: false,
+      placeQuotes: true,
       placeTrades: false,
-      spread: 1,
+      spread: 2,
       lastPresenceAt: 0,
       viewers: 0,
       timer: null,
@@ -117,9 +117,23 @@ function heartbeat(): HeartbeatState {
       defaultsEpoch: DEFAULTS_EPOCH,
     };
   }
-  // Do not rewrite placeQuotes / placeTrades / spread on epoch bumps —
+  const hb = globalSim.__cexMmHeartbeat!;
+  // Hot-reload / epoch bump: reset leftover "enabled" so sim never auto-runs.
+  if (hb.defaultsEpoch !== DEFAULTS_EPOCH) {
+    if (hb.timer) {
+      clearTimeout(hb.timer);
+      hb.timer = null;
+    }
+    hb.enabled = false;
+    hb.inFlight = false;
+    hb.placeQuotes = true;
+    hb.placeTrades = false;
+    hb.spread = 2;
+    hb.defaultsEpoch = DEFAULTS_EPOCH;
+  }
+  // Do not rewrite placeQuotes / placeTrades / spread on every call —
   // only the user (MM menu) may change sim options.
-  return globalSim.__cexMmHeartbeat;
+  return hb;
 }
 
 function hasActivePresence(hb: HeartbeatState): boolean {
@@ -763,9 +777,27 @@ async function loopOnce(): Promise<void> {
 }
 
 /** Start the always-on MM ambience loop (idempotent). */
-export function startSimHeartbeat(): { started: boolean } {
+export function startSimHeartbeat(options?: {
+  intensity?: "low" | "medium" | "high";
+  intervalMs?: number;
+  placeQuotes?: boolean;
+  placeTrades?: boolean;
+  spread?: number;
+}): { started: boolean } {
+  if (options) configureSimOptions(options);
   const hb = heartbeat();
-  if (hb.enabled) return { started: false };
+  // Starting with neither mode is a no-op — default to resting quotes.
+  if (!hb.placeQuotes && !hb.placeTrades) {
+    hb.placeQuotes = true;
+  }
+  hb.lastPresenceAt = Date.now();
+  if (hb.enabled) {
+    if (!hb.inFlight) {
+      if (hb.timer) clearTimeout(hb.timer);
+      hb.timer = setTimeout(() => void loopOnce(), 50);
+    }
+    return { started: false };
+  }
   hb.enabled = true;
   hb.lastError = null;
   void loopOnce();
