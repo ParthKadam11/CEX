@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Setup SSH key
-        env:.
+        env:
           VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST }}

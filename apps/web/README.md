@@ -1,42 +1,43 @@
 # `@cex/web`
 
-`@cex/web` is the user-facing application: Google auth and an authenticated SOL-USD trading surface against the exchange engine.
+Next.js trading UI + BFF for the paper exchange: Google auth, Spot / Perps desks, charts, and proxies to OMS / gateway / market-data.
 
-## What it does today
+## Production
 
-- Google sign-in with NextAuth
-- user creation in PostgreSQL through `@cex/db`
-- dashboard with engine trading balances and recent orders
-- authenticated SOL-USD order book, balances, order placement, and cancellation
-- paper credit into the engine ledger for demo funding
-- optional in-app market simulation
+| | URL |
+| --- | --- |
+| App | https://papertrade.parthkadam.tech |
+| Gateway SSE | https://papertrade-gw.parthkadam.tech |
+
+Runs on the Contabo VPS under PM2 (`cex-web`), behind nginx TLS. Live market streams use **direct SSE** to the gateway (ticket from `/api/market/stream-ticket`); the BFF `/api/market/stream` path is not used in production.
+
+Deploy: push to `main` → GitHub Actions **CI** → **Deploy** (SSH pull + `pnpm build:web` + `pm2 reload`).
+
+## What it does
+
+- Google sign-in (NextAuth)
+- User row in Postgres via `@cex/db`
+- Dashboard: paper balances, open/recent orders, paper credit
+- Spot (`SOL-USD`) and Perps (`SOL-USD-PERP`) trading surfaces
+- Charts / history via market-data API
+- Optional in-app market simulation controls
 
 ## Main routes
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Landing page |
-| `/dashboard` | Balances + recent orders |
-| `/trade` | SOL-USD trading surface |
-| `/dashboard/trade` | Redirects to `/trade` |
-| `/dashboard/apps` | Market explorer (candles, book, history) |
-| `/api/auth/[...nextauth]` | NextAuth handlers |
-| `/api/orders` | Authenticated OMS order proxy |
-| `/api/market/book` | Authenticated SOL-USD book proxy |
-| `/api/market/stream` | Authenticated SOL-USD market-data stream proxy |
-| `/api/market/credit` | Paper-fund engine balances |
-| `/api/sim/market-maker` | Dev market simulation |
+| `/` | Landing |
+| `/dashboard` | Balances + orders |
+| `/spot` | Spot desk |
+| `/perps` | Perps desk |
+| `/dashboard/orders` | Order history |
+| `/dashboard/apps` | Market explorer |
+| `/api/auth/[...nextauth]` | NextAuth |
+| `/api/orders` | OMS proxy |
+| `/api/market/*` | Gateway / balances / credit / stream ticket |
+| `/api/sim/market-maker` | Simulation controls |
 
-## Key implementation details
-
-- Authentication uses Google through NextAuth.
-- On first sign-in, the app creates a `User` record.
-- The authenticated Prisma user id is copied to `session.user.uid`.
-- The exchange engine ledger is authoritative for trading balances; the web app reads balances through the engine gateway.
-
-## Running locally
-
-From the repository root (preferred):
+## Local
 
 ```bash
 pnpm infra:up
@@ -45,40 +46,23 @@ pnpm setup:local
 pnpm dev:stack
 ```
 
-Web-only (backends already running):
+Web only (backends already up): `pnpm dev` → http://localhost:3000
 
-```bash
-pnpm dev
-```
-
-The app runs at `http://localhost:3000`.
-
-## Required environment
-
-`pnpm setup:local` creates `apps/web/.env` from the root `.env.example` if missing. Compose-aligned defaults:
+## Required env (`apps/web/.env`)
 
 ```env
+DATABASE_URL=postgresql://postgres:mysecretpassword@127.0.0.1:5432/postgres
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 NEXTAUTH_SECRET=...
 NEXTAUTH_URL=http://localhost:3000
-DATABASE_URL=postgresql://postgres:mysecretpassword@127.0.0.1:5432/postgres
 OMS_URL=http://127.0.0.1:4030
-ENGINE_GATEWAY_URL=http://127.0.0.1:4020
-MARKET_DATA_URL=http://127.0.0.1:4040
 OMS_INTERNAL_TOKEN=local-dev-oms-token
+ENGINE_GATEWAY_URL=http://127.0.0.1:4020
+ENGINE_GATEWAY_PUBLIC_URL=http://127.0.0.1:4020
 ENGINE_GATEWAY_INTERNAL_TOKEN=local-dev-gateway-token
+MARKET_DATA_URL=http://127.0.0.1:4040
 MARKET_DATA_INTERNAL_TOKEN=local-dev-market-data-token
 ```
 
-Migrations:
-
-```bash
-pnpm db:migrate:deploy
-```
-
-## Production
-
-See [`infra/DEPLOY.md`](../../infra/DEPLOY.md) (Vercel web + Render backends).
-
-The web app acts as the authenticated BFF. It derives the user id from NextAuth and sends it to OMS only through a trusted internal header. Configure the same `OMS_INTERNAL_TOKEN` on the web app and OMS, and the same `ENGINE_GATEWAY_INTERNAL_TOKEN` on the web app and `GATEWAY_INTERNAL_TOKEN` on the gateway for non-local deployments.
+Production: set `NEXTAUTH_URL` and `ENGINE_GATEWAY_PUBLIC_URL` to the HTTPS hosts above. Tokens must match the backend services.
