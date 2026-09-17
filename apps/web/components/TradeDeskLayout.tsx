@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Group,
   Panel,
@@ -14,6 +14,18 @@ const noopStorage: LayoutStorage = {
   getItem: () => null,
   setItem: () => {},
 };
+
+function subscribeNoop() {
+  return () => {};
+}
+
+function getClientStorage(): LayoutStorage {
+  return localStorage;
+}
+
+function getServerStorage(): LayoutStorage {
+  return noopStorage;
+}
 
 type TradeDeskLayoutProps = {
   /** Unique key for persisting panel sizes (e.g. "spot", "perp"). */
@@ -81,11 +93,11 @@ function PanelFrame({
 }
 
 function usePersistedLayout(id: string) {
-  const [storage, setStorage] = useState<LayoutStorage>(noopStorage);
-
-  useEffect(() => {
-    setStorage(localStorage);
-  }, []);
+  const storage = useSyncExternalStore(
+    subscribeNoop,
+    getClientStorage,
+    getServerStorage,
+  );
 
   return useDefaultLayout({
     id,

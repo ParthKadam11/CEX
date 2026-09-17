@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
@@ -36,13 +36,7 @@ export function DashboardHome() {
   const [creditAmount, setCreditAmount] = useState("");
   const [ordersTab, setOrdersTab] = useState<OrdersTab>("open");
 
-  useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 3_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const [spotRes, perpRes, ordersRes] = await Promise.all([
       fetch(
         `/api/market/balances?market=${encodeURIComponent(SPOT_VENUE.symbol)}`,
@@ -67,7 +61,16 @@ export function DashboardHome() {
       const body = (await ordersRes.json()) as { orders?: TradingOrder[] };
       setOrders(Array.isArray(body.orders) ? body.orders : []);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    const immediate = window.setTimeout(() => void refresh(), 0);
+    const timer = window.setInterval(() => void refresh(), 3_000);
+    return () => {
+      window.clearTimeout(immediate);
+      window.clearInterval(timer);
+    };
+  }, [refresh]);
 
   async function creditMarket(
     asset: "USD" | "SOL",

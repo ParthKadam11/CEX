@@ -38,6 +38,13 @@ export function Appbar({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPathname, setMenuPathname] = useState(pathname);
+
+  // Close the mobile drawer when the route changes (adjust state during render).
+  if (pathname !== menuPathname) {
+    setMenuPathname(pathname);
+    if (menuOpen) setMenuOpen(false);
+  }
 
   const isLanding = pathname === "/";
   const isAppRoute =
@@ -57,10 +64,6 @@ export function Appbar({ children }: { children: React.ReactNode }) {
     !isLanding &&
     (Boolean(session.data?.user) ||
       (session.status === "loading" && isAppRoute));
-
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     if (!menuOpen) return;

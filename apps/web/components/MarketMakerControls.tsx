@@ -82,9 +82,12 @@ export function MarketMakerControls({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
   const onTickRef = useRef(onTickAction);
-  onTickRef.current = onTickAction;
   const busyRef = useRef(false);
   const toggleGenRef = useRef(0);
+
+  useEffect(() => {
+    onTickRef.current = onTickAction;
+  }, [onTickAction]);
 
   function pushEvent(text: string, tone: SimEvent["tone"] = "ok") {
     setEvents((current) =>
@@ -128,10 +131,44 @@ export function MarketMakerControls({
   }
 
   useEffect(() => {
-    void refreshStatus();
-    const timer = window.setInterval(() => void refreshStatus(), 4_000);
-    return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when market changes
+    let cancelled = false;
+
+    async function poll() {
+      if (busyRef.current || cancelled) return;
+      try {
+        const qs = new URLSearchParams({ market });
+        const response = await fetch(`/api/sim/market-maker?${qs}`, {
+          cache: "no-store",
+        });
+        if (!response.ok || cancelled || busyRef.current) return;
+        const body = (await response.json()) as StatusBody;
+        if (cancelled || !body.heartbeat) return;
+        setStatus(body.heartbeat);
+        if (body.heartbeat.spread != null) setSpread(body.heartbeat.spread);
+        if (typeof body.heartbeat.placeQuotes === "boolean") {
+          setPlaceQuotes(body.heartbeat.placeQuotes);
+        }
+        if (typeof body.heartbeat.placeTrades === "boolean") {
+          setPlaceTrades(body.heartbeat.placeTrades);
+        }
+        if (
+          body.heartbeat.boost === "low" ||
+          body.heartbeat.boost === "medium" ||
+          body.heartbeat.boost === "high"
+        ) {
+          setIntensity(body.heartbeat.boost);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const timer = window.setInterval(() => void poll(), 4_000);
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [market]);
 
   useEffect(() => {
@@ -250,10 +287,9 @@ export function MarketMakerControls({
     }
 
     // Turn on: ensure at least quotes are active, then start with full config.
-    let nextQuotes = placeQuotes;
-    let nextTrades = placeTrades;
-    if (!nextQuotes && !nextTrades) {
-      nextQuotes = true;
+    const nextQuotes = placeQuotes || placeTrades ? placeQuotes : true;
+    const nextTrades = placeTrades;
+    if (!placeQuotes && !placeTrades) {
       setPlaceQuotes(true);
     }
     const speed =

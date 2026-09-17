@@ -31,7 +31,10 @@
     "test:exchange:unit": "pnpm --filter @cex/exchange test:unit",
     "test:exchange:integration": "pnpm --filter @cex/exchange test:integration",
     "test:exchange:e2e": "pnpm --filter @cex/exchange test:e2e",
-    "test:ingester": "pnpm --filter @cex/ingester test"
+    "test:ingester": "pnpm --filter @cex/ingester test",
+    "test:gateway:unit": "pnpm --filter @cex/engine-gateway test:unit",
+    "test:ci": "pnpm test:exchange:unit && pnpm test:oms && pnpm test:gateway:unit && pnpm test:ingester",
+    "typecheck": "pnpm --filter @cex/exchange build && pnpm --filter @cex/engine-gateway build && pnpm --filter @cex/oms build && pnpm --filter @cex/ingester build"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

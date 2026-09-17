@@ -45,15 +45,23 @@ export function useMarketStream(
   const [connected, setConnected] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [lastTrade, setLastTrade] = useState<TradeTickMessage | null>(null);
+  const [streamMarket, setStreamMarket] = useState(market);
   const handlersRef = useRef(handlers);
-  handlersRef.current = handlers;
 
-  useEffect(() => {
+  // Reset stream state when the market changes (adjust state during render).
+  if (market !== streamMarket) {
+    setStreamMarket(market);
     setBook(emptyBook(market));
     setLastTrade(null);
     setConnected(false);
     setStreamError(null);
+  }
 
+  useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
+
+  useEffect(() => {
     let source: EventSource | null = null;
     let closed = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
