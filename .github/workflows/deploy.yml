@@ -81,12 +81,28 @@ jobs:
             echo "skip nginx reload (no passwordless sudo or nginx -t failed)"
           fi
 
-          echo "==> health"
-          curl -fsS http://127.0.0.1:4010/health/live >/dev/null
-          curl -fsS http://127.0.0.1:4020/health/live >/dev/null
-          curl -fsS http://127.0.0.1:4030/health/live >/dev/null
-          curl -fsS http://127.0.0.1:4040/health/live >/dev/null
-          curl -fsS -o /dev/null http://127.0.0.1:3000/
+          echo "==> health (wait for listen)"
+          wait_http() {
+            local url="$1"
+            local name="$2"
+            local i
+            for i in $(seq 1 30); do
+              if curl -fsS -m 2 -o /dev/null "$url"; then
+                echo "ok $name"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "FAIL $name after ~60s ($url)" >&2
+            pm2 status || true
+            return 1
+          }
+
+          wait_http http://127.0.0.1:4010/health/live exchange
+          wait_http http://127.0.0.1:4020/health/live gateway
+          wait_http http://127.0.0.1:4030/health/live oms
+          wait_http http://127.0.0.1:4040/health/live ingester
+          wait_http http://127.0.0.1:3000/ web
 
           echo "deploy ok"
           REMOTE
