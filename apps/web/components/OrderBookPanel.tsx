@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { OrderBookSnapshot } from "@cex/exchange-types";
 import type { LiveTapeTrade } from "@/lib/trading";
 import { AlignJustify, ArrowDown, ArrowUp } from "lucide-react";
@@ -35,6 +35,8 @@ export function OrderBookPanel({
   const [view, setView] = useState<ViewMode>("both");
   const [groupIndex, setGroupIndex] = useState(0);
   const group = GROUP_OPTIONS[groupIndex] ?? 1;
+  const askScrollRef = useRef<HTMLDivElement>(null);
+  const stickAsksToBottom = useRef(true);
 
   const asks = useMemo(
     () => buildSide(book.asks, group, "ask"),
@@ -44,6 +46,13 @@ export function OrderBookPanel({
     () => buildSide(book.bids, group, "bid"),
     [book.bids, group],
   );
+
+  // Keep asks anchored to the mid: best levels sit at the bottom of the pane.
+  useLayoutEffect(() => {
+    const el = askScrollRef.current;
+    if (!el || !stickAsksToBottom.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [asks, view, tab]);
 
   const maxTotal = Math.max(
     asks.at(-1)?.total ?? 0,
@@ -98,14 +107,20 @@ export function OrderBookPanel({
               <div className="flex items-center gap-1">
                 <ViewButton
                   active={view === "both"}
-                  onClick={() => setView("both")}
+                  onClick={() => {
+                    stickAsksToBottom.current = true;
+                    setView("both");
+                  }}
                   label="Both"
                 >
                   <AlignJustify className="size-3.5" />
                 </ViewButton>
                 <ViewButton
                   active={view === "asks"}
-                  onClick={() => setView("asks")}
+                  onClick={() => {
+                    stickAsksToBottom.current = true;
+                    setView("asks");
+                  }}
                   label="Asks"
                 >
                   <ArrowUp className="size-3.5 text-red-600 dark:text-red-400" />
@@ -127,7 +142,10 @@ export function OrderBookPanel({
                     type="button"
                     className="px-1.5 py-0.5 text-zinc-400 hover:text-zinc-950 disabled:opacity-30 dark:hover:text-white"
                     disabled={groupIndex === 0}
-                    onClick={() => setGroupIndex((i) => Math.max(0, i - 1))}
+                    onClick={() => {
+                      stickAsksToBottom.current = true;
+                      setGroupIndex((i) => Math.max(0, i - 1));
+                    }}
                   >
                     −
                   </button>
@@ -138,11 +156,12 @@ export function OrderBookPanel({
                     type="button"
                     className="px-1.5 py-0.5 text-zinc-400 hover:text-zinc-950 disabled:opacity-30 dark:hover:text-white"
                     disabled={groupIndex === GROUP_OPTIONS.length - 1}
-                    onClick={() =>
+                    onClick={() => {
+                      stickAsksToBottom.current = true;
                       setGroupIndex((i) =>
                         Math.min(GROUP_OPTIONS.length - 1, i + 1),
-                      )
-                    }
+                      );
+                    }}
                   >
                     +
                   </button>
@@ -158,7 +177,16 @@ export function OrderBookPanel({
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden font-mono text-[12px] tabular-nums">
               {(view === "both" || view === "asks") && (
-                <div className="ob-scroll ob-scroll-ask min-h-0 flex-1">
+                <div
+                  ref={askScrollRef}
+                  className="ob-scroll ob-scroll-ask min-h-0 flex-1"
+                  onScroll={() => {
+                    const el = askScrollRef.current;
+                    if (!el) return;
+                    stickAsksToBottom.current =
+                      el.scrollHeight - el.scrollTop - el.clientHeight <= 2;
+                  }}
+                >
                   <div className="flex min-h-full flex-col justify-end">
                     {asks.length === 0 ? (
                       <EmptyRow>No asks</EmptyRow>
