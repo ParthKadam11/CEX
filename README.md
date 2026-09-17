@@ -35,7 +35,11 @@ Application-layer Redis Streams / pub/sub contracts.
 - `packages/db`  
 Prisma schema for users and OMS order state.
 - `infra`  
-Local Redis, PostgreSQL, and TimescaleDB.
+Local Redis, PostgreSQL, and TimescaleDB (Compose), plus sample nginx reverse-proxy configs.
+- `.github/workflows`  
+CI (lint / typecheck / unit tests) and optional SSH deploy to a host.
+- `ecosystem.config.cjs`  
+PM2 process file for running the five Node apps on a single machine.
 
 
 
@@ -203,11 +207,23 @@ pnpm infra:logs
 ```
 
 See [`infra/README.md`](infra/README.md) for local Compose.  
-Deploy notes (cloud or single-host): [`infra/DEPLOY.md`](infra/DEPLOY.md). Optional CI helpers: `pnpm test:ci`, `pnpm typecheck`.
+Cloud-style split deploy (e.g. Vercel + Render): [`infra/DEPLOY.md`](infra/DEPLOY.md).
 
-### Tokens for non-local deployments
+### Production shape (single host)
 
-Set matching tokens across services: `OMS_INTERNAL_TOKEN`, `GATEWAY_INTERNAL_TOKEN` / `ENGINE_GATEWAY_INTERNAL_TOKEN`, `EXCHANGE_GATEWAY_TOKEN`, `INGESTER_INTERNAL_TOKEN` / `MARKET_DATA_INTERNAL_TOKEN`. Point `MARKET_DATA_URL` at the ingester.
+What this repo is set up to run when you put everything on one machine:
+
+| Piece | Role |
+| --- | --- |
+| Docker Compose | Redis, Postgres, Timescale (data plane only) |
+| PM2 | exchange, gateway, OMS, ingester, web |
+| nginx | TLS termination + reverse proxy to loopback app ports |
+| Let’s Encrypt (certbot) | Free certificates for the public hostnames |
+| GitHub Actions | CI on push/PR; Deploy workflow SSHs in, builds web, reloads PM2 |
+
+Public surface is HTTPS for the **web UI** and **gateway SSE**. App processes and databases listen on **localhost**; only the proxy (and SSH) need to be reachable from the internet. Live market streams use a short-lived ticket from the web BFF, then EventSource the gateway origin directly.
+
+Configure matching internal tokens across services (`OMS_*`, `GATEWAY_*` / `ENGINE_GATEWAY_*`, `EXCHANGE_GATEWAY_*`, market-data / ingester) and set `ENGINE_GATEWAY_PUBLIC_URL` + `CORS_ORIGINS` to your HTTPS origins. Helpers: `pnpm test:ci`, `pnpm typecheck`, `pnpm build:web`, `pnpm pm2:start` / `pm2:reload`.
 
 See [API.md](API.md) for request IDs, error envelopes, order pagination, and BFF/internal boundaries.
 
