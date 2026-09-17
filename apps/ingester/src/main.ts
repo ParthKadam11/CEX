@@ -21,6 +21,7 @@ async function main(): Promise<void> {
   try {
     await runMigrations(pool);
     await ensureGroup(redis);
+    const listenHost = process.env.LISTEN_HOST?.trim() || "127.0.0.1";
     server = serve(
       {
         fetch: createHistoryApp(pool, {
@@ -28,9 +29,13 @@ async function main(): Promise<void> {
           redis,
         }).fetch,
         port: config.port,
+        hostname: listenHost,
       },
       (info) => {
-        log.info("HTTP server listening", { port: info.port });
+        log.info("HTTP server listening", {
+          host: listenHost,
+          port: info.port,
+        });
       },
     );
     await runWorker(redis, pool, config, abortController.signal);

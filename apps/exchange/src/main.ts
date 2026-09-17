@@ -55,8 +55,10 @@ const shutdown = () => {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-serve({ fetch: app.fetch, port }, (info) => {
+const listenHost = process.env.LISTEN_HOST?.trim() || "127.0.0.1";
+serve({ fetch: app.fetch, port, hostname: listenHost }, (info) => {
   log.info("HTTP server listening", {
+    host: listenHost,
     port: info.port,
     markets: [...runtimes.keys()],
     dataDir,

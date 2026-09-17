@@ -2,7 +2,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - cex_redis:/data
     healthcheck:
@@ -18,7 +18,7 @@ services:
       POSTGRES_PASSWORD: mysecretpassword
       POSTGRES_DB: postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - cex_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -34,7 +34,7 @@ services:
       POSTGRES_PASSWORD: cex
       POSTGRES_DB: cex_md
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
       - cex_timescale:/var/lib/postgresql/data
     healthcheck:
