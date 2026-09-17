@@ -313,12 +313,17 @@ async function main(): Promise<void> {
     fundings,
     internalToken: config.internalToken,
   });
-  const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
-    log("info", "HTTP server listening", {
-      port: info.port,
-      engines: config.engines,
-    });
-  });
+  const listenHost = process.env.LISTEN_HOST?.trim() || "127.0.0.1";
+  const server = serve(
+    { fetch: app.fetch, port: config.port, hostname: listenHost },
+    (info) => {
+      log("info", "HTTP server listening", {
+        host: listenHost,
+        port: info.port,
+        engines: config.engines,
+      });
+    },
+  );
 
   const shutdown = async () => {
     log("info", "shutting down");
