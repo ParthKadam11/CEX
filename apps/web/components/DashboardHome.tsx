@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import type { Balance } from "@cex/exchange-types";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { SPOT_VENUE } from "@/lib/markets";
+import { PERP_VENUE, SPOT_VENUE } from "@/lib/markets";
 import {
   balanceFor,
   errorMessage,
@@ -27,7 +27,8 @@ type OrdersTab = "open" | "recent";
 
 export function DashboardHome() {
   const { data: session } = useSession();
-  const [balances, setBalances] = useState<Balance[]>([]);
+  const [spotBalances, setSpotBalances] = useState<Balance[]>([]);
+  const [perpBalances, setPerpBalances] = useState<Balance[]>([]);
   const [orders, setOrders] = useState<TradingOrder[]>([]);
   const [funding, setFunding] = useState(false);
   const [message, setMessage] = useState("");
@@ -42,17 +43,25 @@ export function DashboardHome() {
   }, []);
 
   async function refresh() {
-    const [balancesRes, ordersRes] = await Promise.all([
+    const [spotRes, perpRes, ordersRes] = await Promise.all([
       fetch(
         `/api/market/balances?market=${encodeURIComponent(SPOT_VENUE.symbol)}`,
+        { cache: "no-store" },
+      ),
+      fetch(
+        `/api/market/balances?market=${encodeURIComponent(PERP_VENUE.symbol)}`,
         { cache: "no-store" },
       ),
       fetch("/api/orders?limit=40", { cache: "no-store" }),
     ]);
 
-    if (balancesRes.ok) {
-      const body = (await balancesRes.json()) as { balances: Balance[] };
-      setBalances(body.balances ?? []);
+    if (spotRes.ok) {
+      const body = (await spotRes.json()) as { balances: Balance[] };
+      setSpotBalances(body.balances ?? []);
+    }
+    if (perpRes.ok) {
+      const body = (await perpRes.json()) as { balances: Balance[] };
+      setPerpBalances(body.balances ?? []);
     }
     if (ordersRes.ok) {
       const body = (await ordersRes.json()) as { orders?: TradingOrder[] };
@@ -60,23 +69,48 @@ export function DashboardHome() {
     }
   }
 
-  async function paperFund(asset: "USD" | "SOL", amount: number) {
-    setFunding(true);
-    setMessage("");
+  async function creditMarket(
+    asset: "USD" | "SOL",
+    amount: number,
+    market: string,
+  ) {
     const response = await fetch("/api/market/credit", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ asset, amount, market: SPOT_VENUE.symbol }),
+      body: JSON.stringify({ asset, amount, market }),
     });
     const body = (await response.json()) as {
       error?: { code?: string; message?: string } | string;
     };
+    return { ok: response.ok, body };
+  }
+
+  async function paperFund(asset: "USD" | "SOL", amount: number) {
+    setFunding(true);
+    setMessage("");
+    // Spot and perps are separate engine ledgers. USD paper credit hits both
+    // so Home funding works on Spot and Perps. SOL is spot-only (perp margin is USD).
+    const markets =
+      asset === "USD"
+        ? [SPOT_VENUE.symbol, PERP_VENUE.symbol]
+        : [SPOT_VENUE.symbol];
+
+    const results = await Promise.all(
+      markets.map((market) => creditMarket(asset, amount, market)),
+    );
     setFunding(false);
-    if (!response.ok) {
-      setMessage(errorMessage(body) ?? "Credit failed");
+
+    const failed = results.find((result) => !result.ok);
+    if (failed) {
+      setMessage(errorMessage(failed.body) ?? "Credit failed");
       return;
     }
-    setMessage(`Added ${amount.toLocaleString()} ${asset}`);
+
+    setMessage(
+      asset === "USD"
+        ? `Added ${amount.toLocaleString()} USD to Spot and Perps`
+        : `Added ${amount.toLocaleString()} SOL to Spot`,
+    );
     setCreditAsset(null);
     setCreditAmount("");
     window.setTimeout(() => void refresh(), 400);
@@ -98,8 +132,9 @@ export function DashboardHome() {
     setCreditAmount("");
   }
 
-  const usd = balanceFor(balances, "USD");
-  const sol = balanceFor(balances, "SOL");
+  const usd = balanceFor(spotBalances, "USD");
+  const sol = balanceFor(spotBalances, "SOL");
+  const perpUsd = balanceFor(perpBalances, "USD");
   const name = session?.user?.name?.split(" ")[0] ?? "there";
   const image = session?.user?.image;
 
@@ -113,7 +148,7 @@ export function DashboardHome() {
     [orders],
   );
   const visibleOrders = ordersTab === "open" ? openOrders : recentOrders;
-  const equityHint = usd.available + usd.locked;
+  const equityHint = usd.available + usd.locked + perpUsd.available + perpUsd.locked;
 
   return (
     <div className="animate-fade-up w-full py-4 sm:py-6">
@@ -148,9 +183,9 @@ export function DashboardHome() {
 
       <div className="mb-8 grid gap-6 border-b border-zinc-200 pb-8 sm:grid-cols-3 sm:gap-8 dark:border-zinc-800">
         <SummaryStat
-          label="USD available"
+          label="Spot USD"
           value={usd.available.toLocaleString()}
-          hint={`${usd.locked.toLocaleString()} locked`}
+          hint={`${usd.locked.toLocaleString()} locked · ${perpUsd.available.toLocaleString()} on Perps`}
         />
         <SummaryStat
           label="SOL available"
@@ -160,7 +195,7 @@ export function DashboardHome() {
         <SummaryStat
           label="Open orders"
           value={String(openOrders.length)}
-          hint={`${equityHint.toLocaleString()} USD on ledger`}
+          hint={`${equityHint.toLocaleString()} USD across ledgers`}
         />
       </div>
 
@@ -279,6 +314,11 @@ export function DashboardHome() {
             onAdd={() => startCredit("USD")}
             funding={funding}
             adding={creditAsset === "USD"}
+            subtitle={`Perps margin ${perpUsd.available.toLocaleString()}${
+              perpUsd.locked > 0
+                ? ` (${perpUsd.locked.toLocaleString()} locked)`
+                : ""
+            }`}
           />
           <BalanceCard
             asset="SOL"
@@ -293,6 +333,11 @@ export function DashboardHome() {
             <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
               <p className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
                 Add paper {creditAsset}
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                {creditAsset === "USD"
+                  ? "Credits Spot and Perps ledgers (separate engines)."
+                  : "Credits Spot only. Perps margin is USD."}
               </p>
               <input
                 id="credit-amount"
@@ -420,6 +465,7 @@ function BalanceCard({
   onAdd,
   funding,
   adding,
+  subtitle,
 }: {
   asset: string;
   available: number;
@@ -427,6 +473,7 @@ function BalanceCard({
   onAdd: () => void;
   funding: boolean;
   adding: boolean;
+  subtitle?: string;
 }) {
   const total = available + locked;
   const availablePct = total > 0 ? (available / total) * 100 : 100;
@@ -442,6 +489,9 @@ function BalanceCard({
             {available.toLocaleString()}
           </p>
           <p className="mt-1 text-sm text-zinc-400">available</p>
+          {subtitle ? (
+            <p className="mt-1 text-xs text-zinc-400">{subtitle}</p>
+          ) : null}
         </div>
         <button
           type="button"
