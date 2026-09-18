@@ -30,12 +30,10 @@ export function TradingPanel() {
   const [orders, setOrders] = useState<TradingOrder[]>([]);
   const [historyCandles, setHistoryCandles] = useState<Candle[]>([]);
   const [tape, setTape] = useState<LiveTapeTrade[]>([]);
-  const [mode, setMode] = useState<"limit" | "market">("limit");
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [tif, setTif] = useState<"GTC" | "IOC" | "FOK">("GTC");
   const [price, setPrice] = useState("100");
   const [quantity, setQuantity] = useState("1");
-  const [quoteBudget, setQuoteBudget] = useState("100");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
@@ -172,10 +170,7 @@ export function TradingPanel() {
 
   const usd = balanceFor(balances, "USD");
   const sol = balanceFor(balances, "SOL");
-  const orderValue =
-    mode === "market" && side === "BUY"
-      ? Number(quoteBudget) || 0
-      : (Number(price) || 0) * (Number(quantity) || 0);
+  const orderValue = (Number(price) || 0) * (Number(quantity) || 0);
 
   async function loadBook() {
     const response = await fetch(`/api/market/book?${marketQs}`, { cache: "no-store" });
@@ -265,19 +260,15 @@ export function TradingPanel() {
     setSubmitting(true);
     setMessage("");
 
-    const isMarket = mode === "market";
     const payload: Record<string, unknown> = {
       clientOrderId: `web-${crypto.randomUUID()}`,
       market,
       side,
-      orderType: isMarket ? "MARKET" : "LIMIT",
-      timeInForce: isMarket ? "IOC" : tif,
-      price: isMarket ? 0 : Number(price),
+      orderType: "LIMIT",
+      timeInForce: tif,
+      price: Number(price),
       quantity: Number(quantity),
     };
-    if (isMarket && side === "BUY") {
-      payload.quoteBudget = Number(quoteBudget);
-    }
 
     const response = await fetch("/api/orders", {
       method: "POST",
@@ -467,7 +458,6 @@ export function TradingPanel() {
             className="h-full min-h-0 overflow-hidden rounded-none border-0 bg-white dark:bg-zinc-950"
             onSelectPrice={(next) => {
               setPrice(String(next));
-              setMode("limit");
             }}
           />
         }
@@ -492,22 +482,9 @@ export function TradingPanel() {
               ))}
             </div>
 
-            <div className="mb-4 flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
-              {(["limit", "market"] as const).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setMode(option)}
-                  className={`border-b-2 px-2.5 py-2 text-xs font-medium capitalize ${
-                    mode === option
-                      ? "border-zinc-950 text-zinc-950 dark:border-zinc-50 dark:text-zinc-50"
-                      : "border-transparent text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                  }`}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
+            <p className="mb-3 text-[11px] font-medium tracking-wide text-zinc-400 uppercase">
+              Limit order
+            </p>
 
             <form className="flex flex-1 flex-col gap-3" onSubmit={placeOrder}>
               <div className="rounded-md border border-zinc-100 px-3 py-2.5 dark:border-zinc-800">
@@ -540,28 +517,26 @@ export function TradingPanel() {
                 </div>
               </div>
 
-              {mode === "limit" && (
-                <div>
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-                      Price (USD)
-                    </span>
-                    <div className="flex gap-1">
-                      <QuickChip label="Mid" onClick={setMidPrice} />
-                      <QuickChip label="BBO" onClick={setBboPrice} />
-                    </div>
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+                    Price (USD)
+                  </span>
+                  <div className="flex gap-1">
+                    <QuickChip label="Mid" onClick={setMidPrice} />
+                    <QuickChip label="BBO" onClick={setBboPrice} />
                   </div>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="h-10 w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 font-mono text-sm text-zinc-950 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-500"
-                    required
-                  />
                 </div>
-              )}
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  className="h-10 w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 font-mono text-sm text-zinc-950 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-500"
+                  required
+                />
+              </div>
 
               <TicketField
                 label="Quantity (SOL)"
@@ -569,40 +544,30 @@ export function TradingPanel() {
                 onChange={setQuantity}
               />
 
-              {mode === "market" && side === "BUY" && (
-                <TicketField
-                  label="Quote budget (USD)"
-                  value={quoteBudget}
-                  onChange={setQuoteBudget}
-                />
-              )}
-
-              {mode === "limit" && (
-                <div className="flex flex-wrap gap-3 text-[11px]">
-                  <label className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
-                    <input
-                      type="checkbox"
-                      checked={tif === "IOC"}
-                      onChange={(e) =>
-                        setTif(e.target.checked ? "IOC" : "GTC")
-                      }
-                      className="rounded border-zinc-300 dark:border-zinc-600"
-                    />
-                    IOC
-                  </label>
-                  <label className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
-                    <input
-                      type="checkbox"
-                      checked={tif === "FOK"}
-                      onChange={(e) =>
-                        setTif(e.target.checked ? "FOK" : "GTC")
-                      }
-                      className="rounded border-zinc-300 dark:border-zinc-600"
-                    />
-                    FOK
-                  </label>
-                </div>
-              )}
+              <div className="flex flex-wrap gap-3 text-[11px]">
+                <label className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+                  <input
+                    type="checkbox"
+                    checked={tif === "IOC"}
+                    onChange={(e) =>
+                      setTif(e.target.checked ? "IOC" : "GTC")
+                    }
+                    className="rounded border-zinc-300 dark:border-zinc-600"
+                  />
+                  IOC
+                </label>
+                <label className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+                  <input
+                    type="checkbox"
+                    checked={tif === "FOK"}
+                    onChange={(e) =>
+                      setTif(e.target.checked ? "FOK" : "GTC")
+                    }
+                    className="rounded border-zinc-300 dark:border-zinc-600"
+                  />
+                  FOK
+                </label>
+              </div>
 
               <div className="flex items-center justify-between text-[11px] text-zinc-400">
                 <span>Order value</span>
