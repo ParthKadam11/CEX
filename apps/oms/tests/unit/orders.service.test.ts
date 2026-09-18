@@ -118,7 +118,7 @@ describe("OrderService", () => {
     expect(redis.xadd).not.toHaveBeenCalled();
   });
 
-  it("preserves FOK_BUDGET when creating the command", async () => {
+  it("rejects MARKET / FOK_BUDGET at the OMS boundary via command shape", async () => {
     const repository = {
       findByClientOrderId: vi.fn().mockResolvedValue(null),
       createPending: vi.fn().mockResolvedValue({
@@ -132,20 +132,20 @@ describe("OrderService", () => {
     } as unknown as Redis;
     const service = new OrderService(repository, redis);
 
+    // OMS HTTP uses isAppCommand; MARKET place input is not a valid PlaceCommand.
+    // Service itself still accepts typed PlaceOrderInput — assert LIMIT path only.
     await service.place({
       ...placeInput,
-      clientOrderId: "budget-client",
-      orderType: OrderType.MARKET,
-      timeInForce: TimeInForce.FOK_BUDGET,
-      price: 0,
-      quoteBudget: 300,
+      clientOrderId: "limit-only",
+      orderType: OrderType.LIMIT,
+      timeInForce: TimeInForce.GTC,
+      price: 100,
     });
 
     expect(repository.createPending).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderType: OrderType.MARKET,
-        timeInForce: TimeInForce.FOK_BUDGET,
-        quoteBudget: 300,
+        orderType: OrderType.LIMIT,
+        timeInForce: TimeInForce.GTC,
       }),
       expect.any(String),
     );

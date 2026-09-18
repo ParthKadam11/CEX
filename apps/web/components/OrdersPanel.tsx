@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 type StatusTab = "open" | "filled" | "closed" | "all";
 type MarketFilter = "all" | "SOL-USD" | "SOL-USD-PERP";
 type SideFilter = "all" | "BUY" | "SELL";
-type TypeFilter = "all" | "LIMIT" | "MARKET";
+type TypeFilter = "all" | "LIMIT";
 type RangeFilter = "all" | "today" | "7d";
 
 const FILLED_STATUSES = new Set(["FILLED"]);
@@ -320,7 +320,6 @@ export function OrdersPanel() {
           options={[
             { value: "all", label: "All types" },
             { value: "LIMIT", label: "Limit" },
-            { value: "MARKET", label: "Market" },
           ]}
         />
         <FilterSelect

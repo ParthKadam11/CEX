@@ -326,30 +326,10 @@ describe("Exchange E2E — feature checklist", () => {
     });
   });
 
-  describe("8. MARKET orders", () => {
-    it("MARKET sell walks bids with no limit and cancels unfilled size", async () => {
+  describe("8. MARKET orders disabled", () => {
+    it("rejects MARKET sell at the HTTP boundary", async () => {
       const { app, runtime } = createExchange();
-      await credit(app, "buyer", "USD", 300);
       await credit(app, "seller", "SOL", 5);
-
-      await place(app, {
-        orderId: "b-bid1",
-        userId: "buyer",
-        side: Side.BUY,
-        type: "LIMIT",
-        price: 100,
-        quantity: 1,
-        timeInForce: "GTC",
-      });
-      await place(app, {
-        orderId: "b-bid2",
-        userId: "buyer",
-        side: Side.BUY,
-        type: "LIMIT",
-        price: 90,
-        quantity: 2,
-        timeInForce: "GTC",
-      });
 
       const res = await place(app, {
         orderId: "s-mkt",
@@ -360,43 +340,20 @@ describe("Exchange E2E — feature checklist", () => {
         quantity: 5,
         timeInForce: "IOC",
       });
+      expect(res.status).toBe(400);
       const placed = await body(res);
-      expect(placed.accepted).toBe(true);
-      expect(placed.order).toMatchObject({
-        status: "CANCELLED",
-        filledQuantity: 3,
-      });
+      expect((placed.error as { code: string }).code).toBe(
+        "UNSUPPORTED_ORDER_TYPE",
+      );
       expect(runtime.balances.get("seller", "SOL")).toMatchObject({
-        available: 2,
+        available: 5,
         locked: 0,
       });
-      expect(runtime.balances.get("seller", "USD").available).toBe(280);
     });
 
-    it("MARKET buy spends quoteBudget across asks and never rests", async () => {
+    it("rejects MARKET buy even with quoteBudget", async () => {
       const { app, runtime } = createExchange();
-      await credit(app, "s1", "SOL", 2);
-      await credit(app, "s2", "SOL", 2);
       await credit(app, "buyer", "USD", 500);
-
-      await place(app, {
-        orderId: "ask1",
-        userId: "s1",
-        side: Side.SELL,
-        type: "LIMIT",
-        price: 100,
-        quantity: 2,
-        timeInForce: "GTC",
-      });
-      await place(app, {
-        orderId: "ask2",
-        userId: "s2",
-        side: Side.SELL,
-        type: "LIMIT",
-        price: 120,
-        quantity: 2,
-        timeInForce: "GTC",
-      });
 
       const res = await place(app, {
         orderId: "b-mkt",
@@ -408,42 +365,15 @@ describe("Exchange E2E — feature checklist", () => {
         timeInForce: "IOC",
         quoteBudget: 250,
       });
-      const placed = await body(res);
-      expect(placed.accepted).toBe(true);
-      expect(placed.order).toMatchObject({
-        status: "CANCELLED",
-        filledQuantity: 2,
-      });
-      expect(runtime.book.getOrder("b-mkt")).toBeUndefined();
-      expect(runtime.balances.get("buyer", "USD")).toMatchObject({
-        available: 300,
-        locked: 0,
-      });
-      expect(runtime.book.getSnapshot().asks[0]).toEqual({
-        price: 120,
-        quantity: 2,
-        count: 1,
-      });
-    });
-
-    it("MARKET buy without quoteBudget is rejected", async () => {
-      const { app } = createExchange();
-      await credit(app, "buyer", "USD", 100);
-
-      const res = await place(app, {
-        orderId: "b-no-budget",
-        userId: "buyer",
-        side: Side.BUY,
-        type: "MARKET",
-        price: 0,
-        quantity: 1,
-        timeInForce: "IOC",
-      });
       expect(res.status).toBe(400);
       const placed = await body(res);
-      expect(
-        (placed.error as { code: string }).code,
-      ).toBe("MARKET_MISSING_QUOTE_BUDGET");
+      expect((placed.error as { code: string }).code).toBe(
+        "UNSUPPORTED_ORDER_TYPE",
+      );
+      expect(runtime.balances.get("buyer", "USD")).toMatchObject({
+        available: 500,
+        locked: 0,
+      });
     });
   });
 
@@ -467,19 +397,9 @@ describe("Exchange E2E — feature checklist", () => {
       expect(runtime.balances.get("buyer", "USD").available).toBe(50);
     });
 
-    it("supports market-buy FOK_BUDGET", async () => {
+    it("rejects FOK_BUDGET as unsupported", async () => {
       const { app } = createExchange();
-      await credit(app, "seller", "SOL", 1);
       await credit(app, "buyer", "USD", 100);
-      await place(app, {
-        orderId: "budget-maker",
-        userId: "seller",
-        side: Side.SELL,
-        type: "LIMIT",
-        price: 100,
-        quantity: 1,
-        timeInForce: "GTC",
-      });
 
       const res = await place(app, {
         orderId: "b-budget",
@@ -491,9 +411,11 @@ describe("Exchange E2E — feature checklist", () => {
         timeInForce: "FOK_BUDGET",
         quoteBudget: 100,
       });
+      expect(res.status).toBe(400);
       const placed = await body(res);
-      expect(placed.accepted).toBe(true);
-      expect(placed.order).toMatchObject({ status: "FILLED" });
+      expect((placed.error as { code: string }).code).toBe(
+        "UNSUPPORTED_ORDER_TYPE",
+      );
     });
   });
 

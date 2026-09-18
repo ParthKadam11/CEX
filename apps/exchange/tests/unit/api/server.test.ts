@@ -161,7 +161,7 @@ describe("exchange HTTP + SSE", () => {
     await runtime.close();
   });
 
-  it("rejects unknown order types and invalid FOK_BUDGET combinations", async () => {
+  it("rejects unknown, MARKET, and FOK_BUDGET order types", async () => {
     const bus = new EventBus();
     const runtime = MarketRuntime.open("SOL-USD", tempWal(), bus);
     const app = createExchangeApp(runtime, bus);
@@ -183,15 +183,22 @@ describe("exchange HTTP + SSE", () => {
     expect(unknownType.status).toBe(400);
     expect((await unknownType.json()).error.code).toBe("INVALID_ORDER_TYPE");
 
-    const invalidBudget = await request({
+    const market = await request({
+      type: "MARKET",
+      price: 0,
+      timeInForce: "IOC",
+      quoteBudget: 100,
+    });
+    expect(market.status).toBe(400);
+    expect((await market.json()).error.code).toBe("UNSUPPORTED_ORDER_TYPE");
+
+    const fokBudget = await request({
       timeInForce: "FOK_BUDGET",
       type: "LIMIT",
       quoteBudget: 100,
     });
-    expect(invalidBudget.status).toBe(400);
-    expect((await invalidBudget.json()).error.code).toBe(
-      "FOK_BUDGET_REQUIRES_MARKET_BUY",
-    );
+    expect(fokBudget.status).toBe(400);
+    expect((await fokBudget.json()).error.code).toBe("UNSUPPORTED_ORDER_TYPE");
     await runtime.close();
   });
 

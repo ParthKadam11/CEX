@@ -205,6 +205,7 @@ export type OrderEventType =
 
 export type RejectReason =
   | "UNSUPPORTED_TIF"
+  | "UNSUPPORTED_ORDER_TYPE"
   | "DUPLICATE_ORDER_ID"
   | "FOK_BUDGET_REQUIRES_MARKET_BUY"
   | "FOK_INSUFFICIENT_LIQUIDITY"

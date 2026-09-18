@@ -161,37 +161,24 @@ export function isAppCommand(value: unknown): value is AppCommand {
   }
 
   if (value.type === "PLACE") {
-    const isMarket = value.orderType === "MARKET";
-    const hasBudget =
-      value.quoteBudget === undefined ||
-      isBoundedPositiveInteger(value.quoteBudget, MAX_QUOTE_BUDGET);
-    const budgetRequired =
-      isMarket &&
-      (value.side === "BUY" || value.market === "SOL-USD-PERP");
     const leverageOk =
       value.leverage === undefined ||
       (isSafePositiveInteger(value.leverage) && value.leverage <= 20);
 
+    // Limit-only: MARKET / FOK_BUDGET are rejected at the product boundary.
     return (
       isIdentifier(value.clientOrderId) &&
       isMarketSymbol(value.market) &&
       (value.side === "BUY" || value.side === "SELL") &&
-      (value.orderType === "LIMIT" || value.orderType === "MARKET") &&
+      value.orderType === "LIMIT" &&
       (value.timeInForce === "GTC" ||
         value.timeInForce === "IOC" ||
-        value.timeInForce === "FOK" ||
-        value.timeInForce === "FOK_BUDGET") &&
-      (isMarket
-        ? value.price === 0
-        : isBoundedPositiveInteger(value.price, MAX_ORDER_PRICE)) &&
+        value.timeInForce === "FOK") &&
+      isBoundedPositiveInteger(value.price, MAX_ORDER_PRICE) &&
       isBoundedPositiveInteger(value.quantity, MAX_ORDER_QUANTITY) &&
-      hasBudget &&
-      (!budgetRequired || isSafePositiveInteger(value.quoteBudget)) &&
+      (value.quoteBudget === undefined ||
+        isBoundedPositiveInteger(value.quoteBudget, MAX_QUOTE_BUDGET)) &&
       leverageOk &&
-      (value.timeInForce !== "FOK_BUDGET" ||
-        (isMarket &&
-          value.side === "BUY" &&
-          isBoundedPositiveInteger(value.quoteBudget, MAX_QUOTE_BUDGET))) &&
       (value.orderId === undefined || isIdentifier(value.orderId)) &&
       isTimestamp(value.timestamp)
     );
@@ -358,55 +345,9 @@ export type SpotSwapOrderBody = {
 export function buildSpotSwapOrder(
   input: SpotSwapInput,
 ): SpotSwapOrderBody | { error: string } {
-  if (!isIdentifier(input.clientOrderId)) {
-    return { error: "INVALID_CLIENT_ORDER_ID" };
-  }
-  if (
-    (input.fromAsset !== "SOL" && input.fromAsset !== "USD") ||
-    (input.toAsset !== "SOL" && input.toAsset !== "USD") ||
-    input.fromAsset === input.toAsset
-  ) {
-    return { error: "INVALID_SWAP_PAIR" };
-  }
-  if (!isBoundedPositiveInteger(input.amount, MAX_QUOTE_BUDGET)) {
-    return { error: "INVALID_SWAP_AMOUNT" };
-  }
-
-  const mode = input.fillMode ?? "IOC";
-  if (mode !== "IOC" && mode !== "FOK") {
-    return { error: "INVALID_FILL_MODE" };
-  }
-
-  // USD → SOL: spend `amount` quote on as much base as liquidity allows.
-  if (input.fromAsset === "USD" && input.toAsset === "SOL") {
-    if (mode === "FOK") {
-      return { error: "FOK_REQUIRES_SOL_SELL" };
-    }
-    return {
-      clientOrderId: input.clientOrderId,
-      market: "SOL-USD",
-      side: "BUY",
-      orderType: "MARKET",
-      timeInForce: "IOC",
-      price: 0,
-      quantity: MAX_ORDER_QUANTITY,
-      quoteBudget: input.amount,
-    };
-  }
-
-  // SOL → USD: sell `amount` base into bids.
-  if (!isBoundedPositiveInteger(input.amount, MAX_ORDER_QUANTITY)) {
-    return { error: "INVALID_SWAP_AMOUNT" };
-  }
-  return {
-    clientOrderId: input.clientOrderId,
-    market: "SOL-USD",
-    side: "SELL",
-    orderType: "MARKET",
-    timeInForce: mode,
-    price: 0,
-    quantity: input.amount,
-  };
+  void input;
+  // Spot swap was a MARKET-order UX. Limit-only desks no longer expose it.
+  return { error: "MARKET_ORDERS_DISABLED" };
 }
 
 export function isSpotSwapInput(value: unknown): value is SpotSwapInput {

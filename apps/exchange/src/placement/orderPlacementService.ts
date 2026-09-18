@@ -483,19 +483,10 @@ export class OrderPlacementService {
     }
 
     if (
-      order.timeInForce === TimeInForce.FOK_BUDGET &&
-      (order.type !== OrderType.MARKET || order.side !== Side.BUY)
+      order.type === OrderType.MARKET ||
+      order.timeInForce === TimeInForce.FOK_BUDGET
     ) {
-      return this.reject(order, "FOK_BUDGET_REQUIRES_MARKET_BUY");
-    }
-
-    if (
-      order.type === OrderType.MARKET &&
-      order.side === Side.BUY &&
-      !isPerpMarket(order.market) &&
-      !(order.quoteBudget && order.quoteBudget > 0)
-    ) {
-      return this.reject(order, "MARKET_MISSING_QUOTE_BUDGET");
+      return this.reject(order, "UNSUPPORTED_ORDER_TYPE");
     }
 
     if (!orderUnitsOk(order)) {
@@ -505,17 +496,9 @@ export class OrderPlacementService {
     if (
       order.timeInForce !== TimeInForce.GTC &&
       order.timeInForce !== TimeInForce.IOC &&
-      order.timeInForce !== TimeInForce.FOK &&
-      order.timeInForce !== TimeInForce.FOK_BUDGET
+      order.timeInForce !== TimeInForce.FOK
     ) {
       return this.reject(order, "UNSUPPORTED_TIF");
-    }
-
-    if (
-      order.timeInForce === TimeInForce.FOK_BUDGET &&
-      !this.canFullyFill(order, book)
-    ) {
-      return this.reject(order, "FOK_INSUFFICIENT_LIQUIDITY");
     }
 
     try {

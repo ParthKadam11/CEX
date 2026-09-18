@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { MAX_ORDER_QUANTITY } from "@cex/exchange-types";
 import { buildSpotSwapOrder, isAppCommand } from "@cex/app-contracts";
 
 const basePlace = {
@@ -45,7 +44,7 @@ describe("application command validation", () => {
         quoteBudget: 500,
         leverage: 10,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isAppCommand({
         ...basePlace,
@@ -88,7 +87,16 @@ describe("application command validation", () => {
     expect(isAppCommand({ ...basePlace, requestId: "bad id" })).toBe(false);
   });
 
-  it("only accepts FOK_BUDGET for market buys with a budget", () => {
+  it("rejects MARKET and FOK_BUDGET places", () => {
+    expect(
+      isAppCommand({
+        ...basePlace,
+        orderType: "MARKET",
+        timeInForce: "IOC",
+        price: 0,
+        quoteBudget: 100,
+      }),
+    ).toBe(false);
     expect(
       isAppCommand({
         ...basePlace,
@@ -97,7 +105,7 @@ describe("application command validation", () => {
         price: 0,
         quoteBudget: 100,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isAppCommand({
         ...basePlace,
@@ -109,35 +117,15 @@ describe("application command validation", () => {
 });
 
 describe("spot swap mapping", () => {
-  it("maps USD→SOL to a market buy with quoteBudget", () => {
-    const order = buildSpotSwapOrder({
-      fromAsset: "USD",
-      toAsset: "SOL",
-      amount: 250,
-      clientOrderId: "swap-1",
-    });
-    expect(order).toEqual({
-      clientOrderId: "swap-1",
-      market: "SOL-USD",
-      side: "BUY",
-      orderType: "MARKET",
-      timeInForce: "IOC",
-      price: 0,
-      quantity: MAX_ORDER_QUANTITY,
-      quoteBudget: 250,
-    });
+  it("is disabled with limit-only desks", () => {
     expect(
-      isAppCommand({
-        ...(order as object),
-        commandId: "command-1",
-        type: "PLACE",
-        userId: "user-1",
-        timestamp: Date.now(),
+      buildSpotSwapOrder({
+        fromAsset: "USD",
+        toAsset: "SOL",
+        amount: 250,
+        clientOrderId: "swap-1",
       }),
-    ).toBe(true);
-  });
-
-  it("maps SOL→USD to a market sell", () => {
+    ).toEqual({ error: "MARKET_ORDERS_DISABLED" });
     expect(
       buildSpotSwapOrder({
         fromAsset: "SOL",
@@ -146,34 +134,6 @@ describe("spot swap mapping", () => {
         clientOrderId: "swap-2",
         fillMode: "FOK",
       }),
-    ).toEqual({
-      clientOrderId: "swap-2",
-      market: "SOL-USD",
-      side: "SELL",
-      orderType: "MARKET",
-      timeInForce: "FOK",
-      price: 0,
-      quantity: 3,
-    });
-  });
-
-  it("rejects invalid pairs and FOK on USD spends", () => {
-    expect(
-      buildSpotSwapOrder({
-        fromAsset: "USD",
-        toAsset: "USD",
-        amount: 1,
-        clientOrderId: "swap-3",
-      }),
-    ).toEqual({ error: "INVALID_SWAP_PAIR" });
-    expect(
-      buildSpotSwapOrder({
-        fromAsset: "USD",
-        toAsset: "SOL",
-        amount: 1,
-        clientOrderId: "swap-4",
-        fillMode: "FOK",
-      }),
-    ).toEqual({ error: "FOK_REQUIRES_SOL_SELL" });
+    ).toEqual({ error: "MARKET_ORDERS_DISABLED" });
   });
 });

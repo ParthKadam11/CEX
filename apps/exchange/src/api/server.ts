@@ -341,21 +341,15 @@ export function createExchangeApp(
 
     const type = parseOrderType(body.type);
     if (!type) return errorResponse(c, 400, "INVALID_ORDER_TYPE");
-    const price =
-      type === OrderType.MARKET
-        ? parseNonNegativeUnit(body.price ?? 0)
-        : parsePositiveUnit(body.price);
-    if (
-      price === null ||
-      (type === OrderType.MARKET && price !== 0) ||
-      (type === OrderType.LIMIT &&
-        !isBoundedPositiveInteger(price, MAX_ORDER_PRICE))
-    ) {
-      return errorResponse(
-        c,
-        400,
-        type === OrderType.LIMIT ? "INVALID_PRICE" : "INVALID_UNITS",
-      );
+    if (type === OrderType.MARKET) {
+      return errorResponse(c, 400, "UNSUPPORTED_ORDER_TYPE");
+    }
+    if (tif === TimeInForce.FOK_BUDGET) {
+      return errorResponse(c, 400, "UNSUPPORTED_ORDER_TYPE");
+    }
+    const price = parsePositiveUnit(body.price);
+    if (price === null || !isBoundedPositiveInteger(price, MAX_ORDER_PRICE)) {
+      return errorResponse(c, 400, "INVALID_PRICE");
     }
 
     let quoteBudget: number | undefined;
@@ -370,29 +364,6 @@ export function createExchangeApp(
       quoteBudget = parsed;
     }
 
-    if (
-      type === OrderType.MARKET &&
-      side === Side.BUY &&
-      market === "SOL-USD" &&
-      quoteBudget === undefined
-    ) {
-      return errorResponse(c, 400, "MARKET_MISSING_QUOTE_BUDGET");
-    }
-    if (
-      type === OrderType.MARKET &&
-      market !== "SOL-USD" &&
-      quoteBudget === undefined
-    ) {
-      return errorResponse(c, 400, "MARKET_MISSING_QUOTE_BUDGET");
-    }
-    if (
-      tif === TimeInForce.FOK_BUDGET &&
-      (type !== OrderType.MARKET ||
-        side !== Side.BUY ||
-        quoteBudget === undefined)
-    ) {
-      return errorResponse(c, 400, "FOK_BUDGET_REQUIRES_MARKET_BUY");
-    }
     if (body.orderId !== undefined && !isIdentifier(body.orderId)) {
       return errorResponse(c, 400, "INVALID_ORDER_ID");
     }
