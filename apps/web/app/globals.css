@@ -39,6 +39,11 @@
   --input: #e4e4e7;
   --ring: #111111;
   --radius: 0.5rem;
+  --scrollbar-thumb: rgb(24 24 27 / 0.22);
+  --scrollbar-thumb-hover: rgb(24 24 27 / 0.4);
+  --scrollbar-track: rgb(24 24 27 / 0.05);
+  --selection-bg: rgb(16 185 129 / 0.28);
+  --selection-fg: #052e1c;
 }
 
 .dark {
@@ -54,6 +59,11 @@
   --border: #27272a;
   --input: #27272a;
   --ring: #a1a1aa;
+  --scrollbar-thumb: rgb(250 250 250 / 0.22);
+  --scrollbar-thumb-hover: rgb(250 250 250 / 0.4);
+  --scrollbar-track: rgb(250 250 250 / 0.06);
+  --selection-bg: rgb(52 211 153 / 0.32);
+  --selection-fg: #ecfdf5;
 }
 
 @layer base {
@@ -66,6 +76,48 @@
   html {
     @apply font-sans;
   }
+
+  /* Text selection — emerald wash matching paper-ledger accents */
+  ::selection {
+    background: var(--selection-bg);
+    color: var(--selection-fg);
+  }
+
+  ::-moz-selection {
+    background: var(--selection-bg);
+    color: var(--selection-fg);
+  }
+}
+
+/* Global thin vertical scroll rails (Firefox + Chromium) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-track {
+  margin: 4px 0;
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 @utility font-display {
@@ -132,6 +184,7 @@
 /* Order book — thin aesthetic vertical scroll rails */
 .ob-scroll {
   scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -142,14 +195,18 @@
 
 .ob-scroll::-webkit-scrollbar-track {
   margin: 4px 0;
-  background: transparent;
+  background: var(--scrollbar-track);
   border-radius: 999px;
 }
 
 .ob-scroll::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: transparent;
+  background: var(--scrollbar-thumb);
   background-clip: padding-box;
+}
+
+.ob-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
 .ob-scroll-ask {
