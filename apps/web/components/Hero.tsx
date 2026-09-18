@@ -111,16 +111,17 @@ export function Hero() {
           alt=""
           fill
           priority
+          quality={90}
           sizes="100vw"
           className="animate-hero-zoom object-cover object-center"
         />
         <div
           aria-hidden
-          className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.62)_0%,rgba(0,0,0,0.28)_40%,rgba(0,0,0,0.82)_100%)]"
+          className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.48)_0%,rgba(0,0,0,0.16)_42%,rgba(0,0,0,0.72)_100%)]"
         />
         <div
           aria-hidden
-          className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_35%,rgba(0,0,0,0.55)_0%,transparent_55%)]"
+          className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_35%,rgba(0,0,0,0.32)_0%,transparent_55%)]"
         />
 
         <header className="relative z-10 flex items-center justify-between px-4 pt-5 sm:px-8 sm:pt-6">
@@ -499,12 +500,13 @@ export function Hero() {
           src="/financeBg.jpg"
           alt=""
           fill
+          quality={90}
           sizes="100vw"
           className="object-cover object-[center_40%]"
         />
         <div
           aria-hidden
-          className="absolute inset-0 bg-[linear-gradient(180deg,rgba(9,9,11,0.88)_0%,rgba(9,9,11,0.72)_45%,rgba(9,9,11,0.92)_100%)]"
+          className="absolute inset-0 bg-[linear-gradient(180deg,rgba(9,9,11,0.82)_0%,rgba(9,9,11,0.68)_45%,rgba(9,9,11,0.88)_100%)]"
         />
         <div
           aria-hidden
@@ -618,12 +620,8 @@ function ProductShot() {
           The desk you open after sign in.
         </h2>
         <p className="mt-4 max-w-lg text-pretty text-base leading-relaxed text-zinc-600 dark:text-muted-foreground">
-          Spot, perps, balances, and the live book in one frame. Drop your
-          screenshot in as{" "}
-          <code className="font-mono text-sm text-zinc-950 dark:text-foreground">
-            public/product-shot.png
-          </code>
-          .
+          Spot, perps, balances, and the live book in one frame after you sign
+          in.
         </p>
 
         <div className="relative mt-10 overflow-hidden border border-emerald-950/15 bg-zinc-950 shadow-[0_28px_80px_rgba(12,30,22,0.22)] dark:border-border dark:shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
@@ -642,8 +640,9 @@ function ProductShot() {
                 src="/product-shot.png"
                 alt="CEX trading desk showing the SOL USD order book and balances"
                 fill
+                quality={90}
                 sizes="(max-width: 1024px) 100vw, 1024px"
-                className="object-cover object-top"
+                className="object-contain object-top"
                 onError={() => setMissing(true)}
               />
             ) : (

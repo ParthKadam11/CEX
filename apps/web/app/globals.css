@@ -147,17 +147,17 @@
   animation-delay: 200ms;
 }
 
-@keyframes hero-zoom {
+@keyframes hero-reveal {
   from {
-    transform: scale(1.06);
+    opacity: 0.72;
   }
   to {
-    transform: scale(1);
+    opacity: 1;
   }
 }
 
 @utility animate-hero-zoom {
-  animation: hero-zoom 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: hero-reveal 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes tape-scroll {
