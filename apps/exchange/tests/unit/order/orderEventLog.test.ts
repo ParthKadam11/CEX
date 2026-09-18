@@ -49,7 +49,7 @@ describe("OrderEventLog", () => {
 });
 
 describe("OrderPlacementService event log", () => {
-  it("logs REJECTED for invalid FOK_BUDGET usage", () => {
+  it("logs REJECTED for unsupported FOK_BUDGET", () => {
     const book = new OrderBook("SOL-USD");
     const service = new OrderPlacementService();
     const order = makeOrder({
@@ -66,7 +66,7 @@ describe("OrderPlacementService event log", () => {
     const events = service.eventLog.forOrder("b1");
     expect(events.map((e) => e.type)).toEqual(["REJECTED"]);
     expect(events.find((e) => e.type === "REJECTED")?.reason).toBe(
-      "FOK_BUDGET_REQUIRES_MARKET_BUY",
+      "UNSUPPORTED_ORDER_TYPE",
     );
     expect(events[0]?.fromStatus).toBe("NEW");
     expect(events[0]?.status).toBe("REJECTED");
