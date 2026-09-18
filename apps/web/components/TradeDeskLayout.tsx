@@ -194,8 +194,9 @@ export function TradeDeskLayout({
           className,
         )}
       >
-        <section className="flex min-h-[260px] flex-col bg-white dark:bg-zinc-950 sm:min-h-[300px]">
-          {chart}
+        {/* Explicit height — flex-1/h-full charts collapse under min-height-only parents. */}
+        <section className="relative flex h-[min(360px,52dvh)] min-h-[280px] flex-col overflow-hidden bg-white dark:bg-zinc-950 sm:h-[min(400px,55dvh)]">
+          <div className="absolute inset-0 flex min-h-0 flex-col">{chart}</div>
         </section>
         <section className="flex h-[min(380px,50dvh)] flex-col overflow-hidden bg-white dark:bg-zinc-950">
           {book}

@@ -403,11 +403,26 @@ export class OrderPlacementService {
       if (isTerminal(order.status)) continue;
       book.add(order);
       const need = lockForOrder(order);
-      if (need && need.amount > 0) {
+      if (!need || need.amount <= 0) continue;
+      if (restoreMoney) {
         this.locks.set(order.orderId, {
           asset: need.asset,
           amount: need.amount,
         });
+        continue;
+      }
+      // Shared wallet already owns locked totals — only track what is still
+      // locked so CANCEL replay does not over-unlock.
+      const have = this.money.get(order.userId, need.asset).locked;
+      let tracked = 0;
+      for (const [oid, row] of this.locks) {
+        if (row.asset !== need.asset) continue;
+        const owner = this.store.get(oid);
+        if (owner?.userId === order.userId) tracked += row.amount;
+      }
+      const amount = Math.min(need.amount, Math.max(0, have - tracked));
+      if (amount > 0) {
+        this.locks.set(order.orderId, { asset: need.asset, amount });
       }
     }
   }
@@ -626,10 +641,16 @@ export class OrderPlacementService {
       this.locks.delete(order.orderId);
       return;
     }
-    this.money.unlock(order.userId, lock.asset, lock.amount, {
-      refType: "ORDER",
-      refId: order.orderId,
-    });
+    // Shared wallet + multi-WAL replay can leave lock tracking ahead of the
+    // durable locked balance — never unlock more than is actually locked.
+    const have = this.money.get(order.userId, lock.asset).locked;
+    const amount = Math.min(lock.amount, have);
+    if (amount > 0) {
+      this.money.unlock(order.userId, lock.asset, amount, {
+        refType: "ORDER",
+        refId: order.orderId,
+      });
+    }
     this.locks.delete(order.orderId);
   }
 

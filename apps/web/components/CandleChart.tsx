@@ -142,8 +142,11 @@ export function CandleChart({
     if (!host) return;
 
     const colors = themeColors(dark);
+    // Prefer explicit size — autoSize alone often stays 0×0 on mobile until a
+    // delayed layout pass, leaving a blank chart.
     const chart = createChart(host, {
-      autoSize: true,
+      width: Math.max(host.clientWidth, 1),
+      height: Math.max(host.clientHeight, 1),
       layout: {
         background: { type: ColorType.Solid, color: colors.background },
         textColor: colors.text,
@@ -176,7 +179,18 @@ export function CandleChart({
         timeVisible: true,
         secondsVisible: true,
       },
-      handleScroll: { vertTouchDrag: false },
+      // Let the page scroll vertically on phones; keep horizontal pan/zoom on chart.
+      handleScroll: {
+        vertTouchDrag: false,
+        horzTouchDrag: true,
+        mouseWheel: true,
+        pressedMouseMove: true,
+      },
+      handleScale: {
+        axisPressedMouseMove: true,
+        mouseWheel: true,
+        pinch: true,
+      },
     });
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
@@ -190,8 +204,9 @@ export function CandleChart({
       wickDownColor: colors.down,
     });
     chart.timeScale().applyOptions({
-      barSpacing: 10,
-      minBarSpacing: 4,
+      barSpacing: 8,
+      minBarSpacing: 2,
+      rightOffset: 4,
     });
     const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
@@ -206,6 +221,26 @@ export function CandleChart({
     volumeSeriesRef.current = volumeSeries;
     prevTimesRef.current = [];
     fittedRef.current = false;
+
+    // Mobile often mounts the host at 0×0, then grows. Resize + fit once ready.
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      if (width < 8 || height < 8) return;
+      chart.applyOptions({
+        width: Math.floor(width),
+        height: Math.floor(height),
+      });
+      if (!fittedRef.current && candleSeriesRef.current) {
+        const data = candleSeriesRef.current.data();
+        if (data.length > 0) {
+          chart.timeScale().fitContent();
+          fittedRef.current = true;
+        }
+      }
+    });
+    resizeObserver.observe(host);
 
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.seriesData) {
@@ -232,6 +267,7 @@ export function CandleChart({
     });
 
     return () => {
+      resizeObserver.disconnect();
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -288,10 +324,13 @@ export function CandleChart({
     } else {
       candleSeries.setData(rows.map(toCandlePoint));
       volumeSeries.setData(rows.map((row) => toVolumePoint(row, colors)));
-      if (!fittedRef.current) {
+      const host = hostRef.current;
+      const ready =
+        host != null && host.clientWidth >= 8 && host.clientHeight >= 8;
+      if (!fittedRef.current && ready) {
         chart.timeScale().fitContent();
         fittedRef.current = true;
-      } else if (nearLiveEdge) {
+      } else if (nearLiveEdge && fittedRef.current) {
         chart.timeScale().scrollToRealTime();
       }
     }
@@ -338,7 +377,7 @@ export function CandleChart({
           </>
         ) : (
           <span className="text-zinc-400 dark:text-zinc-500">
-            Hover chart for OHLC · scroll to zoom · drag to pan
+            Pinch to zoom · drag to pan
           </span>
         )}
       </div>
@@ -348,7 +387,11 @@ export function CandleChart({
             No candle history yet. Trades will populate the chart.
           </div>
         )}
-        <div ref={hostRef} className="h-full w-full" />
+        <div
+          ref={hostRef}
+          className="h-full min-h-[180px] w-full touch-pan-x"
+          style={{ touchAction: "pan-x pinch-zoom" }}
+        />
       </div>
     </div>
   );
