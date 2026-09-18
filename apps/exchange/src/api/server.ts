@@ -21,6 +21,7 @@ import { isPositiveUnit, isUnit, marketSpec } from "../market/units.js";
 import { enrichPositionRisk } from "../risk/liquidation.js";
 import { CreditIdempotencyConflictError, DebitIdempotencyConflictError } from "../account/balanceService.js";
 import { InsufficientBalanceError } from "../account/balanceStore.js";
+import type { SharedWallet } from "../account/sharedWallet.js";
 import { log } from "../logger.js";
 
 function isMarket(value: string): value is MarketSymbol {
@@ -69,10 +70,15 @@ function parseNonNegativeUnit(value: unknown): number | null {
 export function createExchangeApp(
   runtimeOrRuntimes: MarketRuntime | ReadonlyMap<MarketSymbol, MarketRuntime>,
   bus: EventBus,
-  options: { gatewayToken?: string; dataDir?: string } = {},
+  options: {
+    gatewayToken?: string;
+    dataDir?: string;
+    wallet?: SharedWallet;
+  } = {},
 ) {
   const runtimes = resolveRuntimes(runtimeOrRuntimes);
   const app = new Hono();
+  const wallet = options.wallet ?? null;
 
   function runtimeFor(
     raw: string,
@@ -150,8 +156,8 @@ export function createExchangeApp(
     );
   });
 
-  // Dev hard-reset: empty book + balances + WAL (not for production).
-  // Optional ?market= resets one venue; otherwise resets all hosted markets.
+  // Dev hard-reset: empty book + WAL (not for production).
+  // Optional ?market= resets one venue's book; full reset also clears shared wallet.
   app.post("/v1/dev/reset", async (c) => {
     if (process.env.NODE_ENV === "production") {
       return errorResponse(c, 404, "NOT_FOUND");
@@ -171,6 +177,11 @@ export function createExchangeApp(
     for (const runtime of runtimes.values()) {
       await runtime.hardReset();
       books[runtime.market] = runtime.book.getSnapshot(0);
+    }
+    if (wallet) {
+      wallet.clear();
+    } else {
+      // Legacy single-runtime tests: hardReset already wiped that runtime's money.
     }
     return c.json({
       ok: true,

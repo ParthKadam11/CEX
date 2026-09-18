@@ -10,8 +10,8 @@ import { parseMarketParam } from "@/lib/markets";
 const MAX_PAPER_CREDIT = 1_000_000;
 
 /**
- * Paper-fund the authenticated user's engine ledger via OMS CREDIT.
- * Pass `market` to credit the spot or perp engine (separate ledgers).
+ * Paper-fund the authenticated user's engine wallet via OMS CREDIT.
+ * Spot and perps share one wallet — `market` only picks which WAL journals the credit.
  */
 export async function POST(request: NextRequest) {
   const userId = await getAuthenticatedUserId();

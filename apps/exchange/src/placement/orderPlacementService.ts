@@ -377,12 +377,21 @@ export class OrderPlacementService {
     };
   }
 
-  restoreSnapshot(snapshot: EngineSnapshot, book: OrderBook): void {
+  restoreSnapshot(
+    snapshot: EngineSnapshot,
+    book: OrderBook,
+    opts: { restoreMoney?: boolean } = {},
+  ): void {
+    const restoreMoney = opts.restoreMoney !== false;
     this.store.clear();
     this.locks.clear();
     this.positionStore.loadAll(snapshot.positions ?? []);
-    this.money.balances.loadAll(snapshot.balances);
-    this.money.ledger.replace(snapshot.ledger, snapshot.ledgerSeq);
+    // Shared wallet: secondary markets skip money so they don't clobber the
+    // process-wide ledger already loaded from wallet.snapshot.json.
+    if (restoreMoney) {
+      this.money.balances.loadAll(snapshot.balances);
+      this.money.ledger.replace(snapshot.ledger, snapshot.ledgerSeq);
+    }
     this.log.replace(snapshot.events, snapshot.eventSeq);
     this.matcher.setTradeSeq(snapshot.tradeSeq);
     // Best-effort: no durable last-trade in v1 snapshots; leave null until next fill.
@@ -403,7 +412,7 @@ export class OrderPlacementService {
     }
   }
 
-  pruneRam(bounds: RamBounds): void {
+  pruneRam(bounds: RamBounds, opts: { trimLedger?: boolean } = {}): void {
     const terminals = this.store
       .all()
       .filter((order) => isTerminal(order.status))
@@ -422,7 +431,10 @@ export class OrderPlacementService {
     const keep = new Set(this.store.all().map((order) => order.orderId));
     this.log.retain(keep);
     this.log.trimOldest(bounds.maxOrderEvents);
-    this.money.ledger.trimNewest(bounds.maxLedgerEntries);
+    // Shared wallet: either market must not trim the process-wide ledger.
+    if (opts.trimLedger !== false) {
+      this.money.ledger.trimNewest(bounds.maxLedgerEntries);
+    }
   }
 
   place(order: Order, book: OrderBook): PlacementResult {

@@ -7,6 +7,8 @@ import { EventBus } from "./api/eventBus.js";
 import { createExchangeApp } from "./api/server.js";
 import { loadLocalEnv } from "./loadEnv.js";
 import { log } from "./logger.js";
+import { SharedWallet } from "./account/sharedWallet.js";
+import { loadSnapshot, snapshotPathFor } from "./journal/snapshot.js";
 import { MarketRuntime } from "./market/runtime.js";
 
 /*
@@ -16,7 +18,7 @@ import { MarketRuntime } from "./market/runtime.js";
   SSE   → /v1/markets/:market/stream  (ORDER, BBO, CREDIT, TRADE, POSITION)
 
   One process hosts one or more markets (default: spot + perps).
-  Each market keeps its own WAL / book / balances / positions.
+  Books / positions / WALs stay per market. Balances are one shared wallet.
 */
 
 loadLocalEnv();
@@ -38,13 +40,24 @@ const dataDir = resolveDataDir();
 ensureDataDir(dataDir);
 
 const bus = new EventBus();
+const wallet = new SharedWallet(path.join(dataDir, "wallet.snapshot.json"));
+seedWalletFromLegacySnapshots(wallet, markets, dataDir);
+wallet.load();
+
 const runtimes = new Map<MarketSymbol, MarketRuntime>();
 for (const market of markets) {
   const walPath = resolveWalPath(market, markets.length);
-  runtimes.set(market, MarketRuntime.open(market, walPath, bus));
+  runtimes.set(
+    market,
+    MarketRuntime.open(market, walPath, bus, { wallet }),
+  );
 }
 
-const app = createExchangeApp(runtimes, bus, { gatewayToken, dataDir });
+const app = createExchangeApp(runtimes, bus, {
+  gatewayToken,
+  dataDir,
+  wallet,
+});
 
 const shutdown = () => {
   log.info("shutting down");
@@ -153,6 +166,44 @@ function resolveWalPath(market: MarketSymbol, marketCount: number): string {
     marketCount === 1 ? process.env.EXCHANGE_WAL_PATH?.trim() : undefined;
   if (single) return path.resolve(single);
   return path.join(dataDir, `${market}.jsonl`);
+}
+
+/**
+ * First boot after shared-wallet upgrade: if wallet.snapshot.json is missing,
+ * seed from the richest legacy per-market snapshot (prefer SOL-USD) so paper
+ * balances are not wiped.
+ */
+function seedWalletFromLegacySnapshots(
+  wallet: SharedWallet,
+  markets: readonly MarketSymbol[],
+  dir: string,
+): void {
+  const walletPath = path.join(dir, "wallet.snapshot.json");
+  try {
+    accessSync(walletPath, constants.R_OK);
+    return;
+  } catch {
+    // missing — seed below
+  }
+
+  const preferred = markets.includes("SOL-USD")
+    ? ["SOL-USD", ...markets.filter((m) => m !== "SOL-USD")]
+    : [...markets];
+
+  for (const market of preferred) {
+    const snap = loadSnapshot(
+      snapshotPathFor(path.join(dir, `${market}.jsonl`)),
+    );
+    if (!snap || snap.balances.length === 0) continue;
+    wallet.money.balances.loadAll(snap.balances);
+    wallet.money.ledger.replace(snap.ledger ?? [], snap.ledgerSeq ?? 0);
+    wallet.save();
+    log.info("seeded shared wallet from legacy market snapshot", {
+      market,
+      balances: snap.balances.length,
+    });
+    return;
+  }
 }
 
 function serviceToken(name: string, fallback: string): string {

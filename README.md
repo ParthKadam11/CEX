@@ -258,7 +258,7 @@ Notable engine rules:
 - Perps lock USD margin (`ceil(notional / leverage)`); fills update positions and realize PnL — no SOL delivery.
 - Maintenance liquidation force-closes underwater perps at mark vs house (`sim-liquidator`).
 - Funding settles periodically (demo: 100 bps / 60s); longs pay shorts when rate > 0.
-- Credit balances per market separately (spot USD and perp USD are not shared).
+- Spot and perps share one wallet (USD/SOL available + locked). Books and positions stay per market.
 - Exchange place/credit are idempotent on retry: same `orderId`+intent returns the prior order; credit with `commandId` does not double-apply.
 - Gateway command handling journals the outcome in Redis before publish, then marks processed — crash mid-flight retries replay the outcome (deterministic event ids) instead of relying on a best-effort mark.
 - `FOK_BUDGET` is a market-buy-only fill-or-kill order. It must fill the

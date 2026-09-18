@@ -295,12 +295,15 @@ describe("exchange HTTP + SSE", () => {
     await runtime.close();
   });
 
-  it("hosts spot and perps in one app with separate books", async () => {
+  it("hosts spot and perps in one app with a shared wallet", async () => {
     const bus = new EventBus();
-    const spot = MarketRuntime.open("SOL-USD", tempWal(), bus);
+    const { SharedWallet } = await import("../../../src/account/sharedWallet.js");
+    const wallet = new SharedWallet();
+    const spot = MarketRuntime.open("SOL-USD", tempWal(), bus, { wallet });
     const perpWal = path.join(path.dirname(tempWal()), "SOL-USD-PERP.jsonl");
     const perp = MarketRuntime.open("SOL-USD-PERP", perpWal, bus, {
       fundingIntervalMs: 0,
+      wallet,
     });
     const app = createExchangeApp(
       new Map([
@@ -308,6 +311,7 @@ describe("exchange HTTP + SSE", () => {
         ["SOL-USD-PERP", perp],
       ]),
       bus,
+      { wallet },
     );
 
     const health = await (await app.request("/health")).json();
@@ -325,13 +329,26 @@ describe("exchange HTTP + SSE", () => {
     await app.request("/v1/markets/SOL-USD/credit", {
       method: "POST",
       headers,
-      body: JSON.stringify({ userId: "u1", asset: "SOL", amount: 2 }),
-    });
-    await app.request("/v1/markets/SOL-USD-PERP/credit", {
-      method: "POST",
-      headers,
       body: JSON.stringify({ userId: "u1", asset: "USD", amount: 10_000 }),
     });
+    await app.request("/v1/markets/SOL-USD/credit", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ userId: "u1", asset: "SOL", amount: 2 }),
+    });
+
+    // Same USD visible on both market balance routes.
+    const spotBal = await (
+      await app.request("/v1/markets/SOL-USD/balances/u1")
+    ).json();
+    const perpBal = await (
+      await app.request("/v1/markets/SOL-USD-PERP/balances/u1")
+    ).json();
+    expect(spotBal.balances).toEqual(perpBal.balances);
+    expect(
+      spotBal.balances.find((b: { asset: string }) => b.asset === "USD")
+        .available,
+    ).toBe(10_000);
 
     await app.request("/v1/markets/SOL-USD/orders", {
       method: "POST",

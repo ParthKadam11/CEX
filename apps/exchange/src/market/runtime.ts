@@ -27,6 +27,7 @@ import {
   type EngineSnapshot,
 } from "../journal/snapshot.js";
 import type { EventBus } from "../api/eventBus.js";
+import type { SharedWallet } from "../account/sharedWallet.js";
 import { CommandQueue } from "./commandQueue.js";
 import { isPerpMarket, marketSpec } from "./units.js";
 import { resolveMarkPrice, type MarkPriceSnapshot } from "../risk/markPrice.js";
@@ -39,6 +40,8 @@ export type MarketRuntimeOptions = {
   // 0 disables auto funding timer (tests). Default: marketSpec.fundingIntervalMs.
   fundingIntervalMs?: number;
   maxRecentRiskEvents?: number;
+  /** Process-wide wallet shared across spot + perps. */
+  wallet?: SharedWallet;
 };
 
 export const DEFAULT_SNAPSHOT_EVERY = 1024;
@@ -78,7 +81,8 @@ export class MarketRuntime {
   private readonly snapshotPath: string;
   private readonly snapshotEvery: number;
   private readonly ramBounds: RamBounds;
-  private readonly queue: CommandQueue;
+  private readonly queue: CommandQueue | null;
+  private readonly wallet: SharedWallet | null;
   private fundingTimer: ReturnType<typeof setInterval> | null = null;
   private readonly fundingIntervalMs: number;
   private readonly maxRecentRiskEvents: number;
@@ -93,7 +97,13 @@ export class MarketRuntime {
     snapshotPath?: string,
   ) {
     this.book = new OrderBook(market);
-    this.placement = new OrderPlacementService();
+    this.wallet = opts.wallet ?? null;
+    this.placement = new OrderPlacementService(
+      undefined,
+      undefined,
+      undefined,
+      this.wallet?.money,
+    );
     this.snapshotPath = snapshotPath ?? "";
     this.snapshotEvery = opts.snapshotEvery ?? DEFAULT_SNAPSHOT_EVERY;
     this.ramBounds = {
@@ -109,7 +119,13 @@ export class MarketRuntime {
       0;
     this.maxRecentRiskEvents =
       opts.maxRecentRiskEvents ?? DEFAULT_RECENT_RISK_EVENTS;
-    this.queue = new CommandQueue(() => this.wal.flush());
+    // Shared wallet owns the process-wide queue so spot + perp never race money.
+    if (this.wallet) {
+      this.queue = null;
+      this.wallet.registerFlush(() => this.wal.flush());
+    } else {
+      this.queue = new CommandQueue(() => this.wal.flush());
+    }
 
     this.placement.eventLog.onAppend((event) => {
       if (this.replaying || !this.bus) return;
@@ -221,9 +237,16 @@ export class MarketRuntime {
     };
   }
 
-  //Dev-only: wipe book, balances, order indexes, WAL, and snapshot. Market is empty afterward (users must re-credit).
+  // Dev-only: wipe book + order indexes + WAL + snapshot for this market.
+  // Shared wallet balances are kept (unlock open orders first). Use SharedWallet.clear()
+  // when resetting every market.
   hardReset(): Promise<void> {
     return this.enqueue(() => {
+      for (const order of this.queries.listAll(this.market)) {
+        if (order.status === "OPEN" || order.status === "PARTIALLY_FILLED") {
+          this.placement.cancel(order.orderId, this.book);
+        }
+      }
       this.book.clear();
       const empty: EngineSnapshot = {
         version: 2,
@@ -238,7 +261,10 @@ export class MarketRuntime {
         ledger: [],
         positions: [],
       };
-      this.placement.restoreSnapshot(empty, this.book);
+      // Never clobber a shared wallet from a single-market reset.
+      this.placement.restoreSnapshot(empty, this.book, {
+        restoreMoney: this.wallet == null,
+      });
       this.wal.wipe();
       this.snapshotSeq = 0;
       this.recentLiquidations.length = 0;
@@ -449,7 +475,9 @@ export class MarketRuntime {
   private checkpointNow(): void {
     if (this.replaying || !this.snapshotPath) return;
 
-    this.placement.pruneRam(this.ramBounds);
+    this.placement.pruneRam(this.ramBounds, {
+      trimLedger: this.wallet == null,
+    });
     const walSeq = this.wal.currentSeq;
     saveSnapshot(
       this.snapshotPath,
@@ -457,6 +485,8 @@ export class MarketRuntime {
     );
     this.wal.truncateAfter(walSeq);
     this.snapshotSeq = walSeq;
+    // Keep the process-wide wallet durable whenever any market checkpoints.
+    this.wallet?.save();
   }
 
   private publishBbo(): void {
@@ -495,7 +525,8 @@ export class MarketRuntime {
   }
 
   private enqueue<T>(run: () => T): Promise<T> {
-    return this.queue.enqueue(run);
+    if (this.wallet) return this.wallet.enqueue(run);
+    return this.queue!.enqueue(run);
   }
 
   private replay(
@@ -505,7 +536,10 @@ export class MarketRuntime {
     this.replaying = true;
     try {
       if (snapshot) {
-        this.placement.restoreSnapshot(snapshot, this.book);
+        // Shared wallet already holds balances (wallet.snapshot.json or seeded).
+        this.placement.restoreSnapshot(snapshot, this.book, {
+          restoreMoney: this.wallet == null,
+        });
         this.snapshotSeq = snapshot.walSeq;
         this.wal.adoptSeq(snapshot.walSeq);
       }
