@@ -60,13 +60,20 @@ pnpm infra:logs
 | Redis | `6379` | Streams / pub/sub |
 | PostgreSQL | `5432` | Users, OMS |
 | TimescaleDB | `5434` | Market-data history |
+| Prometheus | `9090` | Metrics UI + scrape (host network → `127.0.0.1`) |
 
-Compose binds these to `127.0.0.1` (fine for local; safer if the same Compose file is reused on a server).
+Compose binds data stores to `127.0.0.1`. Prometheus uses `network_mode: host` so it can scrape PM2 apps that also listen on loopback (see `infra/prometheus/prometheus.yml`).
+
+```bash
+# After apps are up:
+curl -s http://127.0.0.1:4020/metrics | head
+open http://127.0.0.1:9090   # or SSH tunnel
+```
 
 ## Requirements
 
 - Docker Desktop (or compatible)
-- Free local ports `6379`, `5432`, `5434`
+- Free local ports `6379`, `5432`, `5434`, `9090`
 
 ## What this stack does not start
 

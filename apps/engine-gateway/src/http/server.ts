@@ -390,13 +390,18 @@ export function createGatewayApp(options: GatewayAppOptions) {
     );
   });
 
-  app.get("/metrics", (c) =>
-    c.json({
-      service: "engine-gateway",
-      uptimeSeconds: Math.floor(process.uptime()),
-      ...options.metrics.snapshot(),
-    }),
-  );
+  app.get("/metrics", (c) => {
+    const body = options.metrics.toPrometheus(
+      Math.floor(process.uptime()),
+    );
+    return new Response(body, {
+      status: 200,
+      headers: {
+        "content-type": "text/plain; version=0.0.4; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    });
+  });
 
   // Token-gated command inject for the market-maker / local tooling.
   // Sim accounts are ledger-only (no OMS User rows), so place/cancel stay here.
