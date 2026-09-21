@@ -483,7 +483,7 @@ function marketMeta(market: MarketSymbol) {
 
 function errorResponse(
   context: Context,
-  status: 400 | 401 | 404 | 409 | 500 | 502,
+  status: 400 | 401 | 403 | 404 | 409 | 500 | 502,
   code: string,
   message = code,
 ) {

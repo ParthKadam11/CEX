@@ -828,7 +828,7 @@ function errorBody(
 
 function errorResponse(
   context: Context,
-  status: 400 | 401 | 404 | 409 | 500,
+  status: 400 | 401 | 403 | 404 | 409 | 500,
   code: string,
   message = code,
 ) {
