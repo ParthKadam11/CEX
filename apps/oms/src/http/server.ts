@@ -15,6 +15,11 @@ import {
   checkConsumerGroup,
   maxEventLag,
   pingRedis,
+  dependencyOkMetric,
+  processUpMetrics,
+  PROMETHEUS_CONTENT_TYPE,
+  renderPrometheus,
+  streamLagMetrics,
   type RedisHealthClient,
 } from "@cex/logger";
 import {
@@ -48,7 +53,8 @@ export function createOmsApp(
     if (
       !options.internalToken ||
       c.req.path === "/health" ||
-      c.req.path === "/health/live"
+      c.req.path === "/health/live" ||
+      c.req.path === "/metrics"
     ) {
       await next();
       return;
@@ -78,6 +84,49 @@ export function createOmsApp(
   app.get("/health/live", (c) =>
     c.json({ ok: true, service: "oms", live: true }),
   );
+
+  app.get("/metrics", async (c) => {
+    const samples = [...processUpMetrics("oms")];
+
+    if (options.checkDb) {
+      let dbOk = true;
+      try {
+        await options.checkDb();
+      } catch {
+        dbOk = false;
+      }
+      samples.push(dependencyOkMetric("oms", "database", dbOk));
+    }
+
+    if (options.redis) {
+      const redis = await pingRedis(options.redis);
+      samples.push(dependencyOkMetric("oms", "redis", redis.ok));
+      const events = await checkConsumerGroup(
+        options.redis,
+        ORDERS_EVENTS_STREAM,
+        OMS_EVENTS_GROUP,
+        maxEventLag(),
+      );
+      samples.push(dependencyOkMetric("oms", "events", events.ok));
+      samples.push(
+        ...streamLagMetrics(
+          "oms",
+          ORDERS_EVENTS_STREAM,
+          OMS_EVENTS_GROUP,
+          events.lag,
+          events.pending,
+        ),
+      );
+    }
+
+    return new Response(renderPrometheus(samples), {
+      status: 200,
+      headers: {
+        "content-type": PROMETHEUS_CONTENT_TYPE,
+        "cache-control": "no-store",
+      },
+    });
+  });
 
   app.get("/health", async (c) => {
     if (!options.redis || !options.checkDb) {

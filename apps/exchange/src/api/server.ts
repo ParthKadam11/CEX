@@ -23,6 +23,12 @@ import { CreditIdempotencyConflictError, DebitIdempotencyConflictError } from ".
 import { InsufficientBalanceError } from "../account/balanceStore.js";
 import type { SharedWallet } from "../account/sharedWallet.js";
 import { log } from "../logger.js";
+import {
+  processUpMetrics,
+  PROMETHEUS_CONTENT_TYPE,
+  renderPrometheus,
+  dependencyOkMetric,
+} from "@cex/logger";
 
 function isMarket(value: string): value is MarketSymbol {
   return isMarketSymbol(value);
@@ -99,6 +105,7 @@ export function createExchangeApp(
     if (
       c.req.path === "/health" ||
       c.req.path === "/health/live" ||
+      c.req.path === "/metrics" ||
       !options.gatewayToken
     ) {
       await next();
@@ -133,6 +140,28 @@ export function createExchangeApp(
       live: true,
     }),
   );
+
+  app.get("/metrics", (c) => {
+    const markets = [...runtimes.keys()];
+    const samples = [
+      ...processUpMetrics("exchange"),
+      dependencyOkMetric("exchange", "markets", markets.length > 0),
+      {
+        name: "cex_exchange_markets",
+        help: "Number of markets loaded in the exchange process.",
+        type: "gauge" as const,
+        value: markets.length,
+        labels: { service: "exchange" },
+      },
+    ];
+    return new Response(renderPrometheus(samples), {
+      status: 200,
+      headers: {
+        "content-type": PROMETHEUS_CONTENT_TYPE,
+        "cache-control": "no-store",
+      },
+    });
+  });
 
   app.get("/health", (c) => {
     const markets = [...runtimes.keys()];

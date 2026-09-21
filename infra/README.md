@@ -76,8 +76,11 @@ curl -s http://127.0.0.1:4020/metrics | head
 ```
 
 Provisioned dashboards (folder CEX):
-- **CEX Engine Gateway** — Prometheus metrics
+- **CEX Engine Gateway** — gateway command/SSE counters
+- **CEX Services** — exchange / OMS / ingester / web up + deps + stream lag
 - **CEX PM2 Logs** — Loki (`{job="pm2"}` in Explore)
+
+All of this runs **on your VPS** (Docker). There is no Grafana Cloud / Datadog bill — only Contabo disk/CPU for retention.
 
 Promtail tails `$PM2_LOG_DIR` (default `/home/deployer/.pm2/logs`) into Loki (7-day retention).
 

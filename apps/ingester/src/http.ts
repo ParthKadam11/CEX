@@ -13,6 +13,11 @@ import {
   checkConsumerGroup,
   maxMdLag,
   pingRedis,
+  dependencyOkMetric,
+  processUpMetrics,
+  PROMETHEUS_CONTENT_TYPE,
+  renderPrometheus,
+  streamLagMetrics,
   type RedisHealthClient,
 } from "@cex/logger";
 import type { Pool } from "pg";
@@ -30,7 +35,11 @@ export function createHistoryApp(
   const app = new Hono();
 
   app.use("*", async (c, next) => {
-    if (c.req.path === "/health" || c.req.path === "/health/live") {
+    if (
+      c.req.path === "/health" ||
+      c.req.path === "/health/live" ||
+      c.req.path === "/metrics"
+    ) {
       await next();
       return;
     }
@@ -43,6 +52,47 @@ export function createHistoryApp(
   app.get("/health/live", (c) =>
     c.json({ ok: true, service: "ingester", live: true }),
   );
+
+  app.get("/metrics", async (c) => {
+    const samples = [...processUpMetrics("ingester")];
+
+    let timescaleOk = true;
+    try {
+      await pool.query("SELECT 1");
+    } catch {
+      timescaleOk = false;
+    }
+    samples.push(dependencyOkMetric("ingester", "timescale", timescaleOk));
+
+    if (options.redis) {
+      const redis = await pingRedis(options.redis);
+      samples.push(dependencyOkMetric("ingester", "redis", redis.ok));
+      const marketData = await checkConsumerGroup(
+        options.redis,
+        MARKET_DATA_STREAM,
+        MARKET_DATA_CONSUMER_GROUP,
+        maxMdLag(),
+      );
+      samples.push(dependencyOkMetric("ingester", "market_data", marketData.ok));
+      samples.push(
+        ...streamLagMetrics(
+          "ingester",
+          MARKET_DATA_STREAM,
+          MARKET_DATA_CONSUMER_GROUP,
+          marketData.lag,
+          marketData.pending,
+        ),
+      );
+    }
+
+    return new Response(renderPrometheus(samples), {
+      status: 200,
+      headers: {
+        "content-type": PROMETHEUS_CONTENT_TYPE,
+        "cache-control": "no-store",
+      },
+    });
+  });
 
   app.get("/health", async (c) => {
     let timescale = {

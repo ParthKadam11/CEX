@@ -7,10 +7,37 @@ scrape_configs:
     static_configs:
       - targets: ["127.0.0.1:9090"]
 
-  # PM2 gateway on the host (Compose uses network_mode: host for this scrape).
   - job_name: engine-gateway
     metrics_path: /metrics
     static_configs:
       - targets: ["127.0.0.1:4020"]
         labels:
           service: engine-gateway
+
+  - job_name: exchange
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:4010"]
+        labels:
+          service: exchange
+
+  - job_name: oms
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:4030"]
+        labels:
+          service: oms
+
+  - job_name: ingester
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:4040"]
+        labels:
+          service: ingester
+
+  - job_name: web
+    metrics_path: /api/metrics
+    static_configs:
+      - targets: ["127.0.0.1:3000"]
+        labels:
+          service: web

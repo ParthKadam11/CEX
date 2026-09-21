@@ -99,3 +99,12 @@ export {
   type RedisHealthClient,
   type StreamGroupCheck,
 } from "./health.js";
+
+export {
+  dependencyOkMetric,
+  processUpMetrics,
+  PROMETHEUS_CONTENT_TYPE,
+  renderPrometheus,
+  streamLagMetrics,
+  type PromMetric,
+} from "./prometheus.js";
