@@ -58,8 +58,30 @@ services:
       - cex_prometheus:/prometheus
     restart: unless-stopped
 
+  # Same host network so Grafana can reach Prometheus on 127.0.0.1:9090.
+  grafana:
+    image: grafana/grafana:11.2.0
+    network_mode: host
+    environment:
+      GF_SERVER_HTTP_ADDR: "127.0.0.1"
+      GF_SERVER_HTTP_PORT: "3001"
+      GF_SERVER_ROOT_URL: "http://127.0.0.1:3001"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-cex-grafana-change-me}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/cex-engine-gateway.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - cex_grafana:/var/lib/grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
 volumes:
   cex_redis:
   cex_postgres:
   cex_timescale:
   cex_prometheus:
+  cex_grafana:

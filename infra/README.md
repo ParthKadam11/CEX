@@ -60,20 +60,25 @@ pnpm infra:logs
 | Redis | `6379` | Streams / pub/sub |
 | PostgreSQL | `5432` | Users, OMS |
 | TimescaleDB | `5434` | Market-data history |
-| Prometheus | `9090` | Metrics UI + scrape (host network → `127.0.0.1`) |
+| Prometheus | `9090` | Metrics scrape + UI (host network → `127.0.0.1`) |
+| Grafana | `3001` | Dashboards (host network → `127.0.0.1`) |
 
-Compose binds data stores to `127.0.0.1`. Prometheus uses `network_mode: host` so it can scrape PM2 apps that also listen on loopback (see `infra/prometheus/prometheus.yml`).
+Compose binds data stores to `127.0.0.1`. Prometheus and Grafana use `network_mode: host` so they can reach each other and PM2 apps on loopback.
 
 ```bash
 # After apps are up:
 curl -s http://127.0.0.1:4020/metrics | head
-open http://127.0.0.1:9090   # or SSH tunnel
+# Prometheus: http://127.0.0.1:9090
+# Grafana:    http://127.0.0.1:3001  (admin / cex-grafana-change-me)
+# Optional:   GRAFANA_ADMIN_PASSWORD=... in the shell or a compose .env
 ```
+
+Provisioned dashboard: **CEX Engine Gateway** (folder CEX).
 
 ## Requirements
 
 - Docker Desktop (or compatible)
-- Free local ports `6379`, `5432`, `5434`, `9090`
+- Free local ports `6379`, `5432`, `5434`, `9090`, `3001`
 
 ## What this stack does not start
 
