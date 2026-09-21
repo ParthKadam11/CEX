@@ -185,11 +185,14 @@ export function createExchangeApp(
     );
   });
 
-  // Dev hard-reset: empty book + WAL (not for production).
+  // Hard-reset: empty book + WAL. Blocked in production unless ALLOW_NUCLEAR_RESET=true.
   // Optional ?market= resets one venue's book; full reset also clears shared wallet.
   app.post("/v1/dev/reset", async (c) => {
-    if (process.env.NODE_ENV === "production") {
-      return errorResponse(c, 404, "NOT_FOUND");
+    if (
+      process.env.NODE_ENV === "production" &&
+      process.env.ALLOW_NUCLEAR_RESET !== "true"
+    ) {
+      return errorResponse(c, 403, "NUCLEAR_RESET_DISABLED");
     }
     const marketQ = c.req.query("market");
     if (marketQ) {

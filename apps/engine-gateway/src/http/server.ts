@@ -429,8 +429,11 @@ export function createGatewayApp(options: GatewayAppOptions) {
   });
 
   app.post("/dev/reset", async (c) => {
-    if (process.env.NODE_ENV === "production") {
-      return errorResponse(c, 404, "DISABLED_IN_PRODUCTION");
+    if (
+      process.env.NODE_ENV === "production" &&
+      process.env.ALLOW_NUCLEAR_RESET !== "true"
+    ) {
+      return errorResponse(c, 403, "NUCLEAR_RESET_DISABLED");
     }
     const market = c.req.query("market");
     try {

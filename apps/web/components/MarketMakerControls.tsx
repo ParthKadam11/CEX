@@ -375,7 +375,15 @@ export function MarketMakerControls({
         error?: { message?: string };
       };
       if (!response.ok && response.status !== 207) {
-        pushEvent(body.error?.message ?? "Nuclear reset failed", "err");
+        const code = (body as { error?: { code?: string } }).error?.code;
+        pushEvent(
+          code === "NUCLEAR_RESET_DISABLED" || response.status === 403
+            ? "Wipe disabled — set ALLOW_NUCLEAR_RESET=true on the server"
+            : response.status === 401
+              ? "Sign in required to wipe"
+              : (body.error?.message ?? `Nuclear reset failed (${response.status})`),
+          "err",
+        );
         return;
       }
       onTickRef.current?.({

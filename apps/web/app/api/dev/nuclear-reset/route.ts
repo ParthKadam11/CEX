@@ -3,12 +3,20 @@ import { bffError, getAuthenticatedUserId } from "@/lib/backend";
 import { runNuclearReset } from "@/lib/sim/nuclear-reset";
 
 /**
- * Dev-only full wipe: book, engine balances, OMS orders, wallet balances,
+ * Full wipe: book, engine balances, OMS orders, wallet balances,
  * Timescale history, Redis streams. Keeps Google User accounts.
+ *
+ * Allowed in non-production always; in production only when
+ * ALLOW_NUCLEAR_RESET=true (papertrade / demo hosts).
  */
+function nuclearResetAllowed(): boolean {
+  if (process.env.NODE_ENV !== "production") return true;
+  return process.env.ALLOW_NUCLEAR_RESET === "true";
+}
+
 export async function POST(request: NextRequest) {
-  if (process.env.NODE_ENV === "production") {
-    return bffError(request, 404, "NOT_FOUND");
+  if (!nuclearResetAllowed()) {
+    return bffError(request, 403, "NUCLEAR_RESET_DISABLED");
   }
 
   const userId = await getAuthenticatedUserId();
