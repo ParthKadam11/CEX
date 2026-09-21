@@ -210,7 +210,7 @@ export function TradingPanel() {
   }
 
   async function loadTradeHistory(force = false) {
-    const response = await fetch(`/api/market/history/trades?${marketQs}&limit=120`, {
+    const response = await fetch(`/api/market/history/trades?${marketQs}&limit=100`, {
       cache: "no-store",
     });
     if (!response.ok) return;
