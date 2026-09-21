@@ -1,0 +1,859 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Fleet overview for incidents — all CEX services, then drill into gateway / OMS / ingester / exchange / web + logs.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": true,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": ["cex"],
+      "title": "Other CEX dashboards",
+      "type": "dashboards"
+    }
+  ],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "1 · Fleet status (glance)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Green = process answering /metrics. Red = down or scrape failed.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": { "color": "red", "index": 0, "text": "DOWN" },
+                "1": { "color": "green", "index": 1, "text": "UP" }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 16, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "title": "Services",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "cex_service_up{service=\"exchange\"}",
+          "legendFormat": "exchange",
+          "refId": "A"
+        },
+        {
+          "expr": "cex_gateway_up",
+          "legendFormat": "gateway",
+          "refId": "B"
+        },
+        {
+          "expr": "cex_service_up{service=\"oms\"}",
+          "legendFormat": "oms",
+          "refId": "C"
+        },
+        {
+          "expr": "cex_service_up{service=\"ingester\"}",
+          "legendFormat": "ingester (MD)",
+          "refId": "D"
+        },
+        {
+          "expr": "cex_service_up{service=\"web\"}",
+          "legendFormat": "web",
+          "refId": "E"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Quick incident signals. Fail rate > 0 or lag climbing = dig into detail rows below.",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "SSE" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "0": { "color": "red", "text": "DISCONNECTED" },
+                      "1": { "color": "green", "text": "CONNECTED" }
+                    },
+                    "type": "value"
+                  }
+                ]
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red", "value": null },
+                    { "color": "green", "value": 1 }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "sim" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "0": { "color": "orange", "text": "OFF" },
+                      "1": { "color": "green", "text": "ON" }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "title": "Incident signals",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "cex_gateway_sse_connected",
+          "legendFormat": "SSE",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(cex_gateway_commands_failed_total[5m])",
+          "legendFormat": "cmd fail/s",
+          "refId": "B"
+        },
+        {
+          "expr": "max(cex_stream_lag) or vector(0)",
+          "legendFormat": "max stream lag",
+          "refId": "C"
+        },
+        {
+          "expr": "cex_sim_heartbeat_enabled",
+          "legendFormat": "sim",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": { "color": "red", "text": "BAD" },
+                "1": { "color": "green", "text": "OK" }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 5 },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "title": "Dependencies",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "cex_dependency_ok",
+          "legendFormat": "{{service}} · {{dep}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Redis consumer lag. Spike during incidents often means a stuck consumer or flood of commands.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 5 },
+      "id": 4,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "right" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "Stream lag (all services)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "cex_stream_lag >= 0",
+          "legendFormat": "{{service}} / {{stream}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 10 },
+      "id": 101,
+      "title": "2 · Live logs (pick service · use for incidents)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Filter with the service / stream / search variables at the top. Expand a line for full JSON.",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 11 },
+      "id": 10,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "title": "PM2 logs — $service / $stream",
+      "type": "logs",
+      "targets": [
+        {
+          "expr": "{job=\"pm2\", service=~\"$service\", stream=~\"$stream\"} |= `$search`",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 102,
+      "title": "3 · Gateway detail (commands · SSE · market publishes)",
+      "type": "row",
+      "panels": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineWidth": 2,
+                "showPoints": "never"
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+          "id": 20,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "title": "Command rates",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(cex_gateway_commands_received_total[1m])",
+              "legendFormat": "received",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(cex_gateway_commands_failed_total[1m])",
+              "legendFormat": "failed",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(cex_gateway_commands_dead_lettered_total[1m])",
+              "legendFormat": "dead-lettered",
+              "refId": "C"
+            },
+            {
+              "expr": "rate(cex_gateway_commands_duplicate_total[1m])",
+              "legendFormat": "duplicate",
+              "refId": "D"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "showPoints": "never"
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+          "id": 21,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "title": "Market publishes + SSE health",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(cex_gateway_events_published_total[1m])",
+              "legendFormat": "events",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(cex_gateway_bbo_published_total[1m])",
+              "legendFormat": "bbo",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(cex_gateway_trades_published_total[1m])",
+              "legendFormat": "trades",
+              "refId": "C"
+            },
+            {
+              "expr": "cex_gateway_sse_connected",
+              "legendFormat": "sse connected",
+              "refId": "D"
+            },
+            {
+              "expr": "rate(cex_gateway_sse_reconnects_total[5m])",
+              "legendFormat": "reconnects/s",
+              "refId": "E"
+            },
+            {
+              "expr": "rate(cex_gateway_sse_gap_reconciles_total[5m])",
+              "legendFormat": "gap reconciles/s",
+              "refId": "F"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+          "id": 22,
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": true,
+            "showLabels": false,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "title": "Gateway logs (errors + warns)",
+          "type": "logs",
+          "targets": [
+            {
+              "expr": "{job=\"pm2\", service=\"gateway\"} |~ `(?i)(error|warn|fail|circuit|lag)`",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 103,
+      "title": "4 · OMS detail (DB · Redis · orders:events lag)",
+      "type": "row",
+      "panels": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": { "color": "red", "text": "BAD" },
+                    "1": { "color": "green", "text": "OK" }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "green", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 8, "x": 0, "y": 25 },
+          "id": 30,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "horizontal",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "value_and_name"
+          },
+          "title": "OMS dependencies",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "cex_dependency_ok{service=\"oms\"}",
+              "legendFormat": "{{dep}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "showPoints": "never"
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 16, "x": 8, "y": 25 },
+          "id": 31,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "title": "OMS stream lag / pending",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "cex_stream_lag{service=\"oms\"}",
+              "legendFormat": "lag",
+              "refId": "A"
+            },
+            {
+              "expr": "cex_stream_pending{service=\"oms\"}",
+              "legendFormat": "pending",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 33 },
+          "id": 32,
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": true,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "title": "OMS logs",
+          "type": "logs",
+          "targets": [
+            {
+              "expr": "{job=\"pm2\", service=\"oms\"} |= `$search`",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "id": 104,
+      "title": "5 · Ingester / market-data detail (Timescale writer)",
+      "type": "row",
+      "panels": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": { "color": "red", "text": "BAD" },
+                    "1": { "color": "green", "text": "OK" }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "green", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 8, "x": 0, "y": 26 },
+          "id": 40,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "horizontal",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "value_and_name"
+          },
+          "title": "Ingester dependencies",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "cex_dependency_ok{service=\"ingester\"}",
+              "legendFormat": "{{dep}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "lineWidth": 2,
+                "showPoints": "never"
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 16, "x": 8, "y": 26 },
+          "id": 41,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "title": "md:events lag / pending",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "cex_stream_lag{service=\"ingester\"}",
+              "legendFormat": "lag",
+              "refId": "A"
+            },
+            {
+              "expr": "cex_stream_pending{service=\"ingester\"}",
+              "legendFormat": "pending",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 34 },
+          "id": 42,
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": true,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "title": "Ingester logs",
+          "type": "logs",
+          "targets": [
+            {
+              "expr": "{job=\"pm2\", service=\"ingester\"} |= `$search`",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+      "id": 105,
+      "title": "6 · Exchange + web detail",
+      "type": "row",
+      "panels": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "green", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 12, "x": 0, "y": 27 },
+          "id": 50,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "horizontal",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "value_and_name"
+          },
+          "title": "Exchange",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "cex_service_up{service=\"exchange\"}",
+              "legendFormat": "up",
+              "refId": "A"
+            },
+            {
+              "expr": "cex_exchange_markets",
+              "legendFormat": "markets",
+              "refId": "B"
+            },
+            {
+              "expr": "cex_dependency_ok{service=\"exchange\"}",
+              "legendFormat": "{{dep}}",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": { "color": "orange", "text": "OFF" },
+                    "1": { "color": "green", "text": "ON" }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "orange", "value": null },
+                  { "color": "green", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 12, "x": 12, "y": 27 },
+          "id": 51,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "horizontal",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "value_and_name"
+          },
+          "title": "Web / sim",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "cex_service_up{service=\"web\"}",
+              "legendFormat": "web up",
+              "refId": "A"
+            },
+            {
+              "expr": "cex_sim_heartbeat_enabled",
+              "legendFormat": "sim heartbeat",
+              "refId": "B"
+            },
+            {
+              "expr": "cex_sim_place_trades",
+              "legendFormat": "retail prints",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+          "id": 52,
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "title": "Exchange logs",
+          "type": "logs",
+          "targets": [
+            {
+              "expr": "{job=\"pm2\", service=\"exchange\"} |= `$search`",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+          "id": 53,
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "title": "Web logs",
+          "type": "logs",
+          "targets": [
+            {
+              "expr": "{job=\"pm2\", service=\"web\"} |= `$search`",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["cex", "ops", "incident"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "loki", "uid": "loki" },
+        "definition": "label_values({job=\"pm2\"}, service)",
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "service",
+        "multi": true,
+        "name": "service",
+        "query": "label_values({job=\"pm2\"}, service)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "loki", "uid": "loki" },
+        "definition": "label_values({job=\"pm2\"}, stream)",
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "stream",
+        "multi": true,
+        "name": "stream",
+        "query": "label_values({job=\"pm2\"}, stream)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": { "selected": false, "text": "", "value": "" },
+        "label": "search",
+        "name": "search",
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
+  },
+  "timezone": "browser",
+  "title": "CEX Operations",
+  "uid": "cex-operations",
+  "version": 1,
+  "weekStart": ""
+}
