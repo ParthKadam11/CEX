@@ -162,7 +162,7 @@ export function PerpsPanel() {
   }, []);
 
   // Live SSE owns book/trades/positions. While connected, only reconcile
-  // orders/balances slowly; mark/funding come from stream events + last trade.
+  // orders/balances slowly; when disconnected, poll the full desk.
   useEffect(() => {
     const pollMs = streamConnected ? 4_000 : 2_000;
 
@@ -170,6 +170,8 @@ export function PerpsPanel() {
       void loadOrders();
       void loadBalances();
       if (!streamConnected) {
+        void loadBook();
+        void loadTradeHistory();
         void loadPositions();
         void loadMark();
         void loadFunding();
@@ -356,40 +358,59 @@ export function PerpsPanel() {
     setSubmitting(true);
     setMessage("");
 
+    const px = Math.round(Number(price));
+    const qty = Math.round(Number(quantity));
+    const lev = Math.round(Number(leverage));
+    if (!Number.isFinite(px) || px < 1 || !Number.isFinite(qty) || qty < 1) {
+      setSubmitting(false);
+      setMessage("Price and quantity must be positive whole numbers");
+      return;
+    }
+    if (!Number.isFinite(lev) || lev < 1 || lev > 20) {
+      setSubmitting(false);
+      setMessage("Leverage must be between 1 and 20");
+      return;
+    }
+
     const payload: Record<string, unknown> = {
       clientOrderId: `perp-${crypto.randomUUID()}`,
       market,
       side,
       orderType: "LIMIT",
       timeInForce: tif,
-      price: Number(price),
-      quantity: Number(quantity),
-      leverage: Number(leverage),
+      price: px,
+      quantity: qty,
+      leverage: lev,
     };
 
-    const response = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const body = (await response.json()) as {
-      order?: TradingOrder;
-      error?: { code?: string; message?: string } | string;
-    };
-    setSubmitting(false);
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json()) as {
+        order?: TradingOrder;
+        error?: { code?: string; message?: string } | string;
+      };
 
-    if (!response.ok) {
-      setMessage(errorMessage(body) ?? "Order rejected");
-      return;
+      if (!response.ok) {
+        setMessage(errorMessage(body) ?? "Order rejected");
+        return;
+      }
+      setMessage(`Order ${body.order?.engineOrderId ?? "submitted"}`);
+      await Promise.all([
+        loadOrders(),
+        loadBalances(),
+        loadBook(),
+        loadPositions(),
+        loadMark(),
+      ]);
+    } catch {
+      setMessage("Order request failed — try again");
+    } finally {
+      setSubmitting(false);
     }
-    setMessage(`Order ${body.order?.engineOrderId ?? "submitted"}`);
-    await Promise.all([
-      loadOrders(),
-      loadBalances(),
-      loadBook(),
-      loadPositions(),
-      loadMark(),
-    ]);
   }
 
   async function cancelOrder(orderId: string) {

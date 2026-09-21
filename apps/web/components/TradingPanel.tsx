@@ -123,14 +123,18 @@ export function TradingPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once on mount
   }, []);
 
-  // When SSE is live, book/trades come from the stream — only reconcile
-  // orders/balances on a slower timer (and after place/cancel).
+  // Reconcile desk state. When SSE is down, also re-poll book + tape so the
+  // UI does not freeze on a stale snapshot.
   useEffect(() => {
     const pollMs = streamConnected ? 4_000 : 2_000;
 
     function refresh() {
       void loadOrders();
       void loadBalances();
+      if (!streamConnected) {
+        void loadBook();
+        void loadTradeHistory();
+      }
     }
 
     refresh();
@@ -260,33 +264,46 @@ export function TradingPanel() {
     setSubmitting(true);
     setMessage("");
 
+    const px = Math.round(Number(price));
+    const qty = Math.round(Number(quantity));
+    if (!Number.isFinite(px) || px < 1 || !Number.isFinite(qty) || qty < 1) {
+      setSubmitting(false);
+      setMessage("Price and quantity must be positive whole numbers");
+      return;
+    }
+
     const payload: Record<string, unknown> = {
       clientOrderId: `web-${crypto.randomUUID()}`,
       market,
       side,
       orderType: "LIMIT",
       timeInForce: tif,
-      price: Number(price),
-      quantity: Number(quantity),
+      price: px,
+      quantity: qty,
     };
 
-    const response = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const body = (await response.json()) as {
-      order?: TradingOrder;
-      error?: { code?: string; message?: string } | string;
-    };
-    setSubmitting(false);
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json()) as {
+        order?: TradingOrder;
+        error?: { code?: string; message?: string } | string;
+      };
 
-    if (!response.ok) {
-      setMessage(errorMessage(body) ?? "Order rejected");
-      return;
+      if (!response.ok) {
+        setMessage(errorMessage(body) ?? "Order rejected");
+        return;
+      }
+      setMessage(`Order ${body.order?.engineOrderId ?? "submitted"}`);
+      await Promise.all([loadOrders(), loadBalances(), loadBook()]);
+    } catch {
+      setMessage("Order request failed — try again");
+    } finally {
+      setSubmitting(false);
     }
-    setMessage(`Order ${body.order?.engineOrderId ?? "submitted"}`);
-    await Promise.all([loadOrders(), loadBalances(), loadBook()]);
   }
 
   async function cancelOrder(orderId: string) {
