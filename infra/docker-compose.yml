@@ -78,6 +78,33 @@ services:
     restart: unless-stopped
     depends_on:
       - prometheus
+      - loki
+
+  # Log store — loopback only; Promtail pushes PM2 logs here.
+  loki:
+    image: grafana/loki:3.1.1
+    network_mode: host
+    user: "0"
+    command:
+      - -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - cex_loki:/loki
+    restart: unless-stopped
+
+  # Tail PM2 logs from the host into Loki.
+  promtail:
+    image: grafana/promtail:3.1.1
+    network_mode: host
+    user: "0"
+    command:
+      - -config.file=/etc/promtail/promtail.yml
+    volumes:
+      - ./loki/promtail.yml:/etc/promtail/promtail.yml:ro
+      - ${PM2_LOG_DIR:-/home/deployer/.pm2/logs}:/var/log/pm2:ro
+    restart: unless-stopped
+    depends_on:
+      - loki
 
 volumes:
   cex_redis:
@@ -85,3 +112,4 @@ volumes:
   cex_timescale:
   cex_prometheus:
   cex_grafana:
+  cex_loki:

@@ -1,0 +1,31 @@
+server:
+  http_listen_address: 127.0.0.1
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: info
+
+positions:
+  filename: /tmp/promtail-positions.yaml
+
+clients:
+  - url: http://127.0.0.1:3100/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 1048576
+
+scrape_configs:
+  - job_name: pm2
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: pm2
+          host: papertrade
+          __path__: /var/log/pm2/cex-*-*.log
+    pipeline_stages:
+      - regex:
+          source: filename
+          expression: ".*/cex-(?P<service>[\\w-]+)-(?P<stream>out|error)\\.log$"
+      - labels:
+          service:
+          stream:
+      - output:
+          source: message

@@ -62,23 +62,29 @@ pnpm infra:logs
 | TimescaleDB | `5434` | Market-data history |
 | Prometheus | `9090` | Metrics scrape + UI (host network → `127.0.0.1`) |
 | Grafana | `3001` | Dashboards (host network → `127.0.0.1`) |
+| Loki | `3100` | Log store (host network → `127.0.0.1`) |
 
-Compose binds data stores to `127.0.0.1`. Prometheus and Grafana use `network_mode: host` so they can reach each other and PM2 apps on loopback.
+Compose binds data stores to `127.0.0.1`. Prometheus, Grafana, Loki, and Promtail use `network_mode: host` so they can reach each other and PM2 apps on loopback.
 
 ```bash
 # After apps are up:
 curl -s http://127.0.0.1:4020/metrics | head
 # Prometheus: http://127.0.0.1:9090
 # Grafana:    http://127.0.0.1:3001  (admin / cex-grafana-change-me)
-# Optional:   GRAFANA_ADMIN_PASSWORD=... in the shell or a compose .env
+# Loki ready: curl -s http://127.0.0.1:3100/ready
+# Optional:   GRAFANA_ADMIN_PASSWORD=...  PM2_LOG_DIR=...
 ```
 
-Provisioned dashboard: **CEX Engine Gateway** (folder CEX).
+Provisioned dashboards (folder CEX):
+- **CEX Engine Gateway** — Prometheus metrics
+- **CEX PM2 Logs** — Loki (`{job="pm2"}` in Explore)
+
+Promtail tails `$PM2_LOG_DIR` (default `/home/deployer/.pm2/logs`) into Loki (7-day retention).
 
 ## Requirements
 
 - Docker Desktop (or compatible)
-- Free local ports `6379`, `5432`, `5434`, `9090`, `3001`
+- Free local ports `6379`, `5432`, `5434`, `9090`, `3001`, `3100`
 
 ## What this stack does not start
 

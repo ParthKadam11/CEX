@@ -10,3 +10,13 @@ datasources:
     editable: false
     jsonData:
       timeInterval: 15s
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://127.0.0.1:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields: []
