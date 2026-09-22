@@ -805,6 +805,15 @@ function scheduleNext(delayMs?: number): void {
 async function loopOnce(): Promise<void> {
   const hb = heartbeat();
   if (!hb.enabled) return;
+  if (!hasActivePresence(hb)) {
+    hb.enabled = false;
+    if (hb.timer) {
+      clearTimeout(hb.timer);
+      hb.timer = null;
+    }
+    hb.lastError = "stopped after market page presence expired";
+    return;
+  }
   if (hb.inFlight) {
     scheduleNext(120);
     return;
