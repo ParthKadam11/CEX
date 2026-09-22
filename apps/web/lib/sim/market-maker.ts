@@ -106,7 +106,7 @@ function heartbeat(): HeartbeatState {
       boost: "medium",
       intervalMs: null,
       placeQuotes: true,
-      placeTrades: true,
+      placeTrades: false,
       spread: 2,
       lastPresenceAt: 0,
       viewers: 0,
@@ -127,7 +127,7 @@ function heartbeat(): HeartbeatState {
     hb.enabled = false;
     hb.inFlight = false;
     hb.placeQuotes = true;
-    hb.placeTrades = true;
+    hb.placeTrades = false;
     hb.spread = 2;
     hb.defaultsEpoch = DEFAULTS_EPOCH;
   }
