@@ -175,6 +175,15 @@ function tradesPerTick(intensity: SimIntensity): number {
   return Math.random() < 0.35 ? 1 : 0;
 }
 
+function realisticTradePrice(mid: number, spread: number, side: "BUY" | "SELL"): number {
+  const spreadScale = Math.max(1, spread);
+  const centerBias = side === "BUY" ? spreadScale * 0.25 : -spreadScale * 0.25;
+  const noise = (Math.random() - 0.5) * spreadScale * 2.6;
+  const drift = (Math.random() - 0.5) * spreadScale * 0.8;
+  const price = mid + centerBias + noise + drift;
+  return Math.max(1, Math.round(price));
+}
+
 function ladderQty(offset: number): number {
   return 2 + Math.floor(offset / 2) + (offset % 3);
 }
@@ -609,7 +618,11 @@ export async function runMarketMakerTick(
       const buy = Math.random() < 0.5;
       const size = 1;
       const trader = pickRetail();
-      const px = buy ? Number(liveBbo.bestAsk) : Number(liveBbo.bestBid);
+      const px = realisticTradePrice(
+        Number(liveBbo.bestBid ?? liveBbo.bestAsk ?? mid),
+        spreadBase,
+        buy ? "BUY" : "SELL",
+      );
       jobs.push(
         injectPlace({
           userId: trader,
@@ -739,7 +752,11 @@ export async function runHeartbeatTick(): Promise<{
         continue;
       }
       const buy = Math.random() < 0.5;
-      const px = buy ? Number(live.bestAsk) : Number(live.bestBid);
+      const px = realisticTradePrice(
+        Number(live.bestBid ?? live.bestAsk ?? mid),
+        hb.spread,
+        buy ? "BUY" : "SELL",
+      );
       const size = intensity === "high" && Math.random() < 0.3 ? 2 : 1;
       const ok = await injectPlace({
         userId: pickRetail(),

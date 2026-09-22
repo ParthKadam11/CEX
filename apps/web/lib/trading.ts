@@ -174,8 +174,8 @@ export function applyTradeToCandles(
  */
 export function buildLiveCandles(
   trades: LiveTapeTrade[],
-  bucketMs = 15_000,
-  maxBuckets = 120,
+  bucketMs = 5_000,
+  maxBuckets = 180,
 ): Candle[] {
   if (trades.length === 0) return [];
 
