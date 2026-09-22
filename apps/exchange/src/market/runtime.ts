@@ -163,6 +163,7 @@ export class MarketRuntime {
     const snapshot = loadSnapshot(snapshotPath);
     const wal = new FileWal(walPath);
     const runtime = new MarketRuntime(market, wal, bus, opts, snapshotPath);
+    opts.wallet?.registerMarket(market, () => wal.currentSeq);
     runtime.replay(snapshot?.walSeq ?? 0, snapshot);
     runtime.startFundingTimer();
     return runtime;
@@ -543,9 +544,18 @@ export class MarketRuntime {
         this.snapshotSeq = snapshot.walSeq;
         this.wal.adoptSeq(snapshot.walSeq);
       }
+      const walletSeq = this.wallet
+        ? this.wallet.replayThrough(this.market)
+        : null;
+      const hasSharedWallet = this.wallet !== null;
+      this.placement.setReplayMoney(!hasSharedWallet || walletSeq !== null);
       for (const command of this.wal.readAfter(afterSeq)) {
+        this.placement.setReplayMoney(
+          !hasSharedWallet || (walletSeq !== null && command.seq > walletSeq),
+        );
         this.apply(command);
       }
+      this.placement.setReplayMoney(true);
     } finally {
       this.replaying = false;
     }
