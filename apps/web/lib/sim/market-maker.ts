@@ -685,12 +685,14 @@ export async function runHeartbeatTick(): Promise<{
   }
   let book = await readBook();
   const bbo = book?.bbo ?? { bestBid: null, bestAsk: null };
-  let mid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
+  const bookMid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
+  let mid = bookMid;
 
   // Slight drift so the chart isn't flat forever (quotes follow; rare prints optional).
   if (intensity !== "idle" && Math.random() < (intensity === "high" ? 0.25 : 0.12)) {
     mid = Math.max(1, mid + (Math.random() < 0.5 ? -1 : 1));
   }
+  const midMoved = mid !== bookMid;
   s.lastMid = mid;
 
   let cancelled = 0;
@@ -702,7 +704,7 @@ export async function runHeartbeatTick(): Promise<{
     levels.askLevels < Math.floor(LADDER_DEPTH * 0.5);
   // Only wipe+rebuild when the book is empty. Periodic rebuilds caused cancel
   // storms, circuit opens, and stuck command lag.
-  const shouldRebuild = empty;
+  const shouldRebuild = empty || midMoved;
 
   if (hb.placeQuotes && shouldRebuild) {
     cancelled = await cancelMmQuotes();
