@@ -17,7 +17,11 @@ module.exports = {
       cwd: root,
       script: "pnpm",
       args: "--filter @cex/exchange start",
-      env: { NODE_ENV: "production", ALLOW_NUCLEAR_RESET: "true" },
+      env: {
+        NODE_ENV: "production",
+        ALLOW_NUCLEAR_RESET: "true",
+        EXCHANGE_DATA_DIR: "/home/deployer/apps/CEX/apps/exchange/data",
+      },
       max_restarts: 20,
       min_uptime: "5s",
     },
