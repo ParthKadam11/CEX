@@ -8,7 +8,9 @@
  *   pm2 save && pm2 startup
  */
 
+const path = require("node:path");
 const root = __dirname;
+const exchangeDataDir = path.join(root, "apps", "exchange", "data");
 
 module.exports = {
   apps: [
@@ -20,7 +22,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         ALLOW_NUCLEAR_RESET: "true",
-        EXCHANGE_DATA_DIR: "/home/deployer/apps/CEX/apps/exchange/data",
+        EXCHANGE_DATA_DIR: exchangeDataDir,
       },
       max_restarts: 20,
       min_uptime: "5s",
