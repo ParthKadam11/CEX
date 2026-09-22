@@ -73,8 +73,6 @@ type HeartbeatState = {
   lastError: string | null;
   lastTickAt: number | null;
   defaultsEpoch: number;
-  /** Alternates spot/perp so one tick never hammers both markets. */
-  marketRotator: number;
 };
 
 const globalSim = globalThis as unknown as {
@@ -117,7 +115,6 @@ function heartbeat(): HeartbeatState {
       lastError: null,
       lastTickAt: null,
       defaultsEpoch: DEFAULTS_EPOCH,
-      marketRotator: 0,
     };
   }
   const hb = globalSim.__cexMmHeartbeat!;
@@ -133,7 +130,6 @@ function heartbeat(): HeartbeatState {
     hb.placeTrades = true;
     hb.spread = 2;
     hb.defaultsEpoch = DEFAULTS_EPOCH;
-    hb.marketRotator = 0;
   }
   // Do not rewrite placeQuotes / placeTrades / spread on every call —
   // only the user (MM menu) may change sim options.
@@ -799,10 +795,9 @@ async function loopOnce(): Promise<void> {
   // round-trips don't stack on top of the interval.
   const dueAt = Date.now() + intervalFor(resolveEffectiveIntensity());
   try {
-    // Alternate markets so we never stampede both books in one tick.
-    const market = SIM_MARKETS[hb.marketRotator % SIM_MARKETS.length]!;
-    hb.marketRotator += 1;
-    setSimMarket(market);
+    // Keep the heartbeat tied to the market the caller selected. Rotating the
+    // global market here makes a single sim loop broadcast the same prints to
+    // both Spot and Perps charts, which is the source of the ugly duplicated tape.
     await runHeartbeatTick();
   } catch (error) {
     hb.lastError = error instanceof Error ? error.message : String(error);
