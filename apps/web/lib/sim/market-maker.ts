@@ -175,13 +175,19 @@ function tradesPerTick(intensity: SimIntensity): number {
   return Math.random() < 0.35 ? 1 : 0;
 }
 
-function realisticTradePrice(mid: number, spread: number, side: "BUY" | "SELL"): number {
-  const spreadScale = Math.max(1, spread);
-  const centerBias = side === "BUY" ? spreadScale * 0.25 : -spreadScale * 0.25;
-  const noise = (Math.random() - 0.5) * spreadScale * 2.6;
-  const drift = (Math.random() - 0.5) * spreadScale * 0.8;
-  const price = mid + centerBias + noise + drift;
-  return Math.max(1, Math.round(price));
+function executableTradePrice(
+  book: OrderBookSnapshot | null,
+  side: "BUY" | "SELL",
+): number | null {
+  const levels = side === "BUY" ? book?.asks : book?.bids;
+  if (!levels || levels.length === 0) return null;
+
+  // Cross one of the first few real levels. A synthetic price near the mid
+  // can miss the book entirely and creates clustered, non-market prints.
+  const visible = levels.slice(0, Math.min(3, levels.length));
+  const level = visible[Math.floor(Math.random() * visible.length)];
+  const price = Number(level?.price);
+  return Number.isFinite(price) && price > 0 ? price : null;
 }
 
 function ladderQty(offset: number): number {
@@ -618,11 +624,8 @@ export async function runMarketMakerTick(
       const buy = Math.random() < 0.5;
       const size = 1;
       const trader = pickRetail();
-      const px = realisticTradePrice(
-        Number(liveBbo.bestBid ?? liveBbo.bestAsk ?? mid),
-        spreadBase,
-        buy ? "BUY" : "SELL",
-      );
+      const px = executableTradePrice(book, buy ? "BUY" : "SELL");
+      if (px == null) continue;
       jobs.push(
         injectPlace({
           userId: trader,
@@ -752,11 +755,8 @@ export async function runHeartbeatTick(): Promise<{
         continue;
       }
       const buy = Math.random() < 0.5;
-      const px = realisticTradePrice(
-        Number(live.bestBid ?? live.bestAsk ?? mid),
-        hb.spread,
-        buy ? "BUY" : "SELL",
-      );
+      const px = executableTradePrice(book, buy ? "BUY" : "SELL");
+      if (px == null) continue;
       const size = intensity === "high" && Math.random() < 0.3 ? 2 : 1;
       const ok = await injectPlace({
         userId: pickRetail(),
