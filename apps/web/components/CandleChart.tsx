@@ -179,15 +179,15 @@ export function CandleChart({
         timeVisible: true,
         secondsVisible: true,
       },
-      // Let the page scroll vertically on phones; keep horizontal pan/zoom on chart.
+      // Let Lightweight Charts receive both time and price-axis gestures.
       handleScroll: {
-        vertTouchDrag: false,
+        vertTouchDrag: true,
         horzTouchDrag: true,
         mouseWheel: true,
         pressedMouseMove: true,
       },
       handleScale: {
-        axisPressedMouseMove: true,
+        axisPressedMouseMove: { time: true, price: true },
         mouseWheel: true,
         pinch: true,
       },
@@ -390,7 +390,7 @@ export function CandleChart({
         <div
           ref={hostRef}
           className="h-full min-h-[180px] w-full touch-pan-x"
-          style={{ touchAction: "pan-x pinch-zoom" }}
+          style={{ touchAction: "none" }}
         />
       </div>
     </div>
