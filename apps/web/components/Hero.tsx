@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { GoogleIcon } from "@/components/ui/googleButton";
 import { useTheme } from "@/components/ThemeProvider";
-import { Moon, Sun } from "lucide-react";
+import { ExternalLink, Moon, Sun } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
@@ -168,6 +168,15 @@ export function Hero() {
                 <Moon className="size-4" />
               )}
             </button>
+            <a
+              href="https://github.com/ParthKadam11/CEX"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 text-sm font-medium text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20 hover:text-white"
+            >
+              <ExternalLink className="size-4" aria-hidden="true" />
+              GitHub
+            </a>
             {session?.user ? (
               <Button
                 onClick={openDashboard}
