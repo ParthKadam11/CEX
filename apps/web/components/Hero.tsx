@@ -195,7 +195,7 @@ export function Hero() {
               No real funds
             </p>
             <h1 className="animate-fade-up delay-100 mt-5 font-display text-balance text-7xl leading-none tracking-tight text-white sm:text-8xl md:text-9xl">
-              papertrade
+              Paper Trade
             </h1>
             <p className="animate-fade-up delay-200 mt-6 max-w-md text-pretty text-lg leading-relaxed text-white/75">
               Clear paper markets for SOL USD. Spot and perpetual trading without
@@ -570,11 +570,6 @@ export function Hero() {
               </a>
             </div>
           </div>
-          <p className="mt-8 max-w-2xl text-pretty text-sm leading-relaxed text-zinc-400 dark:text-muted-foreground">
-            Paper trading environment for SOL USD spot and perps. Balances,
-            fills, and PnL are simulated for education and product demos. Not
-            financial advice. No real funds are held or settled.
-          </p>
           <p className="mt-4 font-mono text-xs text-zinc-500 dark:text-muted-foreground">
             Paper markets · SOL USD · Demo only
           </p>
