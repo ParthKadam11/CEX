@@ -79,7 +79,7 @@ export function MarketExplorer() {
         <article className="max-w-2xl space-y-14 text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">
           <WikiSection id="what" title="What is this?">
             <p>
-              PaperTrade is a{" "}
+              PaperDesk is a{" "}
               <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                 paper practice exchange
               </strong>

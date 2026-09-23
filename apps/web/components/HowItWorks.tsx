@@ -89,7 +89,7 @@ export function HowItWorks() {
         <article className="max-w-2xl space-y-14 text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">
           <DocSection id="idea" title="The idea">
             <p>
-              PaperTrade is a systems project: a single-writer matching engine, an
+              PaperDesk is a systems project: a single-writer matching engine, an
               asynchronous OMS with a transactional outbox, a gateway that
               translates Redis Streams and exchange SSE, and a separate
               TimescaleDB ingester.
