@@ -190,12 +190,12 @@ export function Hero() {
         <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-4 pb-8 pt-12 sm:px-8">
           <div className="max-w-[680px]">
             <p className="animate-fade-up inline-flex items-center gap-1.5 border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 font-mono text-[10px] tracking-[0.16em] text-emerald-300 uppercase backdrop-blur-sm">
-              Paper trading
+              papertrade
               <span className="text-emerald-300/50">·</span>
               No real funds
             </p>
             <h1 className="animate-fade-up delay-100 mt-5 font-display text-balance text-7xl leading-none tracking-tight text-white sm:text-8xl md:text-9xl">
-              CEX
+              papertrade
             </h1>
             <p className="animate-fade-up delay-200 mt-6 max-w-md text-pretty text-lg leading-relaxed text-white/75">
               Clear paper markets for SOL USD. Spot and perpetual trading without
@@ -542,7 +542,7 @@ export function Hero() {
           </div>
 
           <p className="mt-8 max-w-lg text-pretty text-sm leading-relaxed text-white/45">
-            CEX runs on paper balances only. Nothing here is real money, and
+            papertrade runs on paper balances only. Nothing here is real money, and
             perpetual markets include simulated leverage risk for learning.
           </p>
           <p className="mt-3 font-mono text-xs tracking-[0.14em] text-white/35 uppercase">
@@ -554,7 +554,7 @@ export function Hero() {
       <footer className="border-t border-emerald-950/20 bg-[#0d1612] text-zinc-50 dark:border-border dark:bg-background dark:text-foreground">
         <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="font-display text-xl">CEX</p>
+            <p className="font-display text-xl">papertrade</p>
             <div className="flex flex-wrap gap-5 text-sm text-zinc-400 dark:text-muted-foreground">
               <a href="#markets" className="hover:text-white dark:hover:text-foreground">
                 Markets
@@ -628,7 +628,7 @@ function ProductShot() {
             <span className="size-2.5 rounded-full bg-zinc-700" />
             <span className="size-2.5 rounded-full bg-zinc-700" />
             <span className="ml-3 font-mono text-[11px] tracking-[0.14em] text-zinc-500 uppercase">
-              cex · spot · SOL-USD
+              papertrade · spot · SOL-USD
             </span>
           </div>
 
@@ -636,7 +636,7 @@ function ProductShot() {
             {/* eslint-disable-next-line @next/next/no-img-element -- serve screenshot bytes as-is; Next/Image was upscaling past source width */}
             <img
               src="/product-shot.png"
-              alt="CEX trading desk showing the SOL USD order book and balances"
+              alt="papertrade trading desk showing the SOL USD order book and balances"
               width={1183}
               height={585}
               decoding="async"
@@ -815,7 +815,7 @@ function TaglineReveal() {
       <SectionWash opacity={0.1} />
       <div className="relative z-10 mx-auto max-w-5xl px-4 py-20 sm:px-8 sm:py-28">
         <p className="mb-6 font-mono text-xs tracking-[0.18em] text-emerald-800/70 uppercase dark:text-muted-foreground">
-          Why CEX
+          Why papertrade
         </p>
         <p
           ref={ref}

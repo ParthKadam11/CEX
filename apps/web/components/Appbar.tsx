@@ -90,7 +90,7 @@ export function Appbar({ children }: { children: React.ReactNode }) {
           href="/dashboard"
           className="font-display text-lg tracking-tight text-zinc-950 dark:text-zinc-50"
         >
-          CEX
+          papertrade
         </Link>
         <button
           type="button"
@@ -115,7 +115,7 @@ export function Appbar({ children }: { children: React.ReactNode }) {
           <aside className="absolute inset-y-0 left-0 flex w-[min(18rem,88vw)] flex-col border-r border-zinc-200 bg-zinc-50 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
             <div className="flex h-12 items-center justify-between px-4">
               <span className="font-display text-lg tracking-tight text-zinc-950 dark:text-zinc-50">
-                CEX
+                papertrade
               </span>
               <button
                 type="button"
@@ -160,7 +160,7 @@ export function Appbar({ children }: { children: React.ReactNode }) {
             href="/dashboard"
             className="font-display text-lg tracking-tight text-zinc-950 dark:text-zinc-50"
           >
-            CEX
+            papertrade
           </Link>
         </div>
 

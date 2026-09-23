@@ -19,9 +19,27 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "CEX",
+  title: {
+    default: "papertrade",
+    template: "%s | papertrade",
+  },
+  applicationName: "papertrade",
   description:
-    "Paper trading for SOL USD spot and perps. Clear markets, ledger balances, no real funds.",
+    "papertrade is a clear paper market for SOL-USD spot and perpetual practice.",
+  keywords: ["paper trading", "SOL-USD", "spot trading", "perpetuals"],
+  openGraph: {
+    title: "papertrade",
+    description:
+      "Practice SOL-USD spot and perpetual trading with clear paper balances.",
+    type: "website",
+    siteName: "papertrade",
+  },
+  twitter: {
+    card: "summary",
+    title: "papertrade",
+    description:
+      "Practice SOL-USD spot and perpetual trading with clear paper balances.",
+  },
 };
 
 /** Session uses cookies/headers — never statically prerender the shell. */

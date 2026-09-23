@@ -89,7 +89,7 @@ export function HowItWorks() {
         <article className="max-w-2xl space-y-14 text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">
           <DocSection id="idea" title="The idea">
             <p>
-              CEX is a systems project: a single-writer matching engine, an
+              papertrade is a systems project: a single-writer matching engine, an
               asynchronous OMS with a transactional outbox, a gateway that
               translates Redis Streams and exchange SSE, and a separate
               TimescaleDB ingester.
@@ -132,7 +132,7 @@ export function HowItWorks() {
               />
               <SysPart
                 name="Web"
-                body="Next.js UI with Google auth, paper credit, Spot/Perps desks, and BFF proxies to OMS and market APIs."
+                body="Trading interface with Google sign-in, paper credit, Spot/Perps desks, and live connections to the market services."
               />
               <SysPart
                 name="Redis"
