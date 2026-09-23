@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { loadConfig } from "./config.js";
 import { CommandDedupe } from "./dedupe.js";
 import { CommandHandler } from "./commands/handler.js";
+import { isStaleSimCommand, STALE_SIM_COMMAND_MS } from "./commands/simPipe.js";
 import {
   toAppFundingEvent,
   toAppLiquidationEvent,
@@ -25,12 +26,16 @@ import { LiquidationHub } from "./redis/liquidation-hub.js";
 import { FundingHub } from "./redis/funding-hub.js";
 import {
   ackCommand,
+  ackCommands,
   createRedis,
   deadLetterCommand,
+  dropIdleCommandConsumers,
   ensureCommandGroup,
+  forgetCommandBacklogCache,
   recoverPendingCommands,
   readCommands,
   publishOrderEvent,
+  unreadCommandAgeMs,
 } from "./redis/streams.js";
 import { reconcileSseGap } from "./sse/gapReconcile.js";
 
@@ -70,6 +75,16 @@ async function main(): Promise<void> {
   };
 
   await ensureCommandGroup(redis);
+  try {
+    const dropped = await dropIdleCommandConsumers(redis, config.consumerName);
+    if (dropped > 0) {
+      log("info", "dropped idle command consumers", { dropped });
+    }
+  } catch (err) {
+    log("warn", "idle command consumer cleanup failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
   await marketData.start();
   liveBook.start();
   log("info", "redis command group ready", {
@@ -252,19 +267,54 @@ async function main(): Promise<void> {
   }
 
   let commandsRunning = true;
+  let lastSkipLogAt = 0;
   const commandLoop = (async () => {
     while (commandsRunning) {
       try {
+        const backlogAgeMs = await unreadCommandAgeMs(redis);
+        metrics.setCommandBacklogMs(backlogAgeMs);
+        const behind = backlogAgeMs > STALE_SIM_COMMAND_MS;
         const pending = await recoverPendingCommands(
           redis,
           config.consumerName,
         );
         const batch = [
           ...pending,
-          ...(await readCommands(redis, config.consumerName)),
+          ...(await readCommands(
+            redis,
+            config.consumerName,
+            behind ? 300 : 8,
+            behind ? 1 : 5_000,
+          )),
         ];
 
+        const skipIds: string[] = [];
+        const work: typeof batch = [];
         for (const msg of batch) {
+          if (
+            "command" in msg &&
+            isStaleSimCommand(msg.id, msg.command.userId)
+          ) {
+            skipIds.push(msg.id);
+            continue;
+          }
+          work.push(msg);
+        }
+        if (skipIds.length > 0) {
+          await ackCommands(redis, skipIds);
+          forgetCommandBacklogCache();
+          metrics.incrementBy("commandsStaleSkipped", skipIds.length);
+          const now = Date.now();
+          if (now - lastSkipLogAt > 2_000) {
+            lastSkipLogAt = now;
+            log("info", "skipped stale sim commands", {
+              count: skipIds.length,
+              backlogAgeMs,
+            });
+          }
+        }
+
+        for (const msg of work) {
           if ("command" in msg) {
             metrics.increment("commandsReceived");
             await handler.handle(msg.command);

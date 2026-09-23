@@ -174,12 +174,10 @@ export class OrderPlacementService {
     }
 
     if (applied.marginUnlocked > 0) {
-      if (this.replayMoney) {
-        this.money.unlock(userId, "USD", applied.marginUnlocked, {
-          refType: "POSITION",
-          refId: `${userId}:${market}`,
-        });
-      }
+      this.unlockLockedUsd(userId, applied.marginUnlocked, {
+        refType: "POSITION",
+        refId: `${userId}:${market}`,
+      });
     }
 
     this.applyPnlAbsorbingBankruptcy(userId, applied.realizedPnl, {
@@ -629,6 +627,19 @@ export class OrderPlacementService {
     this.locks.set(order.orderId, { asset: need.asset, amount: need.amount });
   }
 
+  /** Never unlock more USD than the wallet actually has locked. */
+  private unlockLockedUsd(
+    userId: string,
+    amount: number,
+    ref: BalanceRef,
+  ): void {
+    if (!this.replayMoney || amount <= 0) return;
+    const have = this.money.get(userId, "USD").locked;
+    const capped = Math.min(amount, have);
+    if (capped <= 0) return;
+    this.money.unlock(userId, "USD", capped, ref);
+  }
+
   private unlockOrder(order: Order): void {
     const lock = this.locks.get(order.orderId);
     if (!lock || lock.amount <= 0) {
@@ -753,8 +764,8 @@ export class OrderPlacementService {
     this.releaseTrackedLock(order.orderId, orderLockRelease);
     this.dropEmptyLock(order.orderId);
 
-    if (unlockExcess > 0 && this.replayMoney) {
-      this.money.unlock(order.userId, "USD", unlockExcess, {
+    if (unlockExcess > 0) {
+      this.unlockLockedUsd(order.userId, unlockExcess, {
         refType: "ORDER",
         refId: order.orderId,
       });
@@ -771,8 +782,8 @@ export class OrderPlacementService {
       timestamp: trade.timestamp,
     });
 
-    if (applied.marginUnlocked > 0 && this.replayMoney) {
-      this.money.unlock(order.userId, "USD", applied.marginUnlocked, {
+    if (applied.marginUnlocked > 0) {
+      this.unlockLockedUsd(order.userId, applied.marginUnlocked, {
         refType: "POSITION",
         refId: `${order.userId}:${order.market}`,
       });

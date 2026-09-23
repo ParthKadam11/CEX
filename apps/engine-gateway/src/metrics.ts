@@ -4,6 +4,8 @@ const COUNTER_NAMES = [
   "commandsDuplicate",
   "commandsOutcomeReplay",
   "commandsDeadLettered",
+  "commandsStaleSkipped",
+  "commandsPipeRejected",
   "eventsPublished",
   "bboPublished",
   "tradesPublished",
@@ -20,6 +22,8 @@ const PROM_COUNTER_LEAF: Record<CounterName, string> = {
   commandsDuplicate: "commands_duplicate",
   commandsOutcomeReplay: "commands_outcome_replay",
   commandsDeadLettered: "commands_dead_lettered",
+  commandsStaleSkipped: "commands_stale_skipped",
+  commandsPipeRejected: "commands_pipe_rejected",
   eventsPublished: "events_published",
   bboPublished: "bbo_published",
   tradesPublished: "trades_published",
@@ -30,9 +34,19 @@ const PROM_COUNTER_LEAF: Record<CounterName, string> = {
 export class GatewayMetrics {
   private readonly counters = new Map<string, number>();
   private sseConnected = false;
+  private commandBacklogMs = 0;
 
   increment(name: string): void {
     this.counters.set(name, (this.counters.get(name) ?? 0) + 1);
+  }
+
+  incrementBy(name: string, amount: number): void {
+    if (amount <= 0) return;
+    this.counters.set(name, (this.counters.get(name) ?? 0) + amount);
+  }
+
+  setCommandBacklogMs(ageMs: number): void {
+    this.commandBacklogMs = Math.max(0, Math.floor(ageMs));
   }
 
   setSseConnected(connected: boolean): void {
@@ -65,6 +79,12 @@ export class GatewayMetrics {
     );
     lines.push("# TYPE cex_gateway_sse_connected gauge");
     lines.push(`cex_gateway_sse_connected ${this.sseConnected ? 1 : 0}`);
+
+    lines.push(
+      "# HELP cex_gateway_command_backlog_ms Age of the oldest unread command.",
+    );
+    lines.push("# TYPE cex_gateway_command_backlog_ms gauge");
+    lines.push(`cex_gateway_command_backlog_ms ${this.commandBacklogMs}`);
 
     for (const name of COUNTER_NAMES) {
       const leaf = PROM_COUNTER_LEAF[name];

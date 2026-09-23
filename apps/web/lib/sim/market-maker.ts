@@ -34,6 +34,16 @@ const MM_USERS = [...MM_BID_USERS, ...MM_ASK_USERS] as const;
 const ALL_USERS = [...MM_USERS, ...RETAIL_USERS] as const;
 
 const DEFAULT_MID = 100;
+/** Pause sim writes after the gateway says the command mailbox is behind. */
+let pipeBlockedUntil = 0;
+
+function pipeBlocked(): boolean {
+  return Date.now() < pipeBlockedUntil;
+}
+
+function blockPipe(ms = 1_000): void {
+  pipeBlockedUntil = Math.max(pipeBlockedUntil, Date.now() + ms);
+}
 /** Depth behind the inside — keep shallow so rebuilds stay cheap. */
 const LADDER_DEPTH = 6;
 const SETTLE_MS = 40;
@@ -58,6 +68,8 @@ type SimState = {
   /** Sticky drift so prints don't cancel out. -1 down, 0 mixed, +1 up. */
   trend: -1 | 0 | 1;
   lastSpread: number;
+  /** Order ids we already sent a cancel for. Stops the NOT_CANCELLABLE loop. */
+  cancelSent: Set<string>;
 };
 
 type HeartbeatState = {
@@ -98,6 +110,7 @@ function state(): SimState {
       lastMid: DEFAULT_MID,
       trend: 0,
       lastSpread: 2,
+      cancelSent: new Set(),
     };
     bag.set(market, row);
   } else if (typeof row.fundEpoch !== "number") {
@@ -105,6 +118,7 @@ function state(): SimState {
   }
   if (row.trend !== -1 && row.trend !== 1) row.trend = 0;
   if (!Number.isFinite(row.lastSpread) || row.lastSpread < 1) row.lastSpread = 2;
+  if (!(row.cancelSent instanceof Set)) row.cancelSent = new Set();
   return row;
 }
 
@@ -259,6 +273,7 @@ function quoteTouches(
 }
 
 async function inject(command: Record<string, unknown>): Promise<boolean> {
+  if (pipeBlocked()) return false;
   try {
     const requestId = crypto.randomUUID();
     const response = await fetch(`${engineGatewayUrl}/dev/inject-command`, {
@@ -275,6 +290,10 @@ async function inject(command: Record<string, unknown>): Promise<boolean> {
             : requestId,
       }),
     });
+    if (response.status === 429) {
+      blockPipe();
+      return false;
+    }
     return response.ok || response.status === 202;
   } catch {
     return false;
@@ -525,6 +544,7 @@ async function seedLadder(mid: number, spread: number): Promise<number> {
   let placed = 0;
   const CHUNK = 8;
   for (let i = 0; i < jobs.length; i += CHUNK) {
+    if (pipeBlocked()) return placed;
     const results = await Promise.all(jobs.slice(i, i + CHUNK).map((fn) => fn()));
     placed += results.filter(Boolean).length;
     await sleep(SETTLE_MS);
@@ -596,6 +616,7 @@ async function topUpLadder(
   const CHUNK = 8;
   let placed = 0;
   for (let i = 0; i < jobs.length; i += CHUNK) {
+    if (pipeBlocked()) return placed;
     const results = await Promise.all(jobs.slice(i, i + CHUNK).map((fn) => fn()));
     placed += results.filter(Boolean).length;
     await sleep(SETTLE_MS);
@@ -605,20 +626,32 @@ async function topUpLadder(
 
 /** Cancel MM quotes in small batches — never stampede cancel-all. */
 async function cancelMmQuotes(): Promise<number> {
+  const s = state();
   const jobs: Array<{ userId: string; orderId: string }> = [];
+  const stillOpen = new Set<string>();
   for (const userId of MM_USERS) {
     const orders = await listOpenOrders(userId);
     for (const order of orders) {
+      stillOpen.add(order.orderId);
+      if (s.cancelSent.has(order.orderId)) continue;
       jobs.push({ userId, orderId: order.orderId });
     }
+  }
+  for (const orderId of s.cancelSent) {
+    if (!stillOpen.has(orderId)) s.cancelSent.delete(orderId);
   }
   if (jobs.length === 0) return 0;
   let cancelled = 0;
   const CHUNK = 4;
   for (let i = 0; i < jobs.length; i += CHUNK) {
+    if (pipeBlocked()) return cancelled;
     const slice = jobs.slice(i, i + CHUNK);
     const results = await Promise.all(
-      slice.map((job) => injectCancel(job.userId, job.orderId)),
+      slice.map(async (job) => {
+        const ok = await injectCancel(job.userId, job.orderId);
+        if (ok) s.cancelSent.add(job.orderId);
+        return ok;
+      }),
     );
     cancelled += results.filter(Boolean).length;
     await sleep(SETTLE_MS);
@@ -754,7 +787,6 @@ export async function runMarketMakerTick(
 }
 
 const SWEEP_CAP = 48;
-const RETIRE_CAP = 16;
 
 /**
  * Trade through resting size that sits on the wrong side of fair.
@@ -804,54 +836,6 @@ async function sweepToward(
   return [{ price: limit, quantity: size }];
 }
 
-/**
- * Drop MM quotes that pin the touch or sit far from fair.
- * Capped so a tick never becomes a cancel storm.
- */
-async function retireStaleQuotes(mid: number): Promise<number> {
-  const bidFloor = mid - (LADDER_DEPTH + 3);
-  const askCeil = mid + (LADDER_DEPTH + 3);
-  const jobs: Array<{ userId: string; orderId: string; distance: number }> = [];
-
-  for (const userId of MM_BID_USERS) {
-    for (const order of await listOpenOrders(userId)) {
-      if (!Number.isFinite(order.price)) continue;
-      if (order.price >= mid || order.price < bidFloor) {
-        jobs.push({
-          userId,
-          orderId: order.orderId,
-          distance: Math.abs(order.price - mid),
-        });
-      }
-    }
-  }
-  for (const userId of MM_ASK_USERS) {
-    for (const order of await listOpenOrders(userId)) {
-      if (!Number.isFinite(order.price)) continue;
-      if (order.price <= mid || order.price > askCeil) {
-        jobs.push({
-          userId,
-          orderId: order.orderId,
-          distance: Math.abs(order.price - mid),
-        });
-      }
-    }
-  }
-
-  jobs.sort((a, b) => a.distance - b.distance);
-  const slice = jobs.slice(0, RETIRE_CAP);
-  if (slice.length === 0) return 0;
-  let cancelled = 0;
-  const CHUNK = 4;
-  for (let i = 0; i < slice.length; i += CHUNK) {
-    const results = await Promise.all(
-      slice.slice(i, i + CHUNK).map((job) => injectCancel(job.userId, job.orderId)),
-    );
-    cancelled += results.filter(Boolean).length;
-  }
-  return cancelled;
-}
-
 function noiseQty(intensity: SimIntensity): number {
   const roll = Math.random();
   if (roll < 0.55) return 1;
@@ -872,8 +856,21 @@ export async function runHeartbeatTick(): Promise<{
 }> {
   const hb = heartbeat();
   const intensity = resolveEffectiveIntensity();
-  await ensureFunded();
   const s = state();
+  if (pipeBlocked()) {
+    hb.lastError = "command pipe full";
+    hb.lastTickAt = Date.now();
+    return {
+      mid: s.lastMid || DEFAULT_MID,
+      placed: 0,
+      cancelled: 0,
+      traded: false,
+      intensity,
+      book: null,
+      prints: [],
+    };
+  }
+  await ensureFunded();
   if (!s.funded) {
     hb.lastError = "waiting for sim balances after credit";
     return {
@@ -943,13 +940,6 @@ export async function runHeartbeatTick(): Promise<{
     if (swept.length > 0) {
       traded = true;
       prints.push(...swept);
-      await sleep(SETTLE_MS);
-      book = await readBook();
-      live = book?.bbo ?? live;
-    }
-    const retired = await retireStaleQuotes(mid);
-    cancelled += retired;
-    if (retired > 0) {
       await sleep(SETTLE_MS);
       book = await readBook();
       live = book?.bbo ?? live;
@@ -1170,6 +1160,7 @@ export function resetSimRuntimeState(): void {
       row.fundEpoch = 0;
       row.ticks = 0;
       row.lastMid = DEFAULT_MID;
+      row.cancelSent = new Set();
     }
   }
   // Also reset the active market row (creates it if the bag was empty).
@@ -1178,6 +1169,7 @@ export function resetSimRuntimeState(): void {
   s.fundEpoch = 0;
   s.ticks = 0;
   s.lastMid = DEFAULT_MID;
+  s.cancelSent = new Set();
   const hb = heartbeat();
   hb.lastError = null;
   hb.lastTickAt = null;

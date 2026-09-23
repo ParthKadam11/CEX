@@ -23,7 +23,8 @@ import type { MarketDataHub } from "../redis/market-data.js";
 import type { PositionHub } from "../redis/position-hub.js";
 import type { LiquidationHub } from "../redis/liquidation-hub.js";
 import type { FundingHub } from "../redis/funding-hub.js";
-import { injectCommand } from "../redis/streams.js";
+import { isSimUser, STALE_SIM_COMMAND_MS } from "../commands/simPipe.js";
+import { injectCommand, unreadCommandAgeMs } from "../redis/streams.js";
 
 type GatewayAppOptions = {
   redis: Redis;
@@ -424,6 +425,20 @@ export function createGatewayApp(options: GatewayAppOptions) {
         ? { ...body, requestId }
         : body;
 
+    // Sim quotes and prints share the FIFO with real orders. Once the
+    // consumer is behind, more sim writes only make the desk jump later.
+    if (
+      (command.type === "PLACE" || command.type === "CANCEL") &&
+      isSimUser(command.userId)
+    ) {
+      const ageMs = await unreadCommandAgeMs(options.redis);
+      options.metrics.setCommandBacklogMs(ageMs);
+      if (ageMs > STALE_SIM_COMMAND_MS) {
+        options.metrics.increment("commandsPipeRejected");
+        return errorResponse(c, 429, "COMMAND_PIPE_FULL");
+      }
+    }
+
     const streamId = await injectCommand(options.redis, command);
     return c.json({ ok: true, streamId, requestId: command.requestId }, 202);
   });
@@ -483,7 +498,7 @@ function marketMeta(market: MarketSymbol) {
 
 function errorResponse(
   context: Context,
-  status: 400 | 401 | 403 | 404 | 409 | 500 | 502,
+  status: 400 | 401 | 403 | 404 | 409 | 429 | 500 | 502,
   code: string,
   message = code,
 ) {
