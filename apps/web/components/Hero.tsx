@@ -188,7 +188,7 @@ export function Hero() {
               className="inline-flex h-10 items-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 text-sm font-medium text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20 hover:text-white"
             >
               <GitHubMark className="size-4" />
-              Start
+              Star on Github
             </a>
             {session?.user ? (
               <Button
