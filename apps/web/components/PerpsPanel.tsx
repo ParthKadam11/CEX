@@ -28,7 +28,7 @@ import {
   type TradingOrder,
 } from "@/lib/trading";
 
-export function PerpsPanel() {
+export function PerpsPanel({ operator = false }: { operator?: boolean }) {
   const market = PERP_VENUE.symbol;
   const marketQs = `market=${encodeURIComponent(market)}`;
 
@@ -513,6 +513,7 @@ export function PerpsPanel() {
                 ? "SSE error"
                 : "Offline"}
           </span>
+          {operator ? (
           <MarketMakerControls
             market={market}
             onTickAction={(result) => {
@@ -548,6 +549,7 @@ export function PerpsPanel() {
               }
             }}
           />
+          ) : null}
         </div>
       </div>
 

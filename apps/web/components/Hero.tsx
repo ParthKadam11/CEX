@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { GoogleIcon } from "@/components/ui/googleButton";
 import { useTheme } from "@/components/ThemeProvider";
 import { Moon, Sun } from "lucide-react";
-import { signIn, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
+import { signInWithGoogle } from "@/lib/google-sign-in";
 import { useRouter } from "next/navigation";
 
 const TAGLINE_WORDS = [
@@ -88,7 +89,7 @@ function AuthCta({
 
   return (
     <Button
-      onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+      onClick={() => void signInWithGoogle("/dashboard")}
       className={className}
     >
       <GoogleIcon />
@@ -177,7 +178,7 @@ export function Hero() {
               </Button>
             ) : (
               <Button
-                onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+                onClick={() => void signInWithGoogle("/dashboard")}
                 variant="outline"
                 className="h-10 rounded-md border-white/25 bg-white/10 px-4 text-base font-semibold text-white backdrop-blur-sm hover:bg-white/20 hover:text-white"
               >

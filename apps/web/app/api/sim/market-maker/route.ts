@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bffError, getAuthenticatedUserId } from "@/lib/backend";
+import {
+  bffError,
+  getAuthenticatedEmail,
+  getAuthenticatedUserId,
+} from "@/lib/backend";
+import { isSimOperator } from "@/lib/sim/operator";
 import {
   clearSimOrderBook,
   configureSimOptions,
@@ -52,7 +57,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "presence") {
-    // Presence only — do not start heartbeat or change intensity/toggles.
+    // Any signed-in viewer. Does not start the heartbeat or change options.
     const result = touchSimPresence();
     return NextResponse.json({
       ok: true,
@@ -60,6 +65,11 @@ export async function POST(request: NextRequest) {
       ...result,
       ...getMarketMakerStatus(),
     });
+  }
+
+  const email = await getAuthenticatedEmail();
+  if (!isSimOperator(email)) {
+    return bffError(request, 403, "FORBIDDEN");
   }
 
   if (action === "configure") {

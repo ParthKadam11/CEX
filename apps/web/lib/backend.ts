@@ -94,6 +94,13 @@ export async function getAuthenticatedUserId(): Promise<string | null> {
   return session?.user?.uid ?? null;
 }
 
+export async function getAuthenticatedEmail(): Promise<string | null> {
+  const { authOptions } = await import("@/lib/auth");
+  const session = await getServerSession(authOptions);
+  const email = session?.user?.email;
+  return typeof email === "string" ? email : null;
+}
+
 export function relayResponse(response: Response): Response {
   return new Response(response.body, {
     status: response.status,

@@ -23,7 +23,7 @@ import {
   type TradingOrder,
 } from "@/lib/trading";
 
-export function TradingPanel() {
+export function TradingPanel({ operator = false }: { operator?: boolean }) {
   const market = SPOT_VENUE.symbol;
   const marketQs = `market=${encodeURIComponent(market)}`;
   const [balances, setBalances] = useState<Balance[]>([]);
@@ -405,6 +405,7 @@ export function TradingPanel() {
                 ? "SSE error"
                 : "Offline"}
           </span>
+          {operator ? (
           <MarketMakerControls
             market={market}
             onTickAction={(result) => {
@@ -440,6 +441,7 @@ export function TradingPanel() {
               }
             }}
           />
+          ) : null}
         </div>
       </div>
 

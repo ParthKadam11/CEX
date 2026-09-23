@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bffError, getAuthenticatedUserId } from "@/lib/backend";
+import {
+  bffError,
+  getAuthenticatedEmail,
+  getAuthenticatedUserId,
+} from "@/lib/backend";
+import { isSimOperator } from "@/lib/sim/operator";
 import { runNuclearReset } from "@/lib/sim/nuclear-reset";
 
 /**
@@ -21,6 +26,8 @@ export async function POST(request: NextRequest) {
 
   const userId = await getAuthenticatedUserId();
   if (!userId) return bffError(request, 401, "UNAUTHORIZED");
+  const email = await getAuthenticatedEmail();
+  if (!isSimOperator(email)) return bffError(request, 403, "FORBIDDEN");
 
   try {
     const result = await runNuclearReset();
