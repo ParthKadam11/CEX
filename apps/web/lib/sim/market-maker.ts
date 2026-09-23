@@ -861,7 +861,7 @@ export async function runHeartbeatTick(): Promise<{
       prints: [],
     };
   }
-  let book = await readBook();
+  const book = await readBook();
   // A failed read is not an empty book. Treating it as empty cancel-alls and reseeds.
   if (!book) {
     hb.lastError = "book unavailable";
