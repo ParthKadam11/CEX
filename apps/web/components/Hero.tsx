@@ -570,9 +570,6 @@ export function Hero() {
               </a>
             </div>
           </div>
-          <p className="mt-4 font-mono text-xs text-zinc-500 dark:text-muted-foreground">
-            Paper markets · SOL USD · Demo only
-          </p>
         </div>
       </footer>
     </main>
