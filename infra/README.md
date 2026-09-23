@@ -75,11 +75,11 @@ curl -s http://127.0.0.1:4020/metrics | head
 # Optional:   GRAFANA_ADMIN_PASSWORD=...  PM2_LOG_DIR=...
 ```
 
-Provisioned dashboards (folder CEX):
-- **CEX Operations** (home) — fleet overview + incident logs + collapsible per-service detail
-- **CEX Engine Gateway** — deep gateway counters
-- **CEX Services** — compact multi-service metrics
-- **CEX PM2 Logs** — logs-only view
+Provisioned dashboards (folder PaperDesk):
+- **PaperDesk Operations** (home) — fleet overview + incident logs + collapsible per-service detail
+- **PaperDesk Engine Gateway** — deep gateway counters
+- **PaperDesk Services** — compact multi-service metrics
+- **PaperDesk PM2 Logs** — logs-only view
 
 All of this runs **on your VPS** (Docker). There is no Grafana Cloud / Datadog bill — only Contabo disk/CPU for retention.
 

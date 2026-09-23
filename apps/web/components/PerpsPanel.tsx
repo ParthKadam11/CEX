@@ -83,7 +83,7 @@ export function PerpsPanel() {
             id: trade.tradeId,
             price: Number(trade.price),
             quantity: Number(trade.quantity),
-            at: trade.timestamp,
+            at: Date.now(),
           },
           ...current.filter((row) => row.id !== trade.tradeId),
         ].slice(0, 120),
@@ -92,7 +92,7 @@ export function PerpsPanel() {
   });
 
   const liveCandles = useMemo(
-    () => buildLiveCandles(tape, 5_000, 180),
+    () => buildLiveCandles(tape, 15_000, 120),
     [tape],
   );
   const chartCandles = useMemo(() => {
@@ -112,7 +112,7 @@ export function PerpsPanel() {
       .sort((a, b) => b.bucket.localeCompare(a.bucket))
       .slice(0, 120);
   }, [historyCandles, liveCandles]);
-  const chartInterval = liveCandles.length > 0 ? "5s live" : "1m history";
+  const chartInterval = liveCandles.length > 0 ? "15s live" : "1m history";
 
   const lastPrice =
     tape[0]?.price ??

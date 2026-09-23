@@ -1,5 +1,5 @@
 {
-  "name": "cex",
+  "name": "paperdesk",
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @cex/web dev",

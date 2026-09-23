@@ -17,7 +17,8 @@ type ThemeContextValue = {
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-export const THEME_STORAGE_KEY = "cex-theme";
+export const THEME_STORAGE_KEY = "paperdesk-theme";
+const LEGACY_THEME_STORAGE_KEY = "cex-theme";
 
 const listeners = new Set<() => void>();
 
@@ -31,7 +32,9 @@ function applyTheme(theme: Theme) {
 }
 
 function readStoredTheme(): Theme {
-  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  const stored =
+    window.localStorage.getItem(THEME_STORAGE_KEY) ??
+    window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
   if (stored === "dark" || stored === "light") return stored;
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"

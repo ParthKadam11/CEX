@@ -12,7 +12,7 @@
       }
     ]
   },
-  "description": "Fleet overview for incidents — all CEX services, then drill into gateway / OMS / ingester / exchange / web + logs.",
+  "description": "Fleet overview for incidents — all PaperDesk services, then drill into gateway / OMS / ingester / exchange / web + logs.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -24,7 +24,7 @@
       "includeVars": true,
       "keepTime": true,
       "tags": ["cex"],
-      "title": "Other CEX dashboards",
+      "title": "Other PaperDesk dashboards",
       "type": "dashboards"
     }
   ],
@@ -852,7 +852,7 @@
     "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
   },
   "timezone": "browser",
-  "title": "CEX Operations",
+  "title": "PaperDesk Operations",
   "uid": "cex-operations",
   "version": 1,
   "weekStart": ""

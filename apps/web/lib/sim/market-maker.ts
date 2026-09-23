@@ -34,14 +34,14 @@ const MM_USERS = [...MM_BID_USERS, ...MM_ASK_USERS] as const;
 const ALL_USERS = [...MM_USERS, ...RETAIL_USERS] as const;
 
 const DEFAULT_MID = 100;
-/** Contiguous price offsets from mid — keep shallow so rebuilds stay cheap. */
-const LADDER_DEPTH = 8;
+/** Depth behind the inside — keep shallow so rebuilds stay cheap. */
+const LADDER_DEPTH = 6;
 const SETTLE_MS = 40;
 const PRESENCE_TTL_MS = 45_000;
 /** Bump when MM accounts / funding change so hot-reload re-credits. */
 const FUND_EPOCH = 4;
 /** Bump when default MM behaviour changes (e.g. prints-on by default). */
-const DEFAULTS_EPOCH = 4;
+const DEFAULTS_EPOCH = 5;
 
 export type SimIntensity = "idle" | "medium" | "high";
 
@@ -55,6 +55,9 @@ type SimState = {
   fundEpoch: number;
   ticks: number;
   lastMid: number;
+  /** Sticky drift so prints don't cancel out. -1 down, 0 mixed, +1 up. */
+  trend: -1 | 0 | 1;
+  lastSpread: number;
 };
 
 type HeartbeatState = {
@@ -73,6 +76,8 @@ type HeartbeatState = {
   lastError: string | null;
   lastTickAt: number | null;
   defaultsEpoch: number;
+  /** Alternates spot/perp so one tick never hammers both markets. */
+  marketRotator: number;
 };
 
 const globalSim = globalThis as unknown as {
@@ -91,11 +96,15 @@ function state(): SimState {
       fundEpoch: 0,
       ticks: 0,
       lastMid: DEFAULT_MID,
+      trend: 0,
+      lastSpread: 2,
     };
     bag.set(market, row);
   } else if (typeof row.fundEpoch !== "number") {
     row.fundEpoch = 0;
   }
+  if (row.trend !== -1 && row.trend !== 1) row.trend = 0;
+  if (!Number.isFinite(row.lastSpread) || row.lastSpread < 1) row.lastSpread = 2;
   return row;
 }
 
@@ -106,7 +115,7 @@ function heartbeat(): HeartbeatState {
       boost: "medium",
       intervalMs: null,
       placeQuotes: true,
-      placeTrades: false,
+      placeTrades: true,
       spread: 2,
       lastPresenceAt: 0,
       viewers: 0,
@@ -115,6 +124,7 @@ function heartbeat(): HeartbeatState {
       lastError: null,
       lastTickAt: null,
       defaultsEpoch: DEFAULTS_EPOCH,
+      marketRotator: 0,
     };
   }
   const hb = globalSim.__cexMmHeartbeat!;
@@ -127,9 +137,10 @@ function heartbeat(): HeartbeatState {
     hb.enabled = false;
     hb.inFlight = false;
     hb.placeQuotes = true;
-    hb.placeTrades = false;
+    hb.placeTrades = true;
     hb.spread = 2;
     hb.defaultsEpoch = DEFAULTS_EPOCH;
+    hb.marketRotator = 0;
   }
   // Do not rewrite placeQuotes / placeTrades / spread on every call —
   // only the user (MM menu) may change sim options.
@@ -175,23 +186,69 @@ function tradesPerTick(intensity: SimIntensity): number {
   return Math.random() < 0.35 ? 1 : 0;
 }
 
-function executableTradePrice(
-  book: OrderBookSnapshot | null,
-  side: "BUY" | "SELL",
-): number | null {
-  const levels = side === "BUY" ? book?.asks : book?.bids;
-  if (!levels || levels.length === 0) return null;
-
-  // Cross one of the first few real levels. A synthetic price near the mid
-  // can miss the book entirely and creates clustered, non-market prints.
-  const visible = levels.slice(0, Math.min(3, levels.length));
-  const level = visible[Math.floor(Math.random() * visible.length)];
-  const price = Number(level?.price);
-  return Number.isFinite(price) && price > 0 ? price : null;
+function ladderQty(offset: number): number {
+  const noise = Math.floor(Math.random() * 3);
+  return Math.max(1, 1 + Math.floor(offset / 2) + noise);
 }
 
-function ladderQty(offset: number): number {
-  return 2 + Math.floor(offset / 2) + (offset % 3);
+function randInt(min: number, max: number): number {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+/** Spread in ticks around the UI base — tight most of the time, occasionally wide. */
+function sampleSpread(base: number, intensity: SimIntensity): number {
+  const floor = 1;
+  const cap = intensity === "high" ? 6 : 5;
+  const center = Math.max(floor, Math.min(cap, Math.round(base)));
+  const roll = Math.random();
+  let next = center;
+  if (roll < 0.12) next = Math.max(floor, center - 1);
+  else if (roll < 0.55) next = center;
+  else if (roll < 0.82) next = Math.min(cap, center + 1);
+  else if (roll < 0.94) next = Math.min(cap, center + 2);
+  else next = Math.min(cap, Math.max(center + 1, randInt(center, cap)));
+  return Math.max(floor, Math.min(cap, next));
+}
+
+function stepFairPrice(s: SimState, intensity: SimIntensity): number {
+  if (Math.random() < (intensity === "high" ? 0.22 : 0.12)) {
+    s.trend = Math.random() < 0.5 ? -1 : 1;
+  } else if (Math.random() < 0.08) {
+    s.trend = 0;
+  }
+  const moveChance =
+    intensity === "high" ? 0.62 : intensity === "medium" ? 0.4 : 0.18;
+  if (Math.random() >= moveChance) return s.lastMid;
+  const mag = Math.random() < 0.14 ? 2 : 1;
+  const dir =
+    s.trend !== 0 && Math.random() < 0.72
+      ? s.trend
+      : Math.random() < 0.5
+        ? -1
+        : 1;
+  s.lastMid = Math.max(20, Math.min(400, s.lastMid + dir * mag));
+  return s.lastMid;
+}
+
+/** Split spread across bid/ask so the book isn't always perfectly symmetric. */
+function quoteTouches(
+  mid: number,
+  spread: number,
+): { bid: number; ask: number } {
+  const wide = Math.max(1, Math.round(spread));
+  if (wide === 1) {
+    if (Math.random() < 0.5) {
+      return { bid: Math.max(1, mid - 1), ask: Math.max(2, mid) };
+    }
+    return { bid: Math.max(1, mid), ask: mid + 1 };
+  }
+  let bidOff = Math.random() < 0.5 ? Math.floor(wide / 2) : Math.ceil(wide / 2);
+  bidOff = Math.max(1, bidOff);
+  const askOff = Math.max(1, wide - bidOff);
+  const bid = Math.max(1, mid - bidOff);
+  const ask = mid + askOff;
+  if (ask <= bid) return { bid, ask: bid + 1 };
+  return { bid, ask };
 }
 
 async function inject(command: Record<string, unknown>): Promise<boolean> {
@@ -403,13 +460,30 @@ function bookPriceSets(book: OrderBookSnapshot | null): {
   };
 }
 
-/** Place resting GTC quotes at every integer offset from mid (primary MM stack). */
-async function seedLadder(mid: number): Promise<number> {
+/** Place resting GTC quotes around a sampled inside spread, then depth behind. */
+async function seedLadder(mid: number, spread: number): Promise<number> {
+  const inside = quoteTouches(mid, spread);
   const jobs: Array<() => Promise<boolean>> = [];
-  for (let offset = 1; offset <= LADDER_DEPTH; offset += 1) {
-    const bid = mid - offset;
-    const ask = mid + offset;
-    const qty = ladderQty(offset);
+  jobs.push(() =>
+    injectPlace({
+      userId: MM_BID_USERS[0]!,
+      side: "BUY",
+      price: inside.bid,
+      quantity: ladderQty(1),
+    }),
+  );
+  jobs.push(() =>
+    injectPlace({
+      userId: MM_ASK_USERS[0]!,
+      side: "SELL",
+      price: inside.ask,
+      quantity: ladderQty(1),
+    }),
+  );
+  for (let step = 1; step <= LADDER_DEPTH; step += 1) {
+    const bid = inside.bid - step;
+    const ask = inside.ask + step;
+    const qty = ladderQty(step + 1);
     if (bid >= 1) {
       jobs.push(() =>
         injectPlace({
@@ -446,54 +520,59 @@ async function seedLadder(mid: number): Promise<number> {
  */
 async function topUpLadder(
   mid: number,
+  spread: number,
   book: OrderBookSnapshot | null,
 ): Promise<number> {
   const { bids, asks } = bookPriceSets(book);
+  const inside = quoteTouches(mid, spread);
   const jobs: Array<() => Promise<boolean>> = [];
-  for (let offset = 1; offset <= LADDER_DEPTH; offset += 1) {
-    const bid = mid - offset;
-    const ask = mid + offset;
-    const qty = ladderQty(offset);
-    if (bid >= 1 && !bids.has(bid)) {
+  const addBid = (price: number, qty: number, stacked: boolean) => {
+    if (price < 1 || bids.has(price)) return;
+    jobs.push(() =>
+      injectPlace({
+        userId: MM_BID_USERS[0]!,
+        side: "BUY",
+        price,
+        quantity: qty,
+      }),
+    );
+    if (stacked) {
       jobs.push(() =>
         injectPlace({
-          userId: MM_BID_USERS[0]!,
+          userId: MM_BID_USERS[1]!,
           side: "BUY",
-          price: bid,
+          price,
           quantity: qty,
         }),
       );
-      if (offset <= 3) {
-        jobs.push(() =>
-          injectPlace({
-            userId: MM_BID_USERS[1]!,
-            side: "BUY",
-            price: bid,
-            quantity: qty,
-          }),
-        );
-      }
     }
-    if (!asks.has(ask)) {
+  };
+  const addAsk = (price: number, qty: number, stacked: boolean) => {
+    if (asks.has(price)) return;
+    jobs.push(() =>
+      injectPlace({
+        userId: MM_ASK_USERS[0]!,
+        side: "SELL",
+        price,
+        quantity: qty,
+      }),
+    );
+    if (stacked) {
       jobs.push(() =>
         injectPlace({
-          userId: MM_ASK_USERS[0]!,
+          userId: MM_ASK_USERS[1]!,
           side: "SELL",
-          price: ask,
+          price,
           quantity: qty,
         }),
       );
-      if (offset <= 3) {
-        jobs.push(() =>
-          injectPlace({
-            userId: MM_ASK_USERS[1]!,
-            side: "SELL",
-            price: ask,
-            quantity: qty,
-          }),
-        );
-      }
     }
+  };
+  addBid(inside.bid, ladderQty(1), true);
+  addAsk(inside.ask, ladderQty(1), true);
+  for (let step = 1; step <= LADDER_DEPTH; step += 1) {
+    addBid(inside.bid - step, ladderQty(step + 1), step <= 2);
+    addAsk(inside.ask + step, ladderQty(step + 1), step <= 2);
   }
   if (jobs.length === 0) return 0;
   const CHUNK = 8;
@@ -586,7 +665,7 @@ export async function runMarketMakerTick(
   // Manual tick: only rebuild when empty; otherwise nudge + trade.
   if (empty) {
     await cancelMmQuotes();
-    placed += await seedLadder(mid);
+    placed += await seedLadder(mid, spreadBase);
     seeded = true;
     await sleep(SETTLE_MS);
     book = await readBook();
@@ -624,8 +703,7 @@ export async function runMarketMakerTick(
       const buy = Math.random() < 0.5;
       const size = 1;
       const trader = pickRetail();
-      const px = executableTradePrice(book, buy ? "BUY" : "SELL");
-      if (px == null) continue;
+      const px = buy ? Number(liveBbo.bestAsk) : Number(liveBbo.bestBid);
       jobs.push(
         injectPlace({
           userId: trader,
@@ -685,15 +763,16 @@ export async function runHeartbeatTick(): Promise<{
   }
   let book = await readBook();
   const bbo = book?.bbo ?? { bestBid: null, bestAsk: null };
-  const bookMid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
-  let mid = bookMid;
+  let mid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
 
   // Slight drift so the chart isn't flat forever (quotes follow; rare prints optional).
   if (intensity !== "idle" && Math.random() < (intensity === "high" ? 0.25 : 0.12)) {
     mid = Math.max(1, mid + (Math.random() < 0.5 ? -1 : 1));
   }
-  const midMoved = mid !== bookMid;
   s.lastMid = mid;
+
+  const spread = sampleSpread(hb.spread, intensity);
+  s.lastSpread = spread;
 
   let cancelled = 0;
   let placed = 0;
@@ -704,34 +783,35 @@ export async function runHeartbeatTick(): Promise<{
     levels.askLevels < Math.floor(LADDER_DEPTH * 0.5);
   // Only wipe+rebuild when the book is empty. Periodic rebuilds caused cancel
   // storms, circuit opens, and stuck command lag.
-  const shouldRebuild = empty || midMoved;
+  const shouldRebuild = empty;
 
   if (hb.placeQuotes && shouldRebuild) {
     cancelled = await cancelMmQuotes();
-    placed = await seedLadder(mid);
+    placed = await seedLadder(mid, spread);
     await sleep(SETTLE_MS);
     book = await readBook();
   } else if (hb.placeQuotes && thin) {
     // Top up missing ladder prices only when depth is thin.
-    placed = await topUpLadder(mid, book);
+    placed = await topUpLadder(mid, spread, book);
     if (placed > 0) {
       await sleep(SETTLE_MS);
       book = await readBook();
     }
   } else if (hb.placeQuotes && intensity !== "idle" && Math.random() < 0.35) {
     // Light touch refresh near mid — one bid + one ask, no cancel.
+    const inside = quoteTouches(mid, spread);
     const qty = 1 + Math.floor(Math.random() * 2);
     const results = await Promise.all([
       injectPlace({
         userId: MM_BID_USER,
         side: "BUY",
-        price: Math.max(1, mid - hb.spread),
+        price: inside.bid,
         quantity: qty,
       }),
       injectPlace({
         userId: MM_ASK_USER,
         side: "SELL",
-        price: mid + hb.spread,
+        price: inside.ask,
         quantity: qty,
       }),
     ]);
@@ -757,8 +837,7 @@ export async function runHeartbeatTick(): Promise<{
         continue;
       }
       const buy = Math.random() < 0.5;
-      const px = executableTradePrice(book, buy ? "BUY" : "SELL");
-      if (px == null) continue;
+      const px = buy ? Number(live.bestAsk) : Number(live.bestBid);
       const size = intensity === "high" && Math.random() < 0.3 ? 2 : 1;
       const ok = await injectPlace({
         userId: pickRetail(),
@@ -805,15 +884,6 @@ function scheduleNext(delayMs?: number): void {
 async function loopOnce(): Promise<void> {
   const hb = heartbeat();
   if (!hb.enabled) return;
-  if (!hasActivePresence(hb)) {
-    hb.enabled = false;
-    if (hb.timer) {
-      clearTimeout(hb.timer);
-      hb.timer = null;
-    }
-    hb.lastError = "stopped after market page presence expired";
-    return;
-  }
   if (hb.inFlight) {
     scheduleNext(120);
     return;
@@ -823,9 +893,10 @@ async function loopOnce(): Promise<void> {
   // round-trips don't stack on top of the interval.
   const dueAt = Date.now() + intervalFor(resolveEffectiveIntensity());
   try {
-    // Keep the heartbeat tied to the market the caller selected. Rotating the
-    // global market here makes a single sim loop broadcast the same prints to
-    // both Spot and Perps charts, which is the source of the ugly duplicated tape.
+    // Alternate markets so we never stampede both books in one tick.
+    const market = SIM_MARKETS[hb.marketRotator % SIM_MARKETS.length]!;
+    hb.marketRotator += 1;
+    setSimMarket(market);
     await runHeartbeatTick();
   } catch (error) {
     hb.lastError = error instanceof Error ? error.message : String(error);

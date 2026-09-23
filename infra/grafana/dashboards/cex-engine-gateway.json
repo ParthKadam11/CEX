@@ -311,7 +311,7 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "CEX Engine Gateway",
+  "title": "PaperDesk Engine Gateway",
   "uid": "cex-engine-gateway",
   "version": 1,
   "weekStart": ""

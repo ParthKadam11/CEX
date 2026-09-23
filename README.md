@@ -1,4 +1,4 @@
-# CEX
+# PaperDesk
 
 A multi-service paper centralized exchange built to study what actually happens after someone clicks Buy: matching, balance locks, durable order flow, market-data persistence, and perpetual risk.
 
@@ -90,7 +90,7 @@ The application layer wraps the engine with service boundaries:
 ## Monorepo Layout
 
 ```text
-CEX/
+PaperDesk/
 ├── apps/
 │   ├── exchange/
 │   ├── engine-gateway/

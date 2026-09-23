@@ -24,7 +24,7 @@ docker compose -f infra/docker-compose.yml up -d --force-recreate grafana
 ```
 
 Login: `admin` / `cex-grafana-change-me` (change it).  
-Logs: **Explore → Loki** → `{job="pm2"}` or dashboard **CEX PM2 Logs**.
+Logs: **Explore → Loki** → `{job="pm2"}` or dashboard **PaperDesk PM2 Logs**.
 
 Rename `server_name`, enable under nginx, then certbot. Keep gateway buffering off and long read timeouts for EventSource.
 

@@ -67,7 +67,7 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "CEX PM2 Logs",
+  "title": "PaperDesk PM2 Logs",
   "uid": "cex-pm2-logs",
   "version": 1
 }

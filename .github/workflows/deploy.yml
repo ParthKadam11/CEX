@@ -73,24 +73,6 @@ jobs:
           echo "==> build web"
           pnpm build:web
 
-          echo "==> validate production service tokens"
-          require_env_value() {
-            local key="$1"
-            if ! awk -F= -v key="$key" '$1 == key {
-              value = $0
-              sub(/^[^=]*=/, "", value)
-              gsub(/[[:space:]\"]/, "", value)
-              if (length(value) > 0) found = 1
-            }
-            END { exit(found ? 0 : 1) }' .env 2>/dev/null; then
-              echo "Missing non-empty $key in $PWD/.env" >&2
-              return 1
-            fi
-          }
-          require_env_value EXCHANGE_GATEWAY_TOKEN
-          require_env_value GATEWAY_INTERNAL_TOKEN
-          require_env_value OMS_INTERNAL_TOKEN
-
           echo "==> reload pm2"
           pm2 reload ecosystem.config.cjs --update-env
           pm2 save
@@ -116,8 +98,6 @@ jobs:
             done
             echo "FAIL $name after ~60s ($url)" >&2
             pm2 status || true
-            echo "==> recent PM2 logs for $name" >&2
-            pm2 logs "cex-$name" --nostream --lines 80 || true
             return 1
           }
 

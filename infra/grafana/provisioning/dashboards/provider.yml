@@ -1,9 +1,9 @@
 apiVersion: 1
 
 providers:
-  - name: CEX
+  - name: PaperDesk
     orgId: 1
-    folder: CEX
+    folder: PaperDesk
     type: file
     disableDeletion: false
     updateIntervalSeconds: 30

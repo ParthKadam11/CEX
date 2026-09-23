@@ -1,4 +1,4 @@
-# Render Blueprint — CEX backends
+# Render Blueprint — PaperDesk backends
 # https://render.com/docs/blueprint-spec
 #
 # Deploys: exchange (private + WAL disk), gateway, OMS, ingester, Redis.

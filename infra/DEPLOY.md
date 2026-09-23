@@ -1,4 +1,4 @@
-# Deploying CEX
+# Deploying PaperDesk
 
 Day-to-day development is **local**: see the root [README](../README.md) (`pnpm infra:up` → `pnpm setup:local` → `pnpm dev:stack`). This file is only for putting the stack on a public host.
 

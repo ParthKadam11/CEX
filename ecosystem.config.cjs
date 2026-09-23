@@ -8,9 +8,7 @@
  *   pm2 save && pm2 startup
  */
 
-const path = require("node:path");
 const root = __dirname;
-const exchangeDataDir = path.join(root, "apps", "exchange", "data");
 
 module.exports = {
   apps: [
@@ -19,11 +17,7 @@ module.exports = {
       cwd: root,
       script: "pnpm",
       args: "--filter @cex/exchange start",
-      env: {
-        NODE_ENV: "production",
-        ALLOW_NUCLEAR_RESET: "true",
-        EXCHANGE_DATA_DIR: exchangeDataDir,
-      },
+      env: { NODE_ENV: "production", ALLOW_NUCLEAR_RESET: "true" },
       max_restarts: 20,
       min_uptime: "5s",
     },
@@ -65,7 +59,7 @@ module.exports = {
       args: "--filter @cex/web exec next start --hostname 127.0.0.1 --port 3000",
       env: {
         NODE_ENV: "production",
-        SIM_HEARTBEAT: "false",
+        SIM_HEARTBEAT: "true",
         ALLOW_NUCLEAR_RESET: "true",
       },
       max_restarts: 20,

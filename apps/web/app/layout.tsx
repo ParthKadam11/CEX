@@ -57,8 +57,9 @@ export const dynamic = "force-dynamic";
 const themeInitScript = `
 (() => {
   try {
-    const key = "cex-theme";
-    const stored = localStorage.getItem(key);
+    const key = "paperdesk-theme";
+    const legacy = "cex-theme";
+    const stored = localStorage.getItem(key) || localStorage.getItem(legacy);
     const theme =
       stored === "dark" || stored === "light"
         ? stored

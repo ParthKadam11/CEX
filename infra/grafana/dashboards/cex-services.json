@@ -211,7 +211,7 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "CEX Services",
+  "title": "PaperDesk Services",
   "uid": "cex-services",
   "version": 1
 }

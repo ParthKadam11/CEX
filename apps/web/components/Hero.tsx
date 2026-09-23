@@ -9,19 +9,6 @@ import { Moon, Sun } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
-function GitHubMark({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className={className}
-      fill="currentColor"
-    >
-      <path d="M12 .5a11.5 11.5 0 0 0-3.64 22.39c.58.11.79-.25.79-.56v-2.05c-3.22.7-3.9-1.38-3.9-1.38-.53-1.34-1.28-1.7-1.28-1.7-1.04-.72.08-.71.08-.71 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.57-.29-5.27-1.28-5.27-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.05 11.05 0 0 1 5.8 0c2.21-1.49 3.18-1.18 3.18-1.18.62 1.59.23 2.76.11 3.05.74.81 1.18 1.84 1.18 3.1 0 4.43-2.71 5.4-5.29 5.69.41.35.78 1.04.78 2.1v3.12c0 .31.21.68.8.56A11.5 11.5 0 0 0 12 .5Z" />
-    </svg>
-  );
-}
-
 const TAGLINE_WORDS = [
   "Trade",
   "SOL",
@@ -181,15 +168,6 @@ export function Hero() {
                 <Moon className="size-4" />
               )}
             </button>
-            <a
-              href="https://github.com/ParthKadam11/CEX"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-10 items-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 text-sm font-medium text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20 hover:text-white"
-            >
-              <GitHubMark className="size-4" />
-              Star on Github
-            </a>
             {session?.user ? (
               <Button
                 onClick={openDashboard}
@@ -212,11 +190,11 @@ export function Hero() {
         <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-4 pb-8 pt-12 sm:px-8">
           <div className="max-w-[680px]">
             <p className="animate-fade-up inline-flex items-center gap-1.5 border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 font-mono text-[10px] tracking-[0.16em] text-emerald-300 uppercase backdrop-blur-sm">
-              PaperDesk
+              Paper trading
               <span className="text-emerald-300/50">·</span>
               No real funds
             </p>
-            <h1 className="animate-fade-up delay-100 mt-5 font-display text-balance text-7xl leading-none tracking-tight text-white sm:text-8xl md:text-9xl">
+            <h1 className="animate-fade-up delay-100 mt-5 font-display text-balance text-6xl leading-none tracking-tight text-white sm:text-7xl md:text-8xl">
               PaperDesk
             </h1>
             <p className="animate-fade-up delay-200 mt-6 max-w-md text-pretty text-lg leading-relaxed text-white/75">
@@ -592,6 +570,14 @@ export function Hero() {
               </a>
             </div>
           </div>
+          <p className="mt-8 max-w-2xl text-pretty text-sm leading-relaxed text-zinc-400 dark:text-muted-foreground">
+            Paper trading environment for SOL USD spot and perps. Balances,
+            fills, and PnL are simulated for education and product demos. Not
+            financial advice. No real funds are held or settled.
+          </p>
+          <p className="mt-4 font-mono text-xs text-zinc-500 dark:text-muted-foreground">
+            Paper markets · SOL USD · Demo only
+          </p>
         </div>
       </footer>
     </main>
@@ -642,7 +628,7 @@ function ProductShot() {
             <span className="size-2.5 rounded-full bg-zinc-700" />
             <span className="size-2.5 rounded-full bg-zinc-700" />
             <span className="ml-3 font-mono text-[11px] tracking-[0.14em] text-zinc-500 uppercase">
-              PaperDesk · spot · SOL-USD
+              cex · spot · SOL-USD
             </span>
           </div>
 
