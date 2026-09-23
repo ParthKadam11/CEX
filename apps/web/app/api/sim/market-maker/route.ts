@@ -22,7 +22,6 @@ export async function GET(request: NextRequest) {
   const userId = await getAuthenticatedUserId();
   if (!userId) return bffError(request, 401, "UNAUTHORIZED");
   const market = parseSimMarket(request.nextUrl.searchParams.get("market"));
-  setSimMarket(market);
   // Status only — never auto-start; user must press Start in MM controls.
   return NextResponse.json({ ok: true, market, ...getMarketMakerStatus() });
 }
@@ -44,7 +43,6 @@ export async function POST(request: NextRequest) {
       : {};
 
   const market = parseSimMarket(record.market);
-  setSimMarket(market);
 
   const action =
     typeof record.action === "string" ? record.action : "tick";
@@ -93,6 +91,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "start") {
+    setSimMarket(market);
     const result = startSimHeartbeat({
       intensity:
         record.intensity === "low" ||
@@ -152,6 +151,8 @@ export async function POST(request: NextRequest) {
   if (action !== "tick" && action !== "seed") {
     return bffError(request, 400, "INVALID_ACTION");
   }
+
+  setSimMarket(market);
 
   const options: MarketMakerTickOptions = {
     market,

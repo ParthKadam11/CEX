@@ -117,7 +117,7 @@ jobs:
             echo "FAIL $name after ~60s ($url)" >&2
             pm2 status || true
             echo "==> recent PM2 logs for $name" >&2
-            pm2 logs "$name" --nostream --lines 80 || true
+            pm2 logs "cex-$name" --nostream --lines 80 || true
             return 1
           }
 

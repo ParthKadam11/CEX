@@ -83,7 +83,7 @@ export function PerpsPanel() {
             id: trade.tradeId,
             price: Number(trade.price),
             quantity: Number(trade.quantity),
-            at: Date.now(),
+            at: trade.timestamp,
           },
           ...current.filter((row) => row.id !== trade.tradeId),
         ].slice(0, 120),

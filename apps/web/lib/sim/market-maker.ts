@@ -106,7 +106,7 @@ function heartbeat(): HeartbeatState {
       boost: "medium",
       intervalMs: null,
       placeQuotes: true,
-      placeTrades: true,
+      placeTrades: false,
       spread: 2,
       lastPresenceAt: 0,
       viewers: 0,
@@ -127,7 +127,7 @@ function heartbeat(): HeartbeatState {
     hb.enabled = false;
     hb.inFlight = false;
     hb.placeQuotes = true;
-    hb.placeTrades = true;
+    hb.placeTrades = false;
     hb.spread = 2;
     hb.defaultsEpoch = DEFAULTS_EPOCH;
   }
@@ -175,13 +175,19 @@ function tradesPerTick(intensity: SimIntensity): number {
   return Math.random() < 0.35 ? 1 : 0;
 }
 
-function realisticTradePrice(mid: number, spread: number, side: "BUY" | "SELL"): number {
-  const spreadScale = Math.max(1, spread);
-  const centerBias = side === "BUY" ? spreadScale * 0.25 : -spreadScale * 0.25;
-  const noise = (Math.random() - 0.5) * spreadScale * 2.6;
-  const drift = (Math.random() - 0.5) * spreadScale * 0.8;
-  const price = mid + centerBias + noise + drift;
-  return Math.max(1, Math.round(price));
+function executableTradePrice(
+  book: OrderBookSnapshot | null,
+  side: "BUY" | "SELL",
+): number | null {
+  const levels = side === "BUY" ? book?.asks : book?.bids;
+  if (!levels || levels.length === 0) return null;
+
+  // Cross one of the first few real levels. A synthetic price near the mid
+  // can miss the book entirely and creates clustered, non-market prints.
+  const visible = levels.slice(0, Math.min(3, levels.length));
+  const level = visible[Math.floor(Math.random() * visible.length)];
+  const price = Number(level?.price);
+  return Number.isFinite(price) && price > 0 ? price : null;
 }
 
 function ladderQty(offset: number): number {
@@ -618,11 +624,8 @@ export async function runMarketMakerTick(
       const buy = Math.random() < 0.5;
       const size = 1;
       const trader = pickRetail();
-      const px = realisticTradePrice(
-        Number(liveBbo.bestBid ?? liveBbo.bestAsk ?? mid),
-        spreadBase,
-        buy ? "BUY" : "SELL",
-      );
+      const px = executableTradePrice(book, buy ? "BUY" : "SELL");
+      if (px == null) continue;
       jobs.push(
         injectPlace({
           userId: trader,
@@ -682,12 +685,14 @@ export async function runHeartbeatTick(): Promise<{
   }
   let book = await readBook();
   const bbo = book?.bbo ?? { bestBid: null, bestAsk: null };
-  let mid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
+  const bookMid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
+  let mid = bookMid;
 
   // Slight drift so the chart isn't flat forever (quotes follow; rare prints optional).
   if (intensity !== "idle" && Math.random() < (intensity === "high" ? 0.25 : 0.12)) {
     mid = Math.max(1, mid + (Math.random() < 0.5 ? -1 : 1));
   }
+  const midMoved = mid !== bookMid;
   s.lastMid = mid;
 
   let cancelled = 0;
@@ -699,7 +704,7 @@ export async function runHeartbeatTick(): Promise<{
     levels.askLevels < Math.floor(LADDER_DEPTH * 0.5);
   // Only wipe+rebuild when the book is empty. Periodic rebuilds caused cancel
   // storms, circuit opens, and stuck command lag.
-  const shouldRebuild = empty;
+  const shouldRebuild = empty || midMoved;
 
   if (hb.placeQuotes && shouldRebuild) {
     cancelled = await cancelMmQuotes();
@@ -752,11 +757,8 @@ export async function runHeartbeatTick(): Promise<{
         continue;
       }
       const buy = Math.random() < 0.5;
-      const px = realisticTradePrice(
-        Number(live.bestBid ?? live.bestAsk ?? mid),
-        hb.spread,
-        buy ? "BUY" : "SELL",
-      );
+      const px = executableTradePrice(book, buy ? "BUY" : "SELL");
+      if (px == null) continue;
       const size = intensity === "high" && Math.random() < 0.3 ? 2 : 1;
       const ok = await injectPlace({
         userId: pickRetail(),
@@ -803,6 +805,15 @@ function scheduleNext(delayMs?: number): void {
 async function loopOnce(): Promise<void> {
   const hb = heartbeat();
   if (!hb.enabled) return;
+  if (!hasActivePresence(hb)) {
+    hb.enabled = false;
+    if (hb.timer) {
+      clearTimeout(hb.timer);
+      hb.timer = null;
+    }
+    hb.lastError = "stopped after market page presence expired";
+    return;
+  }
   if (hb.inFlight) {
     scheduleNext(120);
     return;

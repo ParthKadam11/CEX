@@ -65,7 +65,7 @@ module.exports = {
       args: "--filter @cex/web exec next start --hostname 127.0.0.1 --port 3000",
       env: {
         NODE_ENV: "production",
-        SIM_HEARTBEAT: "true",
+        SIM_HEARTBEAT: "false",
         ALLOW_NUCLEAR_RESET: "true",
       },
       max_restarts: 20,

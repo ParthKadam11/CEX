@@ -14,6 +14,7 @@ export type WalletSnapshot = {
   balances: Balance[];
   ledger: LedgerEntry[];
   savedAt: number;
+  marketSeqs?: Record<string, number>;
 };
 
 export class SharedWallet {
@@ -21,6 +22,8 @@ export class SharedWallet {
   private readonly flushHooks: Array<() => Promise<void>> = [];
   private readonly queue: CommandQueue;
   private readonly snapshotPath: string | null;
+  private readonly marketSeqs = new Map<string, () => number>();
+  private loadedMarketSeqs: Record<string, number> | null = null;
 
   constructor(snapshotPath?: string | null) {
     this.snapshotPath = snapshotPath ?? null;
@@ -34,6 +37,16 @@ export class SharedWallet {
     this.flushHooks.push(hook);
   }
 
+  registerMarket(market: string, currentSeq: () => number): void {
+    this.marketSeqs.set(market, currentSeq);
+  }
+
+  replayThrough(market: string): number | null {
+    if (this.loadedMarketSeqs) return this.loadedMarketSeqs[market] ?? 0;
+    // Legacy shared-wallet snapshots predate coordinated checkpoints.
+    return null;
+  }
+
   enqueue<T>(run: () => T): Promise<T> {
     return this.queue.enqueue(run);
   }
@@ -43,6 +56,7 @@ export class SharedWallet {
     const raw = fs.readFileSync(this.snapshotPath, "utf8");
     const snapshot = JSON.parse(raw) as WalletSnapshot;
     if (snapshot.version !== 1) return;
+    this.loadedMarketSeqs = snapshot.marketSeqs ?? null;
     this.money.balances.loadAll(snapshot.balances ?? []);
     this.money.ledger.replace(snapshot.ledger ?? [], snapshot.ledgerSeq ?? 0);
   }
@@ -57,6 +71,9 @@ export class SharedWallet {
       balances: this.money.balances.listAll(),
       ledger: [...this.money.ledger.all()],
       savedAt: Date.now(),
+      marketSeqs: Object.fromEntries(
+        [...this.marketSeqs].map(([market, getSeq]) => [market, getSeq()]),
+      ),
     };
     const tmp = `${this.snapshotPath}.tmp`;
     fs.writeFileSync(tmp, `${JSON.stringify(snapshot)}\n`, "utf8");

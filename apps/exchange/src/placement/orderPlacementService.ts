@@ -77,6 +77,7 @@ export class OrderPlacementService {
   private readonly log: OrderEventLog;
   private readonly store: OrderStore;
   private readonly money: BalanceService;
+  private replayMoney = true;
   private readonly positionStore: PositionStore;
   // How much is still reserved per live order (after fills / unlocks).
   private readonly locks = new Map<string, OrderLock>();
@@ -113,6 +114,10 @@ export class OrderPlacementService {
 
   get positions(): PositionStore {
     return this.positionStore;
+  }
+
+  setReplayMoney(enabled: boolean): void {
+    this.replayMoney = enabled;
   }
 
   getLastTradePrice(): number | null {
@@ -169,10 +174,12 @@ export class OrderPlacementService {
     }
 
     if (applied.marginUnlocked > 0) {
-      this.money.unlock(userId, "USD", applied.marginUnlocked, {
-        refType: "POSITION",
-        refId: `${userId}:${market}`,
-      });
+      if (this.replayMoney) {
+        this.money.unlock(userId, "USD", applied.marginUnlocked, {
+          refType: "POSITION",
+          refId: `${userId}:${market}`,
+        });
+      }
     }
 
     this.applyPnlAbsorbingBankruptcy(userId, applied.realizedPnl, {
@@ -269,6 +276,7 @@ export class OrderPlacementService {
     ref?: BalanceRef,
   ): void {
     if (amount === 0) return;
+    if (!this.replayMoney) return;
     if (amount > 0) {
       this.money.applyPnl(userId, amount, ref);
       return;
@@ -346,6 +354,7 @@ export class OrderPlacementService {
     ref?: BalanceRef,
   ): void {
     if (amount === 0) return;
+    if (!this.replayMoney) return;
     if (amount > 0) {
       this.money.applyFunding(userId, amount, ref);
       return;
@@ -614,13 +623,19 @@ export class OrderPlacementService {
     }
 
     const ref: BalanceRef = { refType: "ORDER", refId: order.orderId };
-    this.money.lock(order.userId, need.asset, need.amount, ref);
+    if (this.replayMoney) {
+      this.money.lock(order.userId, need.asset, need.amount, ref);
+    }
     this.locks.set(order.orderId, { asset: need.asset, amount: need.amount });
   }
 
   private unlockOrder(order: Order): void {
     const lock = this.locks.get(order.orderId);
     if (!lock || lock.amount <= 0) {
+      this.locks.delete(order.orderId);
+      return;
+    }
+    if (!this.replayMoney) {
       this.locks.delete(order.orderId);
       return;
     }
@@ -656,12 +671,17 @@ export class OrderPlacementService {
           taker,
           trade.price,
         );
-        const { buyLockRelease, sellLockRelease } = this.money.settleTrade({
-          trade,
-          buyLimitPrice: buyLimit,
-          base,
-          quote,
-        });
+        const { buyLockRelease, sellLockRelease } = this.replayMoney
+          ? this.money.settleTrade({
+              trade,
+              buyLimitPrice: buyLimit,
+              base,
+              quote,
+            })
+          : {
+              buyLockRelease: quoteNotional(buyLimit, trade.quantity),
+              sellLockRelease: trade.quantity,
+            };
 
         this.releaseTrackedLock(trade.buyOrderId, buyLockRelease);
         this.releaseTrackedLock(trade.sellOrderId, sellLockRelease);
@@ -733,7 +753,7 @@ export class OrderPlacementService {
     this.releaseTrackedLock(order.orderId, orderLockRelease);
     this.dropEmptyLock(order.orderId);
 
-    if (unlockExcess > 0) {
+    if (unlockExcess > 0 && this.replayMoney) {
       this.money.unlock(order.userId, "USD", unlockExcess, {
         refType: "ORDER",
         refId: order.orderId,
@@ -751,14 +771,14 @@ export class OrderPlacementService {
       timestamp: trade.timestamp,
     });
 
-    if (applied.marginUnlocked > 0) {
+    if (applied.marginUnlocked > 0 && this.replayMoney) {
       this.money.unlock(order.userId, "USD", applied.marginUnlocked, {
         refType: "POSITION",
         refId: `${order.userId}:${order.market}`,
       });
     }
 
-    if (applied.realizedPnl !== 0) {
+    if (applied.realizedPnl !== 0 && this.replayMoney) {
       this.money.applyPnl(order.userId, applied.realizedPnl, {
         refType: "TRADE",
         refId: trade.tradeId,
