@@ -195,6 +195,17 @@ function randInt(min: number, max: number): number {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
 
+/** Mostly one tick, with a fat tail so some candles are much taller. */
+function sampleStep(intensity: SimIntensity): number {
+  const roll = Math.random();
+  if (intensity === "idle") return roll < 0.85 ? 1 : 2;
+  if (roll < 0.42) return 1;
+  if (roll < 0.68) return 2;
+  if (roll < 0.84) return randInt(3, 4);
+  if (roll < 0.95) return randInt(5, 8);
+  return randInt(9, 14);
+}
+
 /** Spread in ticks around the UI base — tight most of the time, occasionally wide. */
 function sampleSpread(base: number, intensity: SimIntensity): number {
   const floor = 1;
@@ -211,21 +222,17 @@ function sampleSpread(base: number, intensity: SimIntensity): number {
 }
 
 function stepFairPrice(s: SimState, intensity: SimIntensity): number {
-  if (Math.random() < (intensity === "high" ? 0.22 : 0.12)) {
+  // Trends last many ticks. A coin-flip each tick pins the tape in a 2-wide box.
+  const flip =
+    intensity === "high" ? 0.07 : intensity === "medium" ? 0.045 : 0.02;
+  if (s.trend === 0 || Math.random() < flip) {
     s.trend = Math.random() < 0.5 ? -1 : 1;
-  } else if (Math.random() < 0.08) {
-    s.trend = 0;
   }
   const moveChance =
-    intensity === "high" ? 0.62 : intensity === "medium" ? 0.4 : 0.18;
+    intensity === "high" ? 0.78 : intensity === "medium" ? 0.6 : 0.2;
   if (Math.random() >= moveChance) return s.lastMid;
-  const mag = Math.random() < 0.14 ? 2 : 1;
-  const dir =
-    s.trend !== 0 && Math.random() < 0.72
-      ? s.trend
-      : Math.random() < 0.5
-        ? -1
-        : 1;
+  const mag = sampleStep(intensity);
+  const dir = Math.random() < 0.84 ? s.trend : s.trend === 1 ? -1 : 1;
   s.lastMid = Math.max(20, Math.min(400, s.lastMid + dir * mag));
   return s.lastMid;
 }
@@ -339,16 +346,27 @@ async function injectCancel(userId: string, orderId: string): Promise<boolean> {
 
 async function listOpenOrders(
   userId: string,
-): Promise<{ orderId: string; userId: string }[]> {
+): Promise<{ orderId: string; userId: string; price: number; side: string }[]> {
   const response = await fetch(
     `${engineGatewayUrl}/markets/${getSimMarket()}/orders?userId=${encodeURIComponent(userId)}`,
     { cache: "no-store", headers: engineGatewayHeaders() },
   );
   if (!response.ok) return [];
   const body = (await response.json()) as {
-    orders?: { orderId: string; userId: string }[];
+    orders?: {
+      orderId: string;
+      userId: string;
+      price?: number;
+      side?: string;
+    }[];
   };
-  return Array.isArray(body.orders) ? body.orders : [];
+  if (!Array.isArray(body.orders)) return [];
+  return body.orders.map((order) => ({
+    orderId: order.orderId,
+    userId: order.userId,
+    price: Number(order.price),
+    side: typeof order.side === "string" ? order.side : "",
+  }));
 }
 
 async function readBook(): Promise<OrderBookSnapshot | null> {
@@ -735,7 +753,114 @@ export async function runMarketMakerTick(
   };
 }
 
-/** One low-load heartbeat: keep a stable MM ladder; trade / nudge without wiping the book. */
+const SWEEP_CAP = 48;
+const RETIRE_CAP = 16;
+
+/**
+ * Trade through resting size that sits on the wrong side of fair.
+ * One IOC can fill several prices, so the candle's range is the move.
+ */
+async function sweepToward(
+  book: OrderBookSnapshot | null,
+  targetMid: number,
+): Promise<{ price: number; quantity: number }[]> {
+  if (!book) return [];
+  const bestAsk = book.bbo.bestAsk != null ? Number(book.bbo.bestAsk) : null;
+  const bestBid = book.bbo.bestBid != null ? Number(book.bbo.bestBid) : null;
+
+  let side: "BUY" | "SELL" | null = null;
+  let limit = targetMid;
+  let qty = 0;
+  if (bestAsk != null && bestAsk < targetMid) {
+    side = "BUY";
+    limit = targetMid - 1;
+    for (const level of book.asks ?? []) {
+      const price = Number(level.price);
+      const quantity = Number(level.quantity);
+      if (price > limit || quantity <= 0) continue;
+      qty += quantity;
+    }
+  } else if (bestBid != null && bestBid > targetMid) {
+    side = "SELL";
+    limit = targetMid + 1;
+    for (const level of book.bids ?? []) {
+      const price = Number(level.price);
+      const quantity = Number(level.quantity);
+      if (price < limit || quantity <= 0) continue;
+      qty += quantity;
+    }
+  }
+  const size = Math.min(qty, SWEEP_CAP);
+  if (side == null || size < 1) return [];
+
+  const ok = await injectPlace({
+    userId: pickRetail(),
+    side,
+    price: limit,
+    quantity: size,
+    timeInForce: "IOC",
+  });
+  if (!ok) return [];
+  return [{ price: limit, quantity: size }];
+}
+
+/**
+ * Drop MM quotes that pin the touch or sit far from fair.
+ * Capped so a tick never becomes a cancel storm.
+ */
+async function retireStaleQuotes(mid: number): Promise<number> {
+  const bidFloor = mid - (LADDER_DEPTH + 3);
+  const askCeil = mid + (LADDER_DEPTH + 3);
+  const jobs: Array<{ userId: string; orderId: string; distance: number }> = [];
+
+  for (const userId of MM_BID_USERS) {
+    for (const order of await listOpenOrders(userId)) {
+      if (!Number.isFinite(order.price)) continue;
+      if (order.price >= mid || order.price < bidFloor) {
+        jobs.push({
+          userId,
+          orderId: order.orderId,
+          distance: Math.abs(order.price - mid),
+        });
+      }
+    }
+  }
+  for (const userId of MM_ASK_USERS) {
+    for (const order of await listOpenOrders(userId)) {
+      if (!Number.isFinite(order.price)) continue;
+      if (order.price <= mid || order.price > askCeil) {
+        jobs.push({
+          userId,
+          orderId: order.orderId,
+          distance: Math.abs(order.price - mid),
+        });
+      }
+    }
+  }
+
+  jobs.sort((a, b) => a.distance - b.distance);
+  const slice = jobs.slice(0, RETIRE_CAP);
+  if (slice.length === 0) return 0;
+  let cancelled = 0;
+  const CHUNK = 4;
+  for (let i = 0; i < slice.length; i += CHUNK) {
+    const results = await Promise.all(
+      slice.slice(i, i + CHUNK).map((job) => injectCancel(job.userId, job.orderId)),
+    );
+    cancelled += results.filter(Boolean).length;
+  }
+  return cancelled;
+}
+
+function noiseQty(intensity: SimIntensity): number {
+  const roll = Math.random();
+  if (roll < 0.55) return 1;
+  if (roll < 0.8) return randInt(2, 3);
+  if (roll < 0.93) return randInt(4, 7);
+  return intensity === "high" ? randInt(8, 14) : randInt(4, 8);
+}
+
+/** One low-load heartbeat: walk a fair price and print through the book. */
 export async function runHeartbeatTick(): Promise<{
   mid: number;
   placed: number;
@@ -763,13 +888,16 @@ export async function runHeartbeatTick(): Promise<{
   }
   let book = await readBook();
   const bbo = book?.bbo ?? { bestBid: null, bestAsk: null };
-  let mid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
-
-  // Slight drift so the chart isn't flat forever (quotes follow; rare prints optional).
-  if (intensity !== "idle" && Math.random() < (intensity === "high" ? 0.25 : 0.12)) {
-    mid = Math.max(1, mid + (Math.random() < 0.5 ? -1 : 1));
-  }
-  s.lastMid = mid;
+  const bookMid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
+  if (!Number.isFinite(s.lastMid) || s.lastMid <= 0) s.lastMid = bookMid;
+  // A person (or a wipe) moved the book a long way — follow that, then walk again.
+  if (Math.abs(bookMid - s.lastMid) > 15) s.lastMid = bookMid;
+  // Advance fair only once the touch has caught up, so a thick level gets cleared
+  // before the target runs further away.
+  const mid =
+    intensity === "idle" || Math.abs(bookMid - s.lastMid) > 2
+      ? s.lastMid
+      : stepFairPrice(s, intensity);
 
   const spread = sampleSpread(hb.spread, intensity);
   s.lastSpread = spread;
@@ -797,25 +925,9 @@ export async function runHeartbeatTick(): Promise<{
       await sleep(SETTLE_MS);
       book = await readBook();
     }
-  } else if (hb.placeQuotes && intensity !== "idle" && Math.random() < 0.35) {
-    // Light touch refresh near mid — one bid + one ask, no cancel.
-    const inside = quoteTouches(mid, spread);
-    const qty = 1 + Math.floor(Math.random() * 2);
-    const results = await Promise.all([
-      injectPlace({
-        userId: MM_BID_USER,
-        side: "BUY",
-        price: inside.bid,
-        quantity: qty,
-      }),
-      injectPlace({
-        userId: MM_ASK_USER,
-        side: "SELL",
-        price: inside.ask,
-        quantity: qty,
-      }),
-    ]);
-    placed = results.filter(Boolean).length;
+  } else if (hb.placeQuotes && Math.abs(mid - bookMid) >= 1) {
+    // Fair moved: fill only the new inside. Do not stack more size on the old touch.
+    placed = await topUpLadder(mid, spread, book);
     if (placed > 0) {
       await sleep(SETTLE_MS);
       book = await readBook();
@@ -825,20 +937,33 @@ export async function runHeartbeatTick(): Promise<{
   const prints: { price: number; quantity: number }[] = [];
   let traded = false;
   let live = book?.bbo ?? bbo;
-  // Retail prints move the tape/chart — on by default.
-  if (hb.placeTrades) {
+  // Pull the touch toward fair first, so prints land on a path instead of one bid/ask.
+  if (hb.placeTrades && intensity !== "idle" && Math.abs(mid - bookMid) >= 1) {
+    const swept = await sweepToward(book, mid);
+    if (swept.length > 0) {
+      traded = true;
+      prints.push(...swept);
+      await sleep(SETTLE_MS);
+      book = await readBook();
+      live = book?.bbo ?? live;
+    }
+    const retired = await retireStaleQuotes(mid);
+    cancelled += retired;
+    if (retired > 0) {
+      await sleep(SETTLE_MS);
+      book = await readBook();
+      live = book?.bbo ?? live;
+    }
+  }
+  // Quiet prints at the touch. Size and side follow the trend, so volume isn't stuck at 1.
+  if (hb.placeTrades && live.bestAsk != null && live.bestBid != null) {
     const nTrades = tradesPerTick(intensity);
+    const buyBias = s.trend === 1 ? 0.72 : s.trend === -1 ? 0.28 : 0.5;
     for (let i = 0; i < nTrades; i++) {
-      if (
-        live.bestAsk == null ||
-        live.bestBid == null ||
-        Math.random() >= tradeChance(intensity)
-      ) {
-        continue;
-      }
-      const buy = Math.random() < 0.5;
+      if (Math.random() >= tradeChance(intensity)) continue;
+      const buy = Math.random() < buyBias;
       const px = buy ? Number(live.bestAsk) : Number(live.bestBid);
-      const size = intensity === "high" && Math.random() < 0.3 ? 2 : 1;
+      const size = noiseQty(intensity);
       const ok = await injectPlace({
         userId: pickRetail(),
         side: buy ? "BUY" : "SELL",
