@@ -194,12 +194,6 @@ function tradeChance(intensity: SimIntensity): number {
   return 0.18;
 }
 
-function tradesPerTick(intensity: SimIntensity): number {
-  if (intensity === "high") return Math.random() < 0.55 ? 2 : 1;
-  if (intensity === "medium") return Math.random() < 0.65 ? 1 : 0;
-  return Math.random() < 0.35 ? 1 : 0;
-}
-
 function ladderQty(offset: number): number {
   const noise = Math.floor(Math.random() * 3);
   return Math.max(1, 1 + Math.floor(offset / 2) + noise);
@@ -553,75 +547,59 @@ async function seedLadder(mid: number, spread: number): Promise<number> {
 }
 
 /**
- * Fill missing ladder prices without wiping existing depth.
- * Near-touch levels get a second stack for thickness; far levels stay single.
+ * One resting quote per call. A tick that refills the whole ladder sees a
+ * stale book (inject only means "queued") and writes that ladder again.
  */
-async function topUpLadder(
+async function placeOneQuote(
+  book: OrderBookSnapshot,
   mid: number,
   spread: number,
-  book: OrderBookSnapshot | null,
 ): Promise<number> {
   const { bids, asks } = bookPriceSets(book);
   const inside = quoteTouches(mid, spread);
-  const jobs: Array<() => Promise<boolean>> = [];
-  const addBid = (price: number, qty: number, stacked: boolean) => {
-    if (price < 1 || bids.has(price)) return;
-    jobs.push(() =>
-      injectPlace({
+  if (!bids.has(inside.bid)) {
+    const ok = await injectPlace({
+      userId: MM_BID_USERS[0]!,
+      side: "BUY",
+      price: inside.bid,
+      quantity: ladderQty(1),
+    });
+    return ok ? 1 : 0;
+  }
+  if (!asks.has(inside.ask)) {
+    const ok = await injectPlace({
+      userId: MM_ASK_USERS[0]!,
+      side: "SELL",
+      price: inside.ask,
+      quantity: ladderQty(1),
+    });
+    return ok ? 1 : 0;
+  }
+  if (bids.size < LADDER_DEPTH) {
+    const price = inside.bid - bids.size;
+    if (price >= 1 && !bids.has(price)) {
+      const ok = await injectPlace({
         userId: MM_BID_USERS[0]!,
         side: "BUY",
         price,
-        quantity: qty,
-      }),
-    );
-    if (stacked) {
-      jobs.push(() =>
-        injectPlace({
-          userId: MM_BID_USERS[1]!,
-          side: "BUY",
-          price,
-          quantity: qty,
-        }),
-      );
+        quantity: ladderQty(bids.size + 1),
+      });
+      return ok ? 1 : 0;
     }
-  };
-  const addAsk = (price: number, qty: number, stacked: boolean) => {
-    if (asks.has(price)) return;
-    jobs.push(() =>
-      injectPlace({
+  }
+  if (asks.size < LADDER_DEPTH) {
+    const price = inside.ask + asks.size;
+    if (!asks.has(price)) {
+      const ok = await injectPlace({
         userId: MM_ASK_USERS[0]!,
         side: "SELL",
         price,
-        quantity: qty,
-      }),
-    );
-    if (stacked) {
-      jobs.push(() =>
-        injectPlace({
-          userId: MM_ASK_USERS[1]!,
-          side: "SELL",
-          price,
-          quantity: qty,
-        }),
-      );
+        quantity: ladderQty(asks.size + 1),
+      });
+      return ok ? 1 : 0;
     }
-  };
-  addBid(inside.bid, ladderQty(1), true);
-  addAsk(inside.ask, ladderQty(1), true);
-  for (let step = 1; step <= LADDER_DEPTH; step += 1) {
-    addBid(inside.bid - step, ladderQty(step + 1), step <= 2);
-    addAsk(inside.ask + step, ladderQty(step + 1), step <= 2);
   }
-  if (jobs.length === 0) return 0;
-  const CHUNK = 8;
-  let placed = 0;
-  for (let i = 0; i < jobs.length; i += CHUNK) {
-    if (pipeBlocked()) return placed;
-    const results = await Promise.all(jobs.slice(i, i + CHUNK).map((fn) => fn()));
-    placed += results.filter(Boolean).length;
-    await sleep(SETTLE_MS);
-  }
-  return placed;
+  return 0;
 }
 
 /** Cancel MM quotes in small batches — never stampede cancel-all. */
@@ -884,7 +862,22 @@ export async function runHeartbeatTick(): Promise<{
     };
   }
   let book = await readBook();
-  const bbo = book?.bbo ?? { bestBid: null, bestAsk: null };
+  // A failed read is not an empty book. Treating it as empty cancel-alls and reseeds.
+  if (!book) {
+    hb.lastError = "book unavailable";
+    hb.lastTickAt = Date.now();
+    s.ticks += 1;
+    return {
+      mid: s.lastMid || DEFAULT_MID,
+      placed: 0,
+      cancelled: 0,
+      traded: false,
+      intensity,
+      book: null,
+      prints: [],
+    };
+  }
+  const bbo = book.bbo ?? { bestBid: null, bestAsk: null };
   const bookMid = resolveMid(bbo, s.lastMid || DEFAULT_MID);
   if (!Number.isFinite(s.lastMid) || s.lastMid <= 0) s.lastMid = bookMid;
   // A person (or a wipe) moved the book a long way — follow that, then walk again.
@@ -899,58 +892,30 @@ export async function runHeartbeatTick(): Promise<{
   const spread = sampleSpread(hb.spread, intensity);
   s.lastSpread = spread;
 
-  let cancelled = 0;
+  // One quote and, separately, one print. topUpLadder queued a whole ladder
+  // every move, then read the book 40ms later and queued it again.
+  const cancelled = 0;
   let placed = 0;
-  const levels = bookPriceSets(book);
-  const empty = levels.bidLevels === 0 && levels.askLevels === 0;
-  const thin =
-    levels.bidLevels < Math.floor(LADDER_DEPTH * 0.5) ||
-    levels.askLevels < Math.floor(LADDER_DEPTH * 0.5);
-  // Only wipe+rebuild when the book is empty. Periodic rebuilds caused cancel
-  // storms, circuit opens, and stuck command lag.
-  const shouldRebuild = empty;
-
-  if (hb.placeQuotes && shouldRebuild) {
-    cancelled = await cancelMmQuotes();
-    placed = await seedLadder(mid, spread);
-    await sleep(SETTLE_MS);
-    book = await readBook();
-  } else if (hb.placeQuotes && thin) {
-    // Top up missing ladder prices only when depth is thin.
-    placed = await topUpLadder(mid, spread, book);
-    if (placed > 0) {
-      await sleep(SETTLE_MS);
-      book = await readBook();
-    }
-  } else if (hb.placeQuotes && Math.abs(mid - bookMid) >= 1) {
-    // Fair moved: fill only the new inside. Do not stack more size on the old touch.
-    placed = await topUpLadder(mid, spread, book);
-    if (placed > 0) {
-      await sleep(SETTLE_MS);
-      book = await readBook();
-    }
+  if (hb.placeQuotes) {
+    placed = await placeOneQuote(book, mid, spread);
   }
 
   const prints: { price: number; quantity: number }[] = [];
   let traded = false;
-  let live = book?.bbo ?? bbo;
-  // Pull the touch toward fair first, so prints land on a path instead of one bid/ask.
-  if (hb.placeTrades && intensity !== "idle" && Math.abs(mid - bookMid) >= 1) {
-    const swept = await sweepToward(book, mid);
-    if (swept.length > 0) {
-      traded = true;
-      prints.push(...swept);
-      await sleep(SETTLE_MS);
-      book = await readBook();
-      live = book?.bbo ?? live;
-    }
-  }
-  // Quiet prints at the touch. Size and side follow the trend, so volume isn't stuck at 1.
-  if (hb.placeTrades && live.bestAsk != null && live.bestBid != null) {
-    const nTrades = tradesPerTick(intensity);
-    const buyBias = s.trend === 1 ? 0.72 : s.trend === -1 ? 0.28 : 0.5;
-    for (let i = 0; i < nTrades; i++) {
-      if (Math.random() >= tradeChance(intensity)) continue;
+  const live = book.bbo ?? bbo;
+  if (hb.placeTrades && intensity !== "idle" && !pipeBlocked()) {
+    if (Math.abs(mid - bookMid) >= 1) {
+      const swept = await sweepToward(book, mid);
+      if (swept.length > 0) {
+        traded = true;
+        prints.push(...swept);
+      }
+    } else if (
+      live.bestAsk != null &&
+      live.bestBid != null &&
+      Math.random() < tradeChance(intensity)
+    ) {
+      const buyBias = s.trend === 1 ? 0.72 : s.trend === -1 ? 0.28 : 0.5;
       const buy = Math.random() < buyBias;
       const px = buy ? Number(live.bestAsk) : Number(live.bestBid);
       const size = noiseQty(intensity);
@@ -964,8 +929,6 @@ export async function runHeartbeatTick(): Promise<{
       if (ok) {
         traded = true;
         prints.push({ price: px, quantity: size });
-        book = await readBook();
-        live = book?.bbo ?? live;
       }
     }
   }
