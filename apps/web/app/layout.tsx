@@ -33,12 +33,21 @@ export const metadata: Metadata = {
       "Practice SOL-USD spot and perpetual trading with clear paper balances.",
     type: "website",
     siteName: "PaperTrade",
+    images: [
+      {
+        url: "/product-shot.png",
+        width: 1183,
+        height: 585,
+        alt: "PaperTrade trading desk showing the SOL USD order book and balances",
+      },
+    ],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "PaperTrade",
     description:
       "Practice SOL-USD spot and perpetual trading with clear paper balances.",
+    images: ["/product-shot.png"],
   },
 };
 

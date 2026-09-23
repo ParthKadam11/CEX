@@ -5,9 +5,22 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { GoogleIcon } from "@/components/ui/googleButton";
 import { useTheme } from "@/components/ThemeProvider";
-import { ExternalLink, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+
+function GitHubMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+    >
+      <path d="M12 .5a11.5 11.5 0 0 0-3.64 22.39c.58.11.79-.25.79-.56v-2.05c-3.22.7-3.9-1.38-3.9-1.38-.53-1.34-1.28-1.7-1.28-1.7-1.04-.72.08-.71.08-.71 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.57-.29-5.27-1.28-5.27-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.05 11.05 0 0 1 5.8 0c2.21-1.49 3.18-1.18 3.18-1.18.62 1.59.23 2.76.11 3.05.74.81 1.18 1.84 1.18 3.1 0 4.43-2.71 5.4-5.29 5.69.41.35.78 1.04.78 2.1v3.12c0 .31.21.68.8.56A11.5 11.5 0 0 0 12 .5Z" />
+    </svg>
+  );
+}
 
 const TAGLINE_WORDS = [
   "Trade",
@@ -174,8 +187,8 @@ export function Hero() {
               rel="noreferrer"
               className="inline-flex h-10 items-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 text-sm font-medium text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20 hover:text-white"
             >
-              <ExternalLink className="size-4" aria-hidden="true" />
-              GitHub
+              <GitHubMark className="size-4" />
+              Start
             </a>
             {session?.user ? (
               <Button
