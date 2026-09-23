@@ -7,7 +7,7 @@ import { runNuclearReset } from "@/lib/sim/nuclear-reset";
  * Timescale history, Redis streams. Keeps Google User accounts.
  *
  * Allowed in non-production always; in production only when
- * ALLOW_NUCLEAR_RESET=true (papertrade / demo hosts).
+ * ALLOW_NUCLEAR_RESET=true (PaperTrade / demo hosts).
  */
 function nuclearResetAllowed(): boolean {
   if (process.env.NODE_ENV !== "production") return true;

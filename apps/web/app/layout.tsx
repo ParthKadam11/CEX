@@ -20,23 +20,23 @@ const instrumentSerif = Instrument_Serif({
 
 export const metadata: Metadata = {
   title: {
-    default: "papertrade",
-    template: "%s | papertrade",
+    default: "PaperTrade",
+    template: "%s | PaperTrade",
   },
-  applicationName: "papertrade",
+  applicationName: "PaperTrade",
   description:
-    "papertrade is a clear paper market for SOL-USD spot and perpetual practice.",
+    "PaperTrade is a clear paper market for SOL-USD spot and perpetual practice.",
   keywords: ["paper trading", "SOL-USD", "spot trading", "perpetuals"],
   openGraph: {
-    title: "papertrade",
+    title: "PaperTrade",
     description:
       "Practice SOL-USD spot and perpetual trading with clear paper balances.",
     type: "website",
-    siteName: "papertrade",
+    siteName: "PaperTrade",
   },
   twitter: {
     card: "summary",
-    title: "papertrade",
+    title: "PaperTrade",
     description:
       "Practice SOL-USD spot and perpetual trading with clear paper balances.",
   },
