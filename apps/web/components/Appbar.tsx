@@ -22,6 +22,12 @@ const docLinks = [
     href: "/dashboard/how-it-works",
     match: "prefix" as const,
   },
+  {
+    label: "Repository",
+    href: "https://github.com/ParthKadam11/CEX",
+    match: "prefix" as const,
+    external: true,
+  },
 ];
 
 function isActive(
@@ -205,7 +211,12 @@ function NavGroup({
   pathname,
 }: {
   label: string;
-  links: { label: string; href: string; match: "exact" | "prefix" }[];
+  links: {
+    label: string;
+    href: string;
+    match: "exact" | "prefix";
+    external?: boolean;
+  }[];
   pathname: string;
 }) {
   return (
@@ -215,20 +226,30 @@ function NavGroup({
       </p>
       <ul className="space-y-0.5">
         {links.map((link) => {
-          const active = isActive(pathname, link.href, link.match);
+          const active =
+            !link.external && isActive(pathname, link.href, link.match);
+          const className = cn(
+            "block rounded-md px-2 py-1.5 text-sm transition-colors",
+            active
+              ? "font-medium text-zinc-950 dark:text-zinc-50"
+              : "text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50",
+          );
           return (
             <li key={link.href}>
-              <Link
-                href={link.href}
-                className={cn(
-                  "block rounded-md px-2 py-1.5 text-sm transition-colors",
-                  active
-                    ? "font-medium text-zinc-950 dark:text-zinc-50"
-                    : "text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50",
-                )}
-              >
-                {link.label}
-              </Link>
+              {link.external ? (
+                <a
+                  href={link.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={className}
+                >
+                  {link.label}
+                </a>
+              ) : (
+                <Link href={link.href} className={className}>
+                  {link.label}
+                </Link>
+              )}
             </li>
           );
         })}
