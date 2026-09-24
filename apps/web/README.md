@@ -50,7 +50,7 @@ In local/dev, the market stream may use the BFF `/api/market/stream` fallback if
 - Dashboard: paper balances, orders, paper credit
 - Spot (`SOL-USD`) and Perps (`SOL-USD-PERP`)
 - Charts / history via market-data
-- Optional market simulation controls
+- Shared market sim when `SIM_HEARTBEAT=true` (one quote and at most one print per tick). Controls and wipe require `SIM_OPERATOR_EMAILS` in production.
 
 ## Main routes
 
@@ -69,4 +69,4 @@ In local/dev, the market stream may use the BFF `/api/market/stream` fallback if
 
 ## Production notes
 
-When deploying behind HTTPS, set `NEXTAUTH_URL` and `ENGINE_GATEWAY_PUBLIC_URL` to public origins; match backend tokens. In production, browsers EventSource the gateway after `/api/market/stream-ticket` (BFF stream is off unless `ALLOW_BFF_MARKET_STREAM=true`). See [`infra/DEPLOY.md`](../../infra/DEPLOY.md).
+When deploying behind HTTPS, set `NEXTAUTH_URL` and `ENGINE_GATEWAY_PUBLIC_URL` to public origins; match backend tokens. Set `SIM_OPERATOR_EMAILS` to the Google accounts that may drive the sim. In production, browsers EventSource the gateway after `/api/market/stream-ticket` (BFF stream is off unless `ALLOW_BFF_MARKET_STREAM=true`). See [`infra/DEPLOY.md`](../../infra/DEPLOY.md).

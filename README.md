@@ -27,15 +27,17 @@ Sole client of the exchange: Redis commands → engine HTTP; SSE → `orders:eve
 - `apps/ingester`  
 Consumes durable market-data events into TimescaleDB and serves historical trades, BBO, and candles.
 - `apps/web`  
-Next.js trading app: Google auth, paper credit, Spot / Perps surfaces, charts, and BFF proxies.
+Next.js trading app: Google auth, paper credit, Spot / Perps surfaces, charts, and BFF proxies. With `SIM_HEARTBEAT=true` this process also runs the shared market sim.
 - `packages/exchange-types`  
 Shared engine domain types: orders, trades, balances, positions, events, commands.
 - `packages/app-contracts`  
 Application-layer Redis Streams / pub/sub contracts.
 - `packages/db`  
-Prisma schema for users and OMS order state.
+Prisma schema for users and OMS order state. Trading balances live in the exchange, not Postgres.
+- `packages/logger`  
+Structured logs and Redis stream health checks used by the Node services.
 - `infra`  
-Local Redis, PostgreSQL, and TimescaleDB (Compose). Optional nginx samples for a public host.
+Redis, PostgreSQL, TimescaleDB, Prometheus, Grafana, and Loki (Compose). Optional nginx samples for a public host.
 - `.github/workflows`  
 CI (lint / typecheck / unit tests). Optional SSH deploy workflow.
 - `ecosystem.config.cjs`  
@@ -83,7 +85,7 @@ The application layer wraps the engine with service boundaries:
 - Exchange SSE as the canonical source for BBO, trades, and maker-side fills
 - Redis pub/sub for live best bid/ask and trade fan-out
 - The durable `md:events` stream and TimescaleDB for historical market data
-- The existing Postgres database for users, wallets, and OMS order state
+- Postgres for users and OMS order state. Trading balances stay in the exchange WAL.
 
 
 
@@ -102,8 +104,11 @@ PaperDesk/
     ├── app-contracts/
     ├── db/
     ├── exchange-types/
+    ├── logger/
     └── typescript-config/
 ```
+
+Package names are still `@cex/*` (`@cex/web`, `@cex/exchange`, and the rest). PaperDesk is the product name.
 
 
 
@@ -133,7 +138,9 @@ Then start the full stack (exchange, gateway, OMS, ingester, web):
 pnpm dev:stack
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). Sign in with Google.
+
+Sim controls and the book wipe are limited to the Google emails in `SIM_OPERATOR_EMAILS` (see [`.env.example`](.env.example)). An empty list in production means nobody. With the variable unset outside production, those controls stay available. PM2 turns the shared sim on with `SIM_HEARTBEAT=true`; each heartbeat places one missing quote and at most one print.
 
 | Command | What it starts |
 | --- | --- |
@@ -146,8 +153,6 @@ Open [http://localhost:3000](http://localhost:3000).
 Default local tokens and URLs live in [`.env.example`](.env.example). `setup:local` copies them to root `.env`, `packages/db/.env`, and `apps/web/.env` when those files are missing (never overwrites).
 
 Backend services load env from cwd / repo root / `packages/db/.env`. Next.js only reads `apps/web/.env`.
-
-Sign-in still uses Google (Gmail). Auth is unchanged for this local pass.
 
 ### Ports
 
@@ -215,8 +220,8 @@ When you deploy to a single public host (not required for local work):
 
 | Piece | Role |
 | --- | --- |
-| Docker Compose | Redis, Postgres, Timescale (data plane only) |
-| PM2 | exchange, gateway, OMS, ingester, web |
+| Docker Compose | Redis, Postgres, Timescale, plus Prometheus, Grafana, and Loki on loopback |
+| PM2 | exchange, gateway, OMS, ingester, web (`SIM_HEARTBEAT=true` on web) |
 | nginx | TLS termination + reverse proxy to loopback app ports |
 | Let’s Encrypt (certbot) | Free certificates for the public hostnames |
 | GitHub Actions | CI on push/PR; Deploy workflow SSHs in, builds web, reloads PM2 |
@@ -307,6 +312,8 @@ The integration test requires PostgreSQL, Redis, the exchange, the engine gatewa
 - OMS order APIs with perp leverage persistence + idempotency, Postgres order state, outbox, event-driven status updates
 - OMS cancel uses a conditional status update (`PENDING`/`ACCEPTED`/`OPEN`/`PARTIALLY_FILLED` only) so a fill race cannot mark a terminal order `CANCEL_REQUESTED`
 - Market-data writer (TimescaleDB history for trades, BBO, and one-minute candles per market)
-- Web app authentication, paper credit, and Spot / Perps trading surfaces (functional; design polish deferred)
-- Application-layer infra bootstrap and shared message contracts
+- Web app: Google auth, paper credit, and Spot / Perps desks
+- Shared market sim in the web process. Production sim controls and wipe require `SIM_OPERATOR_EMAILS`
+- Gateway refuses new sim writes while the command stream is behind, and drops sim commands older than 1.5s, so a sim burst cannot stall a user order
+- Prometheus, Grafana, and Loki for metrics and PM2 logs (loopback; see [`infra/README.md`](infra/README.md))
 

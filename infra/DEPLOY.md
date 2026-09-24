@@ -48,6 +48,7 @@ DNS → server; enable nginx samples; `sudo certbot --nginx -d <web-host> -d <gw
 | `NEXTAUTH_URL` | `http://localhost:3000` | `https://<web-host>` |
 | `ENGINE_GATEWAY_PUBLIC_URL` | `http://127.0.0.1:4020` | `https://<gw-host>` |
 | `CORS_ORIGINS` | optional | `https://<web-host>` |
+| `SIM_OPERATOR_EMAILS` | unset (controls open outside production) | comma-separated Google emails; empty means nobody |
 | Internal tokens | `local-dev-*` from `.env.example` | random; keep pairs matched |
 
 Production SSE is **direct to the gateway** (ticket from the BFF). Deploy secrets for Actions: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY_B64`.
