@@ -6,12 +6,12 @@ import { cn } from "@/lib/utils";
 
 const SECTIONS = [
   { id: "what", label: "What is this?" },
-  { id: "start", label: "How to start" },
+  { id: "start", label: "Your first trade" },
   { id: "desk", label: "Reading the desk" },
   { id: "spot", label: "Spot trading" },
   { id: "perps", label: "Perps trading" },
   { id: "orders", label: "Orders and status" },
-  { id: "words", label: "Simple glossary" },
+  { id: "words", label: "Words you will see" },
 ] as const;
 
 export function MarketExplorer() {
@@ -25,8 +25,9 @@ export function MarketExplorer() {
           Getting around
         </h1>
         <p className="mt-4 text-pretty text-base leading-relaxed text-zinc-500 dark:text-zinc-400">
-          Plain language walkthrough of paper Spot and Perps: how to fund,
-          place, cancel, and read what the screens mean.
+          A first-visit walkthrough. You will add practice money, place one
+          order, and learn what the screens are showing. Balances are credits
+          you add yourself. Nothing here is real money.
         </p>
       </header>
 
@@ -79,27 +80,43 @@ export function MarketExplorer() {
         <article className="max-w-2xl space-y-14 text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">
           <WikiSection id="what" title="What is this?">
             <p>
-              PaperDesk is a{" "}
-              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                paper practice exchange
-              </strong>
-              . Screens and buttons feel like a real desk, but balances are fake
-              credits you add yourself. No real funds settle here.
+              PaperDesk is a practice exchange. The buttons work like a trading
+              desk. The money is credit you add on{" "}
+              <Link
+                href="/dashboard"
+                className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
+              >
+                Home
+              </Link>
+              . A balance of zero just means you have not added any yet.
             </p>
             <p>
-              Two markets, one pair:{" "}
-              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                Spot
-              </strong>{" "}
-              (SOL-USD buy/sell) and{" "}
-              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                Perps
-              </strong>{" "}
-              (SOL-USD-PERP long/short with leverage).
+              There is one price, SOL in USD, and two ways to trade it.
+            </p>
+            <ul className="list-disc space-y-2 pl-5">
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Spot
+                </strong>{" "}
+                is buying and selling the coin. Buy spends USD and gives you
+                SOL. Sell spends SOL and gives you USD.
+              </li>
+              <li>
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Perps
+                </strong>{" "}
+                is a bet on that price. Long profits if SOL rises. Short
+                profits if it falls. You put up USD as a deposit. You do not
+                receive the coin.
+              </li>
+            </ul>
+            <p>
+              Start on Spot. Perps uses leverage, so a small price move can use
+              up the deposit.
             </p>
           </WikiSection>
 
-          <WikiSection id="start" title="How to start">
+          <WikiSection id="start" title="Your first trade">
             <ol className="list-decimal space-y-3 pl-5">
               <li>
                 Open{" "}
@@ -109,28 +126,30 @@ export function MarketExplorer() {
                 >
                   Home
                 </Link>
-                . That is your paper ledger: balances, open orders, and recent
-                activity.
+                . The right side is your paper wallet.
               </li>
               <li>
-                Under Balances, click{" "}
+                Next to USD, click{" "}
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   Add
-                </strong>{" "}
-                on USD or SOL, type a whole number, and confirm. That credits the
-                engine ledger.
+                </strong>
+                . Type a whole number, such as 10000, then{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Confirm
+                </strong>
+                . That USD is available on both Spot and Perps.
               </li>
               <li>
-                Check{" "}
+                The big number is{" "}
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   available
-                </strong>{" "}
-                vs{" "}
-                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  locked
                 </strong>
-                . Available is free to spend. Locked is reserved for open orders
-                or perp margin.
+                : free to use.{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Locked
+                </strong>{" "}
+                is set aside for an open order, or for a perp deposit. Right
+                after you add credit, locked is zero.
               </li>
               <li>
                 Open{" "}
@@ -139,191 +158,281 @@ export function MarketExplorer() {
                   className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
                 >
                   Spot
-                </Link>{" "}
-                or{" "}
-                <Link
-                  href="/perps"
-                  className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
-                >
-                  Perps
                 </Link>
-                , set side/size (and price for limits), then submit.
+                . Leave{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Buy
+                </strong>{" "}
+                selected. Click{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Mid
+                </strong>{" "}
+                to copy a price near the middle of the book, or click a price
+                in the book itself. Quantity is how many SOL you want.
               </li>
               <li>
-                Watch fills on the desk orders list, or open{" "}
+                Press{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Buy SOL
+                </strong>
+                . If someone is already selling at your price or lower, the
+                order fills and your SOL balance goes up. If every seller is
+                higher, the order waits, and the USD it needs stays locked
+                until it fills or you press Cancel.
+              </li>
+              <li>
+                The list under the chart is that order.{" "}
                 <Link
                   href="/dashboard/orders"
                   className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
                 >
                   Orders
                 </Link>{" "}
-                for full history and detail.
+                is the same list with the full history.
               </li>
             </ol>
+            <p>
+              To practice a sell, Add some SOL on Home the same way. SOL is
+              only spent on Spot. Perps uses USD.
+            </p>
           </WikiSection>
 
           <WikiSection id="desk" title="Reading the desk">
             <p>
-              Spot and Perps share the same layout. Learn it once and both pages
-              make sense.
+              Spot and Perps use the same layout. Once you can name the four
+              areas, both pages read the same way.
             </p>
             <dl className="mt-4 space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-              <DeskPart name="Chart" body="Price history for the market." />
+              <DeskPart
+                name="Chart"
+                body="Recent prices, drawn as candles. Each candle is a slice of time."
+              />
               <DeskPart
                 name="Order book"
-                body="Resting bids (buy) and asks (sell). Click a price to fill the ticket."
+                body="Waiting buy orders (bids) and sell orders (asks). The closest prices meet in the middle. Click a price to copy it into the form."
               />
               <DeskPart
                 name="Ticket"
-                body="Where you choose side, limit or market, size, and submit."
+                body="The order form. Spot says Buy or Sell. Perps says Long or Short. You set a price and a size, then submit."
               />
               <DeskPart
                 name="Bottom strip"
-                body="Spot shows open/recent orders. Perps adds Position and Orders tabs."
+                body="Spot lists open and recent orders. Perps adds a Position tab next to Orders."
               />
             </dl>
             <p className="mt-4">
-              The top ticker shows last price and connection. If the stream
-              drops, reconnect and the book refreshes.
+              The top of the page shows the latest price and whether the live
+              feed is connected. When the feed returns, the book fills back in.
             </p>
           </WikiSection>
 
           <WikiSection id="spot" title="Spot trading">
             <p>
-              Spot trades SOL for USD against your ledger balances. No leverage.
+              Spot swaps your practice USD and SOL. A buy can only spend the
+              USD you already have available.
             </p>
             <ul className="mt-4 list-disc space-y-2 pl-5">
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   Buy
                 </strong>{" "}
-                — spend USD, receive SOL.
+                spends USD and adds SOL.
               </li>
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   Sell
                 </strong>{" "}
-                — spend SOL, receive USD.
+                spends SOL and adds USD. Add SOL on Home first if your SOL
+                balance is zero.
+              </li>
+              <li>
+                The form is a{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  limit order
+                </strong>
+                . It trades at your price or a better one. A buy at 140 fills
+                when a seller is at 140 or lower. If every seller is higher,
+                your buy waits on the book.
               </li>
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Limit
+                  Mid
                 </strong>{" "}
-                — rests on the book at your price (or better). Optional IOC/FOK.
-              </li>
-              <li>
+                copies the halfway point between the best buy and the best
+                sell.{" "}
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Market
+                  BBO
                 </strong>{" "}
-                — fills now against the book. Buys can use a quote budget.
+                copies the best price on your side.
               </li>
             </ul>
-            <p className="mt-4">
-              Open orders lock size until filled or cancelled. Cancel from the
-              bottom orders list while status is still open.
+            <p>
+              Leave IOC and FOK unchecked for a first trade. The order then
+              stays open until it fills or you cancel it.{" "}
+              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                IOC
+              </strong>{" "}
+              fills whatever it can right now and cancels the rest.{" "}
+              <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                FOK
+              </strong>{" "}
+              fills the whole quantity now, or cancels the whole order.
+            </p>
+            <p>
+              An open order locks the USD or SOL it needs. Cancel sits on the
+              order row while the status is still open.
             </p>
           </WikiSection>
 
           <WikiSection id="perps" title="Perps trading">
             <p>
-              Perps let you go long or short SOL with USD margin and leverage.
-              You do not hold the coin outright.
+              A perp is a price bet paid in USD. Long profits when SOL rises.
+              Short profits when it falls. Your SOL balance does not change.
             </p>
             <ul className="mt-4 list-disc space-y-2 pl-5">
               <li>
+                You need available USD. That USD is the{" "}
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Long / Short
-                </strong>{" "}
-                — profit if price rises or falls.
+                  margin
+                </strong>
+                , a deposit held while the position is open.
               </li>
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   Leverage
                 </strong>{" "}
-                — slider on the ticket (about 1x to 20x). Higher leverage means
-                less room before liquidation.
+                is the slider from 1x to 20x. At 5x, a position worth about 500
+                USD locks about 100 USD. The same price move is a larger gain
+                or loss, and you are closer to liquidation.
               </li>
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
-                  Position tab
+                  Est. margin
                 </strong>{" "}
-                — side, size, entry, margin, unrealized PnL, equity vs
-                maintenance, and liquidation price.
+                on the form is the USD that locks if the order fills. The
+                button reads Long or Short plus the leverage, such as Long 5x.
+              </li>
+              <li>
+                The{" "}
+                <strong className="font-medium text-zinc-950 dark:text-zinc-50">
+                  Position
+                </strong>{" "}
+                tab shows side, size, entry price, margin, unrealized profit or
+                loss, and the liquidation price. Unrealized is the result if
+                you closed at the current mark. It is not in your available
+                balance yet.
               </li>
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   Mark price
                 </strong>{" "}
-                — fair price used for PnL and liquidation, not always last trade.
+                is the price used for that profit and for liquidation. It is
+                the middle of the book, or the last trade when the book has no
+                middle.
               </li>
               <li>
                 <strong className="font-medium text-zinc-950 dark:text-zinc-50">
                   Funding
                 </strong>{" "}
-                — small periodic payment between longs and shorts.
+                is a small USD payment between longs and shorts. On this demo
+                it runs about once a minute. When the rate is positive, longs
+                pay shorts.
               </li>
             </ul>
-            <p className="mt-4">
-              To reduce or flip exposure, send the opposite side. If equity falls
-              below maintenance, the engine can liquidate the position.
+            <p>
+              To shrink a long, submit a Short. To shrink a short, submit a
+              Long. If losses use up the margin cushion, the position is closed
+              for you. That close is a liquidation.
             </p>
           </WikiSection>
 
           <WikiSection id="orders" title="Orders and status">
             <p>
-              Home shows a short open/recent list.{" "}
+              Home shows a short recent list.{" "}
               <Link
                 href="/dashboard/orders"
                 className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
               >
                 Orders
               </Link>{" "}
-              is the full history with filters and a detail panel.
+              is the full history. Click a row for the average fill price and
+              each fill. Filters cover market, side, type, and time.
             </p>
             <dl className="mt-4 space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
               <DeskPart
-                name="Pending / Accepted / Open"
-                body="Working toward or resting on the book. You can usually cancel."
+                name="Pending, Accepted, Open"
+                body="The order is on its way, or waiting on the book. You can usually cancel it."
               />
               <DeskPart
                 name="Partial"
-                body="Some size filled; remainder still open."
+                body="Some of the size traded. The rest is still open."
               />
-              <DeskPart name="Filled" body="Fully matched. Done." />
               <DeskPart
-                name="Cancelled / Rejected / Failed"
-                body="No longer working. Rejected or failed may show a reason in detail."
+                name="Filled"
+                body="The whole size traded. Nothing left to cancel."
+              />
+              <DeskPart
+                name="Cancelled"
+                body="You stopped it, or an IOC or FOK rule cancelled what could not trade immediately."
+              />
+              <DeskPart
+                name="Rejected or Failed"
+                body="It never traded. The row can include a reason. A common one is not enough available balance."
               />
             </dl>
-            <p className="mt-4">
-              Click a row on Orders to see average fill, fill tape, and cancel
-              when still open. Filters cover market, side, type, and time.
-            </p>
           </WikiSection>
 
-          <WikiSection id="words" title="Simple glossary">
+          <WikiSection id="words" title="Words you will see">
             <dl className="space-y-4">
               <GlossaryTerm term="Order book">
-                Live bids and asks waiting to match.
+                The live list of buy and sell orders waiting to trade.
+              </GlossaryTerm>
+              <GlossaryTerm term="Bid and ask">
+                A bid is a waiting buy. An ask is a waiting sell.
               </GlossaryTerm>
               <GlossaryTerm term="Fill">
-                A matched piece of your order at a price and size.
+                One matched piece of your order, at a price and a size. A
+                large order can fill in several pieces.
               </GlossaryTerm>
-              <GlossaryTerm term="Available / locked">
-                Free balance vs size reserved for open orders or margin.
+              <GlossaryTerm term="Available and locked">
+                Available is free to spend. Locked is reserved for an open
+                order or for perp margin.
               </GlossaryTerm>
-              <GlossaryTerm term="BBO / Mid">
-                Best bid/offer on the book, and the midpoint between them.
+              <GlossaryTerm term="Limit order">
+                An order that trades only at your price or a better one, and
+                waits on the book until then.
+              </GlossaryTerm>
+              <GlossaryTerm term="Mid and BBO">
+                Mid is halfway between the best bid and the best ask. BBO is
+                the best price on your side of the book.
+              </GlossaryTerm>
+              <GlossaryTerm term="IOC and FOK">
+                IOC fills what it can immediately and cancels the rest. FOK
+                fills the entire size now, or cancels the order.
+              </GlossaryTerm>
+              <GlossaryTerm term="Margin">
+                The USD deposit a perp holds while the position is open.
+              </GlossaryTerm>
+              <GlossaryTerm term="Leverage">
+                How large the position is compared with the margin. 5x means
+                the position is about five times the USD you lock.
+              </GlossaryTerm>
+              <GlossaryTerm term="Notional">
+                Price times size: the USD value of the order before leverage.
               </GlossaryTerm>
               <GlossaryTerm term="Mark price">
-                Perp fair price for PnL and liquidation checks.
+                The perp price used for profit and for liquidation checks.
+              </GlossaryTerm>
+              <GlossaryTerm term="Liquidation">
+                An automatic close when losses have used up the margin cushion.
               </GlossaryTerm>
               <GlossaryTerm term="Funding">
-                Periodic payment between longs and shorts.
+                A small scheduled payment between longs and shorts.
               </GlossaryTerm>
             </dl>
             <p className="mt-6 text-zinc-500 dark:text-zinc-400">
-              Want the engineering path behind a click? See{" "}
+              For the path behind a click — the matching engine, the order
+              handoff, and how charts are stored — see{" "}
               <Link
                 href="/dashboard/how-it-works"
                 className="font-medium text-zinc-950 underline-offset-4 hover:underline dark:text-zinc-50"
