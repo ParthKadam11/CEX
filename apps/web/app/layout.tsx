@@ -19,6 +19,7 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://paperdesk.fun"),
   title: {
     default: "PaperDesk",
     template: "%s | PaperDesk",
@@ -33,12 +34,13 @@ export const metadata: Metadata = {
       "Practice SOL-USD spot and perpetual trading with clear paper balances.",
     type: "website",
     siteName: "PaperDesk",
+    url: "https://paperdesk.fun",
     images: [
       {
-        url: "/product-shot.png",
-        width: 1183,
-        height: 585,
-        alt: "PaperDesk trading desk showing the SOL USD order book and balances",
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "PaperDesk, paper markets for SOL USD spot and perps",
       },
     ],
   },
@@ -47,7 +49,7 @@ export const metadata: Metadata = {
     title: "PaperDesk",
     description:
       "Practice SOL-USD spot and perpetual trading with clear paper balances.",
-    images: ["/product-shot.png"],
+    images: ["/og.png"],
   },
 };
 
