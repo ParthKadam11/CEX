@@ -121,11 +121,11 @@ export function Hero() {
     <main className="min-h-full bg-[#eef4f0] dark:bg-background">
       <section className="relative isolate flex min-h-dvh flex-col overflow-hidden bg-black">
         <Image
-          src="/financeBg.jpg"
+          src="/moneydrop-hero.webp"
           alt=""
           fill
           priority
-          quality={90}
+          unoptimized
           sizes="100vw"
           className="animate-hero-zoom object-cover object-center"
         />
@@ -520,10 +520,10 @@ export function Hero() {
 
       <section className="relative isolate overflow-hidden border-t border-border">
         <Image
-          src="/financeBg.jpg"
+          src="/moneydrop-hero.webp"
           alt=""
           fill
-          quality={90}
+          unoptimized
           sizes="100vw"
           className="object-cover object-[center_40%]"
         />
