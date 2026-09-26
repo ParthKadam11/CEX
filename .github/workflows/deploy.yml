@@ -73,8 +73,20 @@ jobs:
           echo "==> build web"
           pnpm build:web
 
+          echo "==> env"
+          if [ ! -s .env ] || [ ! -s apps/web/.env ]; then
+            echo "refusing to reload: .env or apps/web/.env is missing" >&2
+            exit 1
+          fi
+          for key in EXCHANGE_GATEWAY_TOKEN GATEWAY_INTERNAL_TOKEN OMS_INTERNAL_TOKEN TIMESCALE_URL DATABASE_URL NEXTAUTH_SECRET; do
+            if ! grep -q "^${key}=" .env; then
+              echo "refusing to reload: .env is missing ${key}" >&2
+              exit 1
+            fi
+          done
+
           echo "==> reload pm2"
-          pm2 reload ecosystem.config.cjs --update-env
+          pm2 reload ecosystem.config.cjs
           pm2 save
 
           echo "==> nginx"
