@@ -471,26 +471,6 @@ async function ensureFunded(): Promise<void> {
   s.fundEpoch = FUND_EPOCH;
 }
 
-function bookPriceSets(book: OrderBookSnapshot | null): {
-  bids: Set<number>;
-  asks: Set<number>;
-  bidLevels: number;
-  askLevels: number;
-} {
-  const bids = new Set(
-    (book?.bids ?? []).map((l) => Number(l.price)).filter((p) => Number.isFinite(p)),
-  );
-  const asks = new Set(
-    (book?.asks ?? []).map((l) => Number(l.price)).filter((p) => Number.isFinite(p)),
-  );
-  return {
-    bids,
-    asks,
-    bidLevels: bids.size,
-    askLevels: asks.size,
-  };
-}
-
 /** Place resting GTC quotes around a sampled inside spread, then depth behind. */
 async function seedLadder(mid: number, spread: number): Promise<number> {
   const inside = quoteTouches(mid, spread);
@@ -546,60 +526,108 @@ async function seedLadder(mid: number, spread: number): Promise<number> {
   return placed;
 }
 
+/** Levels within one ladder of fair — far zombies don't count as healthy depth. */
+function nearSidePrices(
+  book: OrderBookSnapshot,
+  mid: number,
+  side: "bid" | "ask",
+): Set<number> {
+  const prices = new Set<number>();
+  const levels = side === "bid" ? book.bids : book.asks;
+  const lo = mid - LADDER_DEPTH - 2;
+  const hi = mid + LADDER_DEPTH + 2;
+  for (const level of levels ?? []) {
+    const price = Number(level.price);
+    if (!Number.isFinite(price)) continue;
+    if (side === "bid") {
+      if (price <= mid && price >= lo) prices.add(price);
+    } else if (price >= mid && price <= hi) {
+      prices.add(price);
+    }
+  }
+  return prices;
+}
+
 /**
- * One resting quote per call. A tick that refills the whole ladder sees a
- * stale book (inject only means "queued") and writes that ladder again.
+ * Restock one side around fair. Used when that half of the book is empty or
+ * thin — one quote/tick loses to the next retail print on perps.
  */
-async function placeOneQuote(
+async function seedSide(
+  side: "BUY" | "SELL",
+  touch: number,
+  existing: Set<number>,
+): Promise<number> {
+  const userId = side === "BUY" ? MM_BID_USERS[0]! : MM_ASK_USERS[0]!;
+  const jobs: Array<() => Promise<boolean>> = [];
+  for (let step = 0; step <= LADDER_DEPTH; step += 1) {
+    const price = side === "BUY" ? touch - step : touch + step;
+    if (price < 1 || existing.has(price)) continue;
+    jobs.push(() =>
+      injectPlace({
+        userId,
+        side,
+        price,
+        quantity: ladderQty(step + 1),
+      }),
+    );
+  }
+  if (jobs.length === 0) return 0;
+  let placed = 0;
+  const CHUNK = 4;
+  for (let i = 0; i < jobs.length; i += CHUNK) {
+    if (pipeBlocked()) return placed;
+    const results = await Promise.all(
+      jobs.slice(i, i + CHUNK).map((fn) => fn()),
+    );
+    placed += results.filter(Boolean).length;
+    await sleep(SETTLE_MS);
+  }
+  return placed;
+}
+
+/**
+ * Keep both halves of the book filled near mid. Prefer the thinner / hole-ier
+ * side so a one-way trend can't leave bids or asks blank for many ticks.
+ */
+async function maintainQuotes(
   book: OrderBookSnapshot,
   mid: number,
   spread: number,
 ): Promise<number> {
-  const { bids, asks } = bookPriceSets(book);
+  const bidPrices = nearSidePrices(book, mid, "bid");
+  const askPrices = nearSidePrices(book, mid, "ask");
   const inside = quoteTouches(mid, spread);
-  if (!bids.has(inside.bid)) {
-    const ok = await injectPlace({
-      userId: MM_BID_USERS[0]!,
-      side: "BUY",
-      price: inside.bid,
-      quantity: ladderQty(1),
-    });
-    return ok ? 1 : 0;
-  }
-  if (!asks.has(inside.ask)) {
-    const ok = await injectPlace({
-      userId: MM_ASK_USERS[0]!,
-      side: "SELL",
-      price: inside.ask,
-      quantity: ladderQty(1),
-    });
-    return ok ? 1 : 0;
-  }
-  if (bids.size < LADDER_DEPTH) {
-    const price = inside.bid - bids.size;
-    if (price >= 1 && !bids.has(price)) {
-      const ok = await injectPlace({
-        userId: MM_BID_USERS[0]!,
-        side: "BUY",
-        price,
-        quantity: ladderQty(bids.size + 1),
-      });
-      return ok ? 1 : 0;
+
+  const missingOn = (
+    side: "BUY" | "SELL",
+    touch: number,
+    existing: Set<number>,
+  ): number => {
+    let missing = 0;
+    for (let step = 0; step <= LADDER_DEPTH; step += 1) {
+      const price = side === "BUY" ? touch - step : touch + step;
+      if (price < 1) continue;
+      if (!existing.has(price)) missing += 1;
     }
+    return missing;
+  };
+
+  const bidMissing = missingOn("BUY", inside.bid, bidPrices);
+  const askMissing = missingOn("SELL", inside.ask, askPrices);
+
+  if (bidMissing === 0 && askMissing === 0) return 0;
+
+  // Fully empty half always wins — that's the blank UI pane.
+  if (bidPrices.size === 0) {
+    return seedSide("BUY", inside.bid, bidPrices);
   }
-  if (asks.size < LADDER_DEPTH) {
-    const price = inside.ask + asks.size;
-    if (!asks.has(price)) {
-      const ok = await injectPlace({
-        userId: MM_ASK_USERS[0]!,
-        side: "SELL",
-        price,
-        quantity: ladderQty(asks.size + 1),
-      });
-      return ok ? 1 : 0;
-    }
+  if (askPrices.size === 0) {
+    return seedSide("SELL", inside.ask, askPrices);
   }
-  return 0;
+  if (bidMissing >= askMissing) {
+    return seedSide("BUY", inside.bid, bidPrices);
+  }
+  return seedSide("SELL", inside.ask, askPrices);
 }
 
 /** Cancel MM quotes in small batches — never stampede cancel-all. */
@@ -764,7 +792,7 @@ export async function runMarketMakerTick(
   };
 }
 
-const SWEEP_CAP = 48;
+const SWEEP_CAP = 12;
 
 /**
  * Trade through resting size that sits on the wrong side of fair.
@@ -882,53 +910,82 @@ export async function runHeartbeatTick(): Promise<{
   if (!Number.isFinite(s.lastMid) || s.lastMid <= 0) s.lastMid = bookMid;
   // A person (or a wipe) moved the book a long way — follow that, then walk again.
   if (Math.abs(bookMid - s.lastMid) > 15) s.lastMid = bookMid;
-  // Advance fair only once the touch has caught up, so a thick level gets cleared
-  // before the target runs further away.
+
+  const bidNear = nearSidePrices(book, bookMid, "bid").size;
+  const askNear = nearSidePrices(book, bookMid, "ask").size;
+  const minDepth = Math.ceil(LADDER_DEPTH / 2);
+  const bookHealthy = bidNear >= minDepth && askNear >= minDepth;
+
+  // Don't walk fair while a half is blank — refill first or the empty side stays empty.
   const mid =
-    intensity === "idle" || Math.abs(bookMid - s.lastMid) > 2
+    intensity === "idle" || !bookHealthy || Math.abs(bookMid - s.lastMid) > 2
       ? s.lastMid
       : stepFairPrice(s, intensity);
 
   const spread = sampleSpread(hb.spread, intensity);
   s.lastSpread = spread;
 
-  // One quote and, separately, one print. topUpLadder queued a whole ladder
-  // every move, then read the book 40ms later and queued it again.
+  // Restock the thin half first. One quote/tick loses to the next retail print.
   const cancelled = 0;
   let placed = 0;
   if (hb.placeQuotes) {
-    placed = await placeOneQuote(book, mid, spread);
+    placed = await maintainQuotes(book, mid, spread);
   }
 
   const prints: { price: number; quantity: number }[] = [];
   let traded = false;
   const live = book.bbo ?? bbo;
-  if (hb.placeTrades && intensity !== "idle" && !pipeBlocked()) {
+
+  // After seeding, skip prints this tick so the resting ladder can land.
+  if (
+    hb.placeTrades &&
+    intensity !== "idle" &&
+    !pipeBlocked() &&
+    placed === 0
+  ) {
     if (Math.abs(mid - bookMid) >= 1) {
-      const swept = await sweepToward(book, mid);
-      if (swept.length > 0) {
-        traded = true;
-        prints.push(...swept);
+      const wouldSweepAsks =
+        live.bestAsk != null && Number(live.bestAsk) < mid;
+      const wouldSweepBids =
+        live.bestBid != null && Number(live.bestBid) > mid;
+      // Need a full near ladder before walking through it.
+      const safeToSweep =
+        (wouldSweepAsks && askNear >= LADDER_DEPTH) ||
+        (wouldSweepBids && bidNear >= LADDER_DEPTH);
+      if (safeToSweep) {
+        const swept = await sweepToward(book, mid);
+        if (swept.length > 0) {
+          traded = true;
+          prints.push(...swept);
+        }
       }
     } else if (
       live.bestAsk != null &&
       live.bestBid != null &&
+      bookHealthy &&
       Math.random() < tradeChance(intensity)
     ) {
       const buyBias = s.trend === 1 ? 0.72 : s.trend === -1 ? 0.28 : 0.5;
-      const buy = Math.random() < buyBias;
-      const px = buy ? Number(live.bestAsk) : Number(live.bestBid);
-      const size = noiseQty(intensity);
-      const ok = await injectPlace({
-        userId: pickRetail(),
-        side: buy ? "BUY" : "SELL",
-        price: px,
-        quantity: size,
-        timeInForce: "IOC",
-      });
-      if (ok) {
-        traded = true;
-        prints.push({ price: px, quantity: size });
+      let buy = Math.random() < buyBias;
+      // Bias away from a thin half so noise prints don't keep it blank.
+      if (buy && askNear < minDepth && bidNear >= minDepth) buy = false;
+      if (!buy && bidNear < minDepth && askNear >= minDepth) buy = true;
+      if ((buy && askNear === 0) || (!buy && bidNear === 0)) {
+        // Can't hit an empty half.
+      } else {
+        const px = buy ? Number(live.bestAsk) : Number(live.bestBid);
+        const size = noiseQty(intensity);
+        const ok = await injectPlace({
+          userId: pickRetail(),
+          side: buy ? "BUY" : "SELL",
+          price: px,
+          quantity: size,
+          timeInForce: "IOC",
+        });
+        if (ok) {
+          traded = true;
+          prints.push({ price: px, quantity: size });
+        }
       }
     }
   }
