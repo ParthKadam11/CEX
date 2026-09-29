@@ -41,7 +41,7 @@ function pipeBlocked(): boolean {
   return Date.now() < pipeBlockedUntil;
 }
 
-function blockPipe(ms = 3_000): void {
+function blockPipe(ms = 2_000): void {
   pipeBlockedUntil = Math.max(pipeBlockedUntil, Date.now() + ms);
 }
 /** Depth behind the inside — keep shallow so rebuilds stay cheap. */
@@ -50,7 +50,8 @@ const SETTLE_MS = 40;
 const PRESENCE_TTL_MS = 45_000;
 /** Bump when MM accounts / funding change so hot-reload re-credits. */
 const FUND_EPOCH = 4;
-const DEFAULTS_EPOCH = 6;
+/** Bump when default MM behaviour changes (sweet-spot cadence). */
+const DEFAULTS_EPOCH = 7;
 
 export type SimIntensity = "idle" | "medium" | "high";
 
@@ -167,29 +168,28 @@ function hasActivePresence(hb: HeartbeatState): boolean {
 /** Effective intensity for the next tick. */
 export function resolveEffectiveIntensity(): SimIntensity {
   const hb = heartbeat();
-  // No viewers → idle ambience. Presence can still lift medium/high.
+  // Keep the book alive while the heartbeat is on; presence still lifts high.
   if (hb.boost === "low") return "idle";
   if (hb.boost === "high") return hasActivePresence(hb) ? "high" : "medium";
-  return hasActivePresence(hb) ? "medium" : "idle";
+  return "medium";
 }
 
 function intervalFor(intensity: SimIntensity): number {
   const hb = heartbeat();
-  // Launch-safe cadence: leave headroom for real users on one VPS.
+  // Sweet spot between the old snappy ticks and the launch-quiet ones.
   const byIntensity =
-    intensity === "high" ? 900 : intensity === "medium" ? 1_600 : 3_500;
+    intensity === "high" ? 500 : intensity === "medium" ? 1_000 : 2_800;
   if (hb.intervalMs != null && hb.intervalMs > 0) {
-    if (intensity === "high") return Math.min(hb.intervalMs, 900);
+    if (intensity === "high") return Math.min(hb.intervalMs, 500);
     return Math.max(hb.intervalMs, byIntensity);
   }
   return byIntensity;
 }
 
 function tradeChance(intensity: SimIntensity): number {
-  // Fewer retail prints = quieter pipe; chart still moves.
-  if (intensity === "high") return 0.35;
-  if (intensity === "medium") return 0.2;
-  return 0.08;
+  if (intensity === "high") return 0.55;
+  if (intensity === "medium") return 0.32;
+  return 0.12;
 }
 
 function ladderQty(offset: number): number {
@@ -777,7 +777,7 @@ export async function runMarketMakerTick(
   };
 }
 
-const SWEEP_CAP = 6;
+const SWEEP_CAP = 8;
 
 /**
  * Trade through resting size that sits on the wrong side of fair.
