@@ -41,17 +41,16 @@ function pipeBlocked(): boolean {
   return Date.now() < pipeBlockedUntil;
 }
 
-function blockPipe(ms = 1_000): void {
+function blockPipe(ms = 3_000): void {
   pipeBlockedUntil = Math.max(pipeBlockedUntil, Date.now() + ms);
 }
 /** Depth behind the inside — keep shallow so rebuilds stay cheap. */
-const LADDER_DEPTH = 6;
+const LADDER_DEPTH = 5;
 const SETTLE_MS = 40;
 const PRESENCE_TTL_MS = 45_000;
 /** Bump when MM accounts / funding change so hot-reload re-credits. */
 const FUND_EPOCH = 4;
-/** Bump when default MM behaviour changes (e.g. prints-on by default). */
-const DEFAULTS_EPOCH = 5;
+const DEFAULTS_EPOCH = 6;
 
 export type SimIntensity = "idle" | "medium" | "high";
 
@@ -168,30 +167,29 @@ function hasActivePresence(hb: HeartbeatState): boolean {
 /** Effective intensity for the next tick. */
 export function resolveEffectiveIntensity(): SimIntensity {
   const hb = heartbeat();
-  // Keep ambience alive while the heartbeat is on — presence can still boost.
+  // No viewers → idle ambience. Presence can still lift medium/high.
   if (hb.boost === "low") return "idle";
   if (hb.boost === "high") return hasActivePresence(hb) ? "high" : "medium";
-  return "medium";
+  return hasActivePresence(hb) ? "medium" : "idle";
 }
 
 function intervalFor(intensity: SimIntensity): number {
   const hb = heartbeat();
-  // Intensity defaults (ms). Speed override can only slow things down from these floors
-  // when explicitly set higher — high stays snappy.
+  // Launch-safe cadence: leave headroom for real users on one VPS.
   const byIntensity =
-    intensity === "high" ? 280 : intensity === "medium" ? 650 : 2_200;
+    intensity === "high" ? 900 : intensity === "medium" ? 1_600 : 3_500;
   if (hb.intervalMs != null && hb.intervalMs > 0) {
-    if (intensity === "high") return Math.min(hb.intervalMs, 320);
+    if (intensity === "high") return Math.min(hb.intervalMs, 900);
     return Math.max(hb.intervalMs, byIntensity);
   }
   return byIntensity;
 }
 
 function tradeChance(intensity: SimIntensity): number {
-  // Retail prints drive the live chart — keep them frequent enough to feel alive.
-  if (intensity === "high") return 0.7;
-  if (intensity === "medium") return 0.45;
-  return 0.18;
+  // Fewer retail prints = quieter pipe; chart still moves.
+  if (intensity === "high") return 0.35;
+  if (intensity === "medium") return 0.2;
+  return 0.08;
 }
 
 function ladderQty(offset: number): number {
@@ -516,12 +514,12 @@ async function seedLadder(mid: number, spread: number): Promise<number> {
   }
   // Chunk so we don't stampede the gateway on cold start.
   let placed = 0;
-  const CHUNK = 8;
+  const CHUNK = 2;
   for (let i = 0; i < jobs.length; i += CHUNK) {
     if (pipeBlocked()) return placed;
     const results = await Promise.all(jobs.slice(i, i + CHUNK).map((fn) => fn()));
     placed += results.filter(Boolean).length;
-    await sleep(SETTLE_MS);
+    await sleep(SETTLE_MS * 2);
   }
   return placed;
 }
@@ -549,45 +547,32 @@ function nearSidePrices(
 }
 
 /**
- * Restock one side around fair. Used when that half of the book is empty or
- * thin — one quote/tick loses to the next retail print on perps.
+ * Place at most one missing resting quote on the thinner side.
+ * Refilling a whole ladder in one tick is what jammed the public pipe.
  */
-async function seedSide(
+async function placeOneMissingQuote(
   side: "BUY" | "SELL",
   touch: number,
   existing: Set<number>,
 ): Promise<number> {
+  if (pipeBlocked()) return 0;
   const userId = side === "BUY" ? MM_BID_USERS[0]! : MM_ASK_USERS[0]!;
-  const jobs: Array<() => Promise<boolean>> = [];
   for (let step = 0; step <= LADDER_DEPTH; step += 1) {
     const price = side === "BUY" ? touch - step : touch + step;
     if (price < 1 || existing.has(price)) continue;
-    jobs.push(() =>
-      injectPlace({
-        userId,
-        side,
-        price,
-        quantity: ladderQty(step + 1),
-      }),
-    );
+    const ok = await injectPlace({
+      userId,
+      side,
+      price,
+      quantity: ladderQty(step + 1),
+    });
+    return ok ? 1 : 0;
   }
-  if (jobs.length === 0) return 0;
-  let placed = 0;
-  const CHUNK = 4;
-  for (let i = 0; i < jobs.length; i += CHUNK) {
-    if (pipeBlocked()) return placed;
-    const results = await Promise.all(
-      jobs.slice(i, i + CHUNK).map((fn) => fn()),
-    );
-    placed += results.filter(Boolean).length;
-    await sleep(SETTLE_MS);
-  }
-  return placed;
+  return 0;
 }
 
 /**
- * Keep both halves of the book filled near mid. Prefer the thinner / hole-ier
- * side so a one-way trend can't leave bids or asks blank for many ticks.
+ * Keep both halves near mid. One quote per tick — fills holes over time.
  */
 async function maintainQuotes(
   book: OrderBookSnapshot,
@@ -617,17 +602,17 @@ async function maintainQuotes(
 
   if (bidMissing === 0 && askMissing === 0) return 0;
 
-  // Fully empty half always wins — that's the blank UI pane.
+  // Empty half first so the UI never sits blank for long.
   if (bidPrices.size === 0) {
-    return seedSide("BUY", inside.bid, bidPrices);
+    return placeOneMissingQuote("BUY", inside.bid, bidPrices);
   }
   if (askPrices.size === 0) {
-    return seedSide("SELL", inside.ask, askPrices);
+    return placeOneMissingQuote("SELL", inside.ask, askPrices);
   }
   if (bidMissing >= askMissing) {
-    return seedSide("BUY", inside.bid, bidPrices);
+    return placeOneMissingQuote("BUY", inside.bid, bidPrices);
   }
-  return seedSide("SELL", inside.ask, askPrices);
+  return placeOneMissingQuote("SELL", inside.ask, askPrices);
 }
 
 /** Cancel MM quotes in small batches — never stampede cancel-all. */
@@ -792,7 +777,7 @@ export async function runMarketMakerTick(
   };
 }
 
-const SWEEP_CAP = 12;
+const SWEEP_CAP = 6;
 
 /**
  * Trade through resting size that sits on the wrong side of fair.
@@ -864,7 +849,7 @@ export async function runHeartbeatTick(): Promise<{
   const intensity = resolveEffectiveIntensity();
   const s = state();
   if (pipeBlocked()) {
-    hb.lastError = "command pipe full";
+    hb.lastError = "command pipe full — pausing sim for real users";
     hb.lastTickAt = Date.now();
     return {
       mid: s.lastMid || DEFAULT_MID,
@@ -1037,7 +1022,11 @@ async function loopOnce(): Promise<void> {
     hb.lastError = error instanceof Error ? error.message : String(error);
   } finally {
     hb.inFlight = false;
-    scheduleNext(Math.max(80, dueAt - Date.now()));
+    // When the gateway is behind, sit out — don't keep enqueueing sim noise.
+    const pauseMs = pipeBlocked()
+      ? Math.max(2_000, pipeBlockedUntil - Date.now())
+      : Math.max(80, dueAt - Date.now());
+    scheduleNext(pauseMs);
   }
 }
 
