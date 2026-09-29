@@ -66,24 +66,17 @@ pnpm infra:logs
 
 Compose binds data stores to `127.0.0.1`. Prometheus, Grafana, Loki, and Promtail use `network_mode: host` so they can reach each other and PM2 apps on loopback.
 
-```bash
-# After apps are up:
-curl -s http://127.0.0.1:4020/metrics | head
-# Prometheus: http://127.0.0.1:9090
-# Grafana:    http://127.0.0.1:3001  (admin / cex-grafana-change-me)
-# Loki ready: curl -s http://127.0.0.1:3100/ready
-# Optional:   GRAFANA_ADMIN_PASSWORD=...  PM2_LOG_DIR=...
-```
+Ops UIs listen on loopback. Set a strong Grafana admin password; never commit it. Optional: `GRAFANA_ADMIN_PASSWORD=...` `PM2_LOG_DIR=...`
 
 Provisioned dashboards (folder PaperDesk):
-- **PaperDesk Operations** (home) — fleet overview + incident logs + collapsible per-service detail
-- **PaperDesk Engine Gateway** — deep gateway counters
-- **PaperDesk Services** — compact multi-service metrics
+- **PaperDesk** (home) — fleet overview + logs
+- **PaperDesk Engine Gateway** — gateway counters
+- **PaperDesk Services** — multi-service view
 - **PaperDesk PM2 Logs** — logs-only view
 
 All of this runs **on your VPS** (Docker). There is no Grafana Cloud / Datadog bill — only Contabo disk/CPU for retention.
 
-Promtail tails `$PM2_LOG_DIR` (default `/home/deployer/.pm2/logs`) into Loki (7-day retention).
+Promtail tails PM2 logs into Loki (7-day retention).
 
 ## Requirements
 

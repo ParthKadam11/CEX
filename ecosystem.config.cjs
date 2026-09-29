@@ -17,7 +17,7 @@ module.exports = {
       cwd: root,
       script: "pnpm",
       args: "--filter @cex/exchange start",
-      env: { NODE_ENV: "production", ALLOW_NUCLEAR_RESET: "true" },
+      env: { NODE_ENV: "production" },
       max_restarts: 20,
       min_uptime: "5s",
     },
@@ -29,7 +29,6 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         LISTEN_HOST: "127.0.0.1",
-        ALLOW_NUCLEAR_RESET: "true",
       },
       max_restarts: 20,
       min_uptime: "5s",
@@ -60,7 +59,6 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         SIM_HEARTBEAT: "true",
-        ALLOW_NUCLEAR_RESET: "true",
       },
       max_restarts: 20,
       min_uptime: "5s",

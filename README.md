@@ -234,7 +234,7 @@ See [API.md](API.md) for request IDs, error envelopes, order pagination, and BFF
 
 ## Exchange API
 
-One exchange process hosts both markets (`SOL-USD` and `SOL-USD-PERP`) by default. Command, balance, book, and stream APIs require `x-gateway-token`. Only `/health` is public.
+One exchange process hosts both markets (`SOL-USD` and `SOL-USD-PERP`) by default. Mutating and private query APIs require a gateway token.
 
 
 | Method   | Path                                           | Purpose                                              |
