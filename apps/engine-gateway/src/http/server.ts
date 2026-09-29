@@ -178,7 +178,9 @@ export function createGatewayApp(options: GatewayAppOptions) {
     const engine = options.engines.tryGet(c.req.param("market"));
     if (!engine) return errorResponse(c, 404, "UNKNOWN_MARKET");
 
-    const userId = c.req.query("userId");
+    const authUser = c.req.header("x-authenticated-user-id");
+    const queryUser = c.req.query("userId");
+    const userId = isIdentifier(authUser) ? authUser : queryUser;
     if (!isIdentifier(userId)) {
       return errorResponse(c, 400, "INVALID_USER_ID");
     }
@@ -224,7 +226,13 @@ export function createGatewayApp(options: GatewayAppOptions) {
     const engine = options.engines.tryGet(c.req.param("market"));
     if (!engine) return errorResponse(c, 404, "UNKNOWN_MARKET");
 
-    const userId = c.req.query("userId");
+    const authUser = c.req.header("x-authenticated-user-id");
+    const queryUser = c.req.query("userId");
+    const userId = isIdentifier(authUser)
+      ? authUser
+      : queryUser !== undefined
+        ? queryUser
+        : undefined;
     if (userId !== undefined && !isIdentifier(userId)) {
       return errorResponse(c, 400, "INVALID_USER_ID");
     }
@@ -248,6 +256,10 @@ export function createGatewayApp(options: GatewayAppOptions) {
     const userId = c.req.param("userId");
     if (!isIdentifier(userId)) {
       return errorResponse(c, 400, "INVALID_USER_ID");
+    }
+    const authUser = c.req.header("x-authenticated-user-id");
+    if (isIdentifier(authUser) && authUser !== userId) {
+      return errorResponse(c, 403, "FORBIDDEN");
     }
 
     try {
@@ -275,6 +287,21 @@ export function createGatewayApp(options: GatewayAppOptions) {
     applyCors(c, corsOrigins);
     c.header("cache-control", "no-cache, no-transform");
     c.header("x-accel-buffering", "no");
+
+    const ticket = c.req.query("ticket");
+    const claims =
+      ticket && options.internalToken
+        ? verifyStreamTicket(options.internalToken, ticket, market)
+        : null;
+    const ticketAccess = Boolean(ticket && claims);
+    const viewerId =
+      typeof claims?.userId === "string" && claims.userId.length > 0
+        ? claims.userId
+        : null;
+    const allowPrivate = (ownerId: string): boolean => {
+      if (!ticketAccess) return true;
+      return viewerId != null && ownerId === viewerId;
+    };
 
     return streamSSE(c, async (stream) => {
       const unsubscribers: Array<() => void> = [];
@@ -304,6 +331,7 @@ export function createGatewayApp(options: GatewayAppOptions) {
         unsubscribers.push(
           options.positions.subscribe((position) => {
             if (position.market !== market) return;
+            if (!allowPrivate(position.userId)) return;
             void stream
               .writeSSE({
                 event: "position",
@@ -315,6 +343,7 @@ export function createGatewayApp(options: GatewayAppOptions) {
         unsubscribers.push(
           options.liquidations.subscribe((liquidation) => {
             if (liquidation.market !== market) return;
+            if (!allowPrivate(liquidation.userId)) return;
             void stream
               .writeSSE({
                 event: "liquidation",
@@ -326,6 +355,7 @@ export function createGatewayApp(options: GatewayAppOptions) {
         unsubscribers.push(
           options.fundings.subscribe((funding) => {
             if (funding.market !== market) return;
+            if (!allowPrivate(funding.userId)) return;
             void stream
               .writeSSE({
                 event: "funding",

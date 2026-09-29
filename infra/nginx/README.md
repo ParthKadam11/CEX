@@ -9,9 +9,9 @@ These files are for the **single-host** public deploy (TLS via certbot):
 | `paperdesk.conf` | Main web app |
 | `gateway-paperdesk.conf` | Public gateway edge (stream) |
 | `papertrade.conf` / `papertrade-gw.conf` | Legacy hostnames |
-| `logspapercex.conf` | Optional Grafana front door |
+| `logs-paperdesk.conf` | Ops hostname (not a public admin UI) |
 
-Keep data stores and internal admin ports off the public internet. Use Grafana for ops views when needed.
+Keep data stores and internal admin ports off the public internet. For Grafana on the VPS, use an SSH local forward to loopback.
 
 ### Enable / reload on the VPS
 

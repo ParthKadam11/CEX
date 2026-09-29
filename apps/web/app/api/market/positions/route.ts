@@ -15,10 +15,7 @@ export async function GET(request: NextRequest) {
   }
 
   const market = parseMarketParam(request.nextUrl.searchParams.get("market"));
-  const queryUser = request.nextUrl.searchParams.get("userId");
-  const query = queryUser
-    ? `?userId=${encodeURIComponent(queryUser)}`
-    : `?userId=${encodeURIComponent(userId)}`;
+  const query = `?userId=${encodeURIComponent(userId)}`;
 
   try {
     const response = await fetch(
